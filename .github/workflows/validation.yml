@@ -44,3 +44,12 @@ jobs:
           msbuild -version -nologo
           Write-Host 'NOTE: This checks MSBuild availability, NOT a full component build.'
           Write-Host 'A full build needs staged foobar SDK, WTL, libPPUI, Jansson, OAuth, SQLite and zlib dependencies.'
+
+  official-sdk-probe:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pinned official SDK 2026-10-01 on Windows
+        shell: pwsh
+        run: ./scripts/probe-official-sdk.ps1
