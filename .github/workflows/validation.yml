@@ -28,6 +28,10 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/http_status_parser_test.cpp -o /tmp/discogger-http-test
       - name: Run HTTP status regression tests
         run: /tmp/discogger-http-test
+      - name: Compile collaboration search fallback helper
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
+      - name: Run collaboration search fallback tests
+        run: /tmp/discogger-search-test
 
   windows-baseline:
     runs-on: windows-2022

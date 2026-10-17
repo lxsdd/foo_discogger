@@ -16,5 +16,9 @@ assert "discogger_net::parse_http_status_code(status.c_str())" in fetcher
 assert "throw http_429_exception();" in fetcher
 assert "error_code = 4011" not in fetcher
 
-print("PASS: refresh selection and HTTP rate-limit error routing are wired.")
+search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+assert "discogger_search::trailing_collaborator(original_artist)" in search
+assert "get_all_pages(fallback_url, fallback_params" in search
+assert "search_query::TextToMap(fallback_expression, fallback_map)" in search
+print("PASS: artist refresh, HTTP rate-limit routing and collaboration fallback are wired.")
 print("NOTE: full component compilation and live Discogs/foobar testing are separate gates.")

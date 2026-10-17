@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "discogger_search_fallback.h"
 
 #include "pfc/other.h"
 #include "discogs_interface.h"
@@ -699,6 +700,39 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 	for (size_t i = 0; i < cpages; i++) {
 		//need preview working to avoid unloaded duplicated masters erasing valid data 
 		parse_amt_page(fake_artist, pages[i], pai, p_status, p_abort);
+	}
+
+	// A collaboration can be indexed under a participating artist rather than
+	// the combined name. Retry once with the trailing collaborator and album
+	// title only when the original Discogs query returned no releases.
+	// Keep the original query unmodified for the user and limit the fallback
+	// to a single extra API search (never retry it recursively).
+	if (!fake_artist->master_releases.get_count() && !fake_artist->releases.get_count()) {
+		const auto& original_artist = qdm_search_query.at("artist=").first;
+		const auto& release_title = qdm_search_query.at("title=").first;
+		const std::string collaborator = discogger_search::trailing_collaborator(original_artist);
+		if (!collaborator.empty() && !release_title.empty()) {
+			pfc::string8 fallback_expression;
+			fallback_expression << "q=" << collaborator.c_str() << " & title=" << release_title.c_str();
+
+			QueryDefMap fallback_map;
+			std::pair<std::string, std::string> fallback_query;
+			if (search_query::TextToMap(fallback_expression, fallback_map) &&
+				search_query::MapToText(fallback_map, fallback_query, false) &&
+				!fallback_query.second.empty()) {
+				p_abort.check();
+				p_status.set_item("No exact release found; searching collaboration partner...");
+				pfc::string8 fallback_url("https://api.discogs.com/database/search");
+				pfc::string8 fallback_params(fallback_query.second.c_str());
+				size_t fallback_max = HIWORD(CONF.query_max);
+				pfc::array_t<JSONParser_ptr> fallback_pages =
+					get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,
+						"Fetching collaboration fallback results...", p_status);
+				for (size_t i = 0; i < fallback_pages.get_count(); ++i) {
+					parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
+				}
+			}
+		}
 	}
 
 	va_res_cap.first = fake_artist->master_releases.get_count();
