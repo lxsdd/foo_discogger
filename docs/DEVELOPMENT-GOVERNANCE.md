@@ -37,4 +37,4 @@ This is an upstream-linked fork of `ghDaYuYu/foo_discogger`. The development bra
 - Screenshot and fixture data must be reviewed before adding to the public fork.
 
 ## Acceptance status
-The first C++ parsing, source-wiring, Windows availability and official SDK-provenance checks have passed in draft PR #1. The **full Discogger Win32/x64 build**, live network behavior, real foobar2000 test, and modified-binary distribution rights are still **PENDING/BLOCKED**.
+The first C++ parsing, source-wiring, Windows availability and official SDK-provenance checks have passed in draft PR #1. MSVC x86/x64 compilation of portable C++ tests is a separate CI gate; do not confuse it with building the foobar2000 component. The **full Discogger Win32/x64 build**, live network behavior, real foobar2000 test, and modified-binary distribution rights are still **PENDING/BLOCKED**.

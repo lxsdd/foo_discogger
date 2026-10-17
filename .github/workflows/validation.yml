@@ -49,6 +49,19 @@ jobs:
           Write-Host 'NOTE: This checks MSBuild availability, NOT a full component build.'
           Write-Host 'A full build needs staged foobar SDK, WTL, libPPUI, Jansson, OAuth, SQLite and zlib dependencies.'
 
+  windows-native-unit:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and execute portable C++17 unit tests using MSVC
+        shell: pwsh
+        run: ./scripts/run-msvc-unit-tests.ps1 -Architecture '${{ matrix.architecture }}'
+
   official-sdk-probe:
     runs-on: windows-2022
     timeout-minutes: 10
