@@ -30,10 +30,18 @@ public:
     void put(const key_t& key, const value_t& value) {
         std::lock_guard<std::mutex> lock(modify_mutex);
         if (_max_size == 0) return;
-        remove_unlocked(key);
+        // Prepare the replacement before touching an existing entry. If the
+        // value copy or list allocation fails, the old value must survive.
+        auto existing = _cache_items_map.find(key);
         _cache_items_list.emplace_front(key, value);
         try {
-            _cache_items_map.emplace(key, _cache_items_list.begin());
+            if (existing != _cache_items_map.end()) {
+                // Reusing the existing map node avoids a throwing insertion.
+                _cache_items_list.erase(existing->second);
+                existing->second = _cache_items_list.begin();
+            } else {
+                _cache_items_map.emplace(key, _cache_items_list.begin());
+            }
         } catch (...) {
             _cache_items_list.pop_front();
             throw;

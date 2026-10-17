@@ -29,6 +29,19 @@ inline size_t encode_mr(int role, unsigned long id) { return (static_cast<size_t
 
 #include "../cache.h"
 
+// Inject a deterministic value-copy failure into put(), including the
+// replacement path. No external test data or foobar2000 installation needed.
+struct throwing_value {
+    int number;
+    static bool reject_copy;
+    explicit throwing_value(int n = 0) : number(n) {}
+    throwing_value(const throwing_value& rhs) : number(rhs.number) {
+        if (reject_copy) throw std::runtime_error("injected copy failure");
+    }
+    throwing_value& operator=(const throwing_value&) = default;
+};
+bool throwing_value::reject_copy = false;
+
 int main() {
     lru_cache<size_t, std::shared_ptr<int>> c(2);
     assert(!c.exists(1));
@@ -59,6 +72,32 @@ int main() {
     assert(c.try_get(7, missing) && missing == first);
     c.clear();
     assert(c.size() == 0);
+
+    // An unsuccessful replacement must not evict or change an existing value.
+    lru_cache<size_t, throwing_value> fail_cache(2);
+    fail_cache.put(1, throwing_value(11));
+    fail_cache.put(2, throwing_value(22));
+    throwing_value::reject_copy = true;
+    bool copy_failed = false;
+    try { fail_cache.put(1, throwing_value(99)); }
+    catch (const std::runtime_error&) { copy_failed = true; }
+    throwing_value::reject_copy = false;
+    assert(copy_failed && fail_cache.size() == 2);
+    assert(fail_cache.get(1).number == 11);
+    assert(fail_cache.get(2).number == 22);
+
+    // An unsuccessful insertion must not change the existing LRU capacity.
+    throwing_value::reject_copy = true;
+    copy_failed = false;
+    try { fail_cache.put(3, throwing_value(33)); }
+    catch (const std::runtime_error&) { copy_failed = true; }
+    throwing_value::reject_copy = false;
+    assert(copy_failed && fail_cache.size() == 2);
+    assert(!fail_cache.exists(3));
+    fail_cache.put(1, throwing_value(44));
+    assert(fail_cache.get(1).number == 44);
+    fail_cache.put(3, throwing_value(55));
+    assert(fail_cache.exists(1) && fail_cache.exists(3) && !fail_cache.exists(2));
 
     lru_cache<size_t, int> role_cache(4);
     const auto a = encode_mr(4, 12001);
