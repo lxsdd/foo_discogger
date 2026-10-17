@@ -1,6 +1,7 @@
 #include "stdafx.h"
 
 #include "fetcher.h"
+#include "http_status_util.h"
 #include "exception.h"
 #include "utils.h"
 
@@ -253,33 +254,25 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 					m_ratelimit_remaining = m_ratelimit_threshold; //if rate info is empty reset to threshold
 				}
 
-				// check status
-				if (pfc::string8(status).find_first("200") == SIZE_MAX) {
-
-					int error_code = 0;
+				// Parse the actual HTTP status before considering query-specific hints.
+				// In particular, Discogs search requests must retain 429 so the
+				// existing rate-limit retry path remains reachable.
+				const int error_code = discogger_net::parse_http_status_code(status.c_str());
+				if (error_code != 200) {
+					const bool is_search = url.find_first("search") != SIZE_MAX;
 					pfc::string8 msg_status;
-					auto search_url = url.find_first("search");
-
-					if (search_url != SIZE_MAX) {
-						msg_status << "Query syntax/Network error: " << status;
-						error_code = 4011; //todo
-					}
-					else {
-						msg_status << "HTTP error status: " << status;
-						error_code = std::stoi(substr(status, 9, 3).get_ptr());
-					}
-
+					msg_status << (is_search ? "Search HTTP error status: " : "HTTP error status: ") << status;
 					log_msg(msg_status);
-
 					switch (error_code) {
 					case 404:
 						throw http_404_exception();
-					case 401: //unauthorized
+					case 401:
+						if (is_search) throw http_401_Search_exception();
 						throw http_401_exception();
-					case 4011:
-						throw http_401_Search_exception();
-					case 429: //too many requests (need to wait for remaining 60 or slow to 1 req/sec)
+					case 429:
 						throw http_429_exception();
+					case 0:
+						throw http_exception(0, "Malformed HTTP status line");
 					default:
 						throw http_exception(error_code);
 					}
