@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible Discogger issue without exposing personal music metadata or tokens.
+title: "[Bug] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: "Public repository: redact OAuth tokens, account information, personal file paths, and track-library details from screenshots/logs."
+  - type: input
+    id: version
+    attributes:
+      label: Discogger / foobar2000 version and architecture
+      placeholder: "Discogger v1.0.22.3; foobar2000 2.x x64"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction with disposable or synthetic data
+      description: Provide a minimal, non-private reproducer and Discogs public release ID where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Observed result
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk category
+      options:
+        - Search, cache or UI only
+        - Incorrect tags or artwork
+        - Destructive write or cue/subsong corruption
+        - Build or CI
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Public issue safety
+      options:
+        - label: "I checked my report for credentials, tokens and private music-library information."
+          required: true
