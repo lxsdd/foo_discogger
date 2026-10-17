@@ -1,167 +1,145 @@
 #pragma once
+
+#include <algorithm>
+#include <cstddef>
+#include <list>
 #include <mutex>
+#include <stdexcept>
+#include <unordered_map>
+#include <utility>
 
-template<typename key_t, typename value_t>
-
-class lru_cache
-{
+// Bounded LRU for metadata objects. The returned value is a copy: callers
+// must not hold references to cache nodes after the lock is released.
+template <typename key_t, typename value_t>
+class lru_cache {
 public:
-	typedef typename std::pair<key_t, value_t> key_value_pair_t;
-	typedef typename std::list<key_value_pair_t>::iterator list_iterator_t;
+    using key_value_pair_t = std::pair<key_t, value_t>;
+    using list_iterator_t = typename std::list<key_value_pair_t>::iterator;
 
-	lru_cache(size_t max_size) :
-		_max_size(max_size) {
-	}
+    explicit lru_cache(size_t max_size) : _max_size(max_size) {}
 
-	std::mutex modify_mutex;
+    // Existing Discogger code uses this to serialize a release load. Keep it
+    // public until loading has its own per-release synchronization mechanism.
+    std::mutex modify_mutex;
 
-	bool remove(const key_t& key) {
+    bool remove(const key_t& key) {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        return remove_unlocked(key);
+    }
 
-		//note c++ std::list & std::map: only those iterators, or refs pointing to
-		//the element which will be erased, are affected
+    void put(const key_t& key, const value_t& value) {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        if (_max_size == 0) return;
+        remove_unlocked(key);
+        _cache_items_list.emplace_front(key, value);
+        try {
+            _cache_items_map.emplace(key, _cache_items_list.begin());
+        } catch (...) {
+            _cache_items_list.pop_front();
+            throw;
+        }
+        trim_unlocked();
+    }
 
-		auto it = _cache_items_map.find(key);
-		if (it != _cache_items_map.end()) {
-			_cache_items_list.erase(it->second);
-			_cache_items_map.erase(it);
-			return true;
-		}
-		return false;
-	}
+    value_t get(const key_t& key) {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        auto it = _cache_items_map.find(key);
+        if (it == _cache_items_map.end()) throw std::out_of_range("cache error");
+        _cache_items_list.splice(_cache_items_list.begin(), _cache_items_list, it->second);
+        return it->second->second;
+    }
 
-	void put(const key_t& key, const value_t& value) {
+    // Atomic lookup + copy, avoiding the race between exists() and get().
+    bool try_get(const key_t& key, value_t& out) {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        auto it = _cache_items_map.find(key);
+        if (it == _cache_items_map.end()) return false;
+        out = it->second->second;
+        _cache_items_list.splice(_cache_items_list.begin(), _cache_items_list, it->second);
+        return true;
+    }
 
-		std::lock_guard<std::mutex> ul(modify_mutex);
+    bool exists(const key_t& key) {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        return _cache_items_map.find(key) != _cache_items_map.end();
+    }
 
-		remove(key);
+    // For encoded release keys, the zero-role key takes precedence. If neither
+    // exact key exists, return the *complete encoded key* of the most recently
+    // used release with the same Discogs ID (not merely its role index).
+    // Only used for size_t release/master-release caches.
+    std::pair<bool, bool> exists_comp(const key_t& key, key_t& alternate_key) {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        const auto decoded = decode_mr(key);
+        const key_t simple_key = static_cast<key_t>(decoded.second);
+        const bool simple = _cache_items_map.find(simple_key) != _cache_items_map.end();
+        const bool exact = _cache_items_map.find(key) != _cache_items_map.end();
+        alternate_key = key_t{};
+        if (!simple && !exact) {
+            for (const auto& item : _cache_items_list) {
+                if (decode_mr(item.first).second == decoded.second) {
+                    alternate_key = item.first;
+                    break;
+                }
+            }
+        }
+        return {simple, exact};
+    }
 
-		_cache_items_list.push_front(key_value_pair_t(key, value));
-		_cache_items_map[key] = _cache_items_list.begin();
+    size_t size() {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        return _cache_items_map.size();
+    }
 
-		if (_cache_items_map.size() > _max_size) {
-			auto last = _cache_items_list.end();
-			last--;
-			_cache_items_map.erase(last->first);
-			_cache_items_list.pop_back();
-		}
-	}
+    void clear() {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        _cache_items_list.clear();
+        _cache_items_map.clear();
+    }
 
-	const value_t& get(const key_t& key) {
-
-		std::lock_guard<std::mutex> ul(modify_mutex);
-
-		auto it = _cache_items_map.find(key);
-		if (it == _cache_items_map.end()) {
-			throw ("cache error");
-		}
-		else {
-			_cache_items_list.splice(_cache_items_list.begin(), _cache_items_list, it->second);
-			return it->second->second;
-		}
-	}
-
-	bool exists(const key_t& key) /*const*/ {
-
-		std::lock_guard<std::mutex> ul(modify_mutex);
-
-			return _cache_items_map.find(key) != _cache_items_map.end();
-		}
-	}
-
-	std::pair<bool,bool> exists_comp(const key_t& key, key_t &alter_lkey) /*const*/ {
-
-		std::lock_guard<std::mutex> ul(modify_mutex);
-
-		std::pair<int, unsigned long> pdec = decode_mr(key);
-		std::pair<bool, bool> pres(false, false);
-		/*exist_simple*/ pres.first = _cache_items_map.find(pdec.second) != _cache_items_map.end();
-		/*exist_comp*/ pres.second= _cache_items_map.find(key) != _cache_items_map.end();
-		
-		if (!pres.first && !pres.second) {
-
-			size_t myres = 0;
-			auto fi = std::find_if(_cache_items_map.begin(), _cache_items_map.end(), [&myres, &pdec](const auto /*std::pair<size_t, MasterRelease_ptr>*/ /*lru_cache<key_t, value_t>*/& e) {
-				auto b = e;
-				std::pair<size_t, list_iterator_t/> key_value_pair_t = e;
-				auto dec = decode_mr(e.first);
-				if (dec.second == pdec.second) myres = dec.first;
-				return dec.second == pdec.second;
-				});
-
-			if (fi != _cache_items_map.end()) {
-				alter_lkey = myres;
-			}
-		}
-
-		return pres;
-
-	}
-
-
-	size_t size() /*const*/ {
-
-		std::lock_guard<std::mutex> ul(modify_mutex);
-
-		return _cache_items_map.size();
-	}
-
-	void clear() {
-
-		std::lock_guard<std::mutex> ul(modify_mutex);
-
-		_cache_items_list.clear();
-		_cache_items_map.clear();
-	}
-
-	void set_max_size(size_t max_size) {
-
-		std::lock_guard<std::mutex> ul(modify_mutex);
-
-		_max_size = max_size;
-		while (_cache_items_map.size() > _max_size) {
-			auto last = _cache_items_list.end();
-			last--;
-			_cache_items_map.erase(last->first);
-			_cache_items_list.pop_back();
-		}
-	}
+    void set_max_size(size_t max_size) {
+        std::lock_guard<std::mutex> lock(modify_mutex);
+        _max_size = max_size;
+        trim_unlocked();
+    }
 
 private:
+    bool remove_unlocked(const key_t& key) {
+        auto it = _cache_items_map.find(key);
+        if (it == _cache_items_map.end()) return false;
+        _cache_items_list.erase(it->second);
+        _cache_items_map.erase(it);
+        return true;
+    }
 
-	std::list<key_value_pair_t> _cache_items_list;
-	std::unordered_map<key_t, list_iterator_t> _cache_items_map;
-	size_t _max_size;
+    void trim_unlocked() {
+        while (_cache_items_map.size() > _max_size) {
+            auto last = std::prev(_cache_items_list.end());
+            _cache_items_map.erase(last->first);
+            _cache_items_list.pop_back();
+        }
+    }
+
+    std::list<key_value_pair_t> _cache_items_list;
+    std::unordered_map<key_t, list_iterator_t> _cache_items_map;
+    size_t _max_size;
 };
 
-namespace std
-{
-	template <>
-#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
-	struct hash<pfc::string8> 
-#else
-	struct hash<pfc::string8> : public unary_function<pfc::string8, size_t>
-#endif
-	{
-		size_t operator()(const pfc::string8& value) const {
-			const char *str = value.get_ptr();
-			unsigned long hash = 5381;
-			int c;
-			while (c = *str++) {
-				hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-			}
-			return hash;
-		}
-	};
+namespace std {
+template <>
+struct hash<pfc::string8> {
+    size_t operator()(const pfc::string8& value) const {
+        const unsigned char* str = reinterpret_cast<const unsigned char*>(value.get_ptr());
+        size_t hash_value = 5381;
+        while (*str) hash_value = ((hash_value << 5) + hash_value) + *str++;
+        return hash_value;
+    }
+};
 
-	template <>
-#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
-	struct equal_to<pfc::string8>
-#else
-	struct equal_to<pfc::string8> : public unary_function<pfc::string8, bool>
-#endif
-	{
-		bool operator()(const pfc::string8& x, const pfc::string8& y) const {
-			return STR_EQUAL(x, y);
-		}
-	};
-}
+template <>
+struct equal_to<pfc::string8> {
+    bool operator()(const pfc::string8& x, const pfc::string8& y) const {
+        return STR_EQUAL(x, y);
+    }
+};
+} // namespace std

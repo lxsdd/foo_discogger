@@ -32,6 +32,10 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
       - name: Run collaboration search fallback tests
         run: /tmp/discogger-search-test
+      - name: Compile LRU cache regression and concurrency tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -pthread -O2 tests/cache_lru_test.cpp -o /tmp/discogger-cache-test
+      - name: Run LRU cache regression and concurrency tests
+        run: /tmp/discogger-cache-test
 
   windows-baseline:
     runs-on: windows-2022

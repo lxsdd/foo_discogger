@@ -27,11 +27,13 @@ private:
 	pfc::array_t<pfc::string8> collection;
 
 	inline Release_ptr get_release_from_cache(const size_t lkey) {
-		return cache_releases->exists(lkey) ? cache_releases->get(lkey) : nullptr;
+		Release_ptr found;
+		return cache_releases->try_get(lkey, found) ? found : nullptr;
 	}
 
 	inline MasterRelease_ptr get_master_release_from_cache(const size_t lkey) {
-		return cache_master_releases->exists(lkey) ? cache_master_releases->get(lkey) : nullptr;
+		MasterRelease_ptr found;
+		return cache_master_releases->try_get(lkey, found) ? found : nullptr;
 	}
 
 	//recycle
@@ -78,7 +80,8 @@ private:
 	}
 
 	inline Artist_ptr get_artist_from_cache(const pfc::string8 &artist_id) {
-		return cache_artists->exists(artist_id) ? cache_artists->get(artist_id) : nullptr;
+		Artist_ptr found;
+		return cache_artists->try_get(artist_id, found) ? found : nullptr;
 	}
 
 	inline void add_release_to_cache(const size_t lkey, Release_ptr &release) {
