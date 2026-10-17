@@ -29,7 +29,7 @@ $Commands.Add('@echo off')
 $Commands.Add('setlocal')
 $Commands.Add("call `"$VcVars`" $Architecture > nul")
 $Commands.Add('if errorlevel 1 exit /b 91')
-$Commands.Add('cl /Bv')
+$Commands.Add('where cl')
 $Commands.Add('if errorlevel 1 exit /b 92')
 foreach ($file in $Sources) {
     $stem = [IO.Path]::GetFileNameWithoutExtension($file)
