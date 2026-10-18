@@ -179,3 +179,11 @@ for expected in ('684e18c927e89615c2d501737e90018f4930d6c5',
     assert expected in probe, expected
 assert 'exit 0' in probe  # Nonblocking compiler diagnostic remains explicitly non-release.
 print('PASS: Jansson and SQLite header staging pins and fail-closed integrity checks are wired.')
+
+# Historical db_fetcher.h is absent upstream; only opaque pointers are used.
+opaque = (root / 'db_fetcher.h').read_text(encoding='utf-8-sig')
+assert 'class db_fetcher;' in opaque
+assert 'class db_fetcher {' not in opaque
+assert '#include "db_fetcher.h"' in (root / 'discogs.h').read_text(encoding='utf-8-sig')
+assert 'console::print((PFC_string_formatter() << "foo_discogger: " << msg).c_str());' in (root / 'utils.h').read_text(encoding='utf-8-sig')
+print('PASS: legacy DB pointer header is opaque and SDK console formatter is explicit.')

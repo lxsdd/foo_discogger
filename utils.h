@@ -198,7 +198,7 @@ extern int myUncompress(Bytef *dest, uLongf *destLen, const Bytef *source, uLong
 
 template<typename T>
 void log_msg(const T &msg) {
-	console::print(pfc::string8("foo_discogger: ") << msg);
+	console::print((PFC_string_formatter() << "foo_discogger: " << msg).c_str());
 }
 
 extern void ensure_directory_exists(const char* dir);
