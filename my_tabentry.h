@@ -3,11 +3,11 @@
 class tab_entry
 {
 public:
-	LPSTR m_pszName;
+	LPCSTR m_pszName;
 	DLGPROC m_lpDialogFunc;
 	WORD m_nID;
 
-	tab_entry(LPSTR pszName, DLGPROC lpDialogFunc, WORD nID) {
+	tab_entry(LPCSTR pszName, DLGPROC lpDialogFunc, WORD nID) {
 		m_pszName = pszName;
 		m_lpDialogFunc = lpDialogFunc;
 		m_nID = nID;
