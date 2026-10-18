@@ -60,7 +60,10 @@ void file_info_manager::write_infos() {
 
 void write_tags_completion::on_completion(unsigned p_code) {
 	if (p_code != metadb_io::load_info_success) {
-		//..
+		// Match the existing read callback: a failed asynchronous write must
+		// be reported rather than silently ignored.
+		add_error("Error writing tags.");
+		display_errors();
 	}
 }
 

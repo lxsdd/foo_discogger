@@ -43,6 +43,16 @@ foreach ($file in $Sources) {
     $Commands.Add("`"$exe`"")
     $Commands.Add('if errorlevel 1 exit /b 94')
 }
+$HarnessScript = Join-Path (Join-Path $Repo 'tests') 'write_completion_contract_test.py'
+$HarnessCpp = Join-Path $Work 'write_completion_contract_test.cpp'
+$HarnessObj = Join-Path $Work 'write_completion_contract_test.obj'
+$HarnessExe = Join-Path $Work 'write_completion_contract_test.exe'
+$Commands.Add("python `"$HarnessScript`" --emit-cpp `"$HarnessCpp`"")
+$Commands.Add('if errorlevel 1 exit /b 95')
+$Commands.Add("cl /nologo /std:c++17 /EHsc /W4 /WX /Fo:`"$HarnessObj`" /Fe:`"$HarnessExe`" `"$HarnessCpp`"")
+$Commands.Add('if errorlevel 1 exit /b 96')
+$Commands.Add("`"$HarnessExe`"")
+$Commands.Add('if errorlevel 1 exit /b 97')
 $Commands.Add('exit /b 0')
 [IO.File]::WriteAllLines($Batch, $Commands, [Text.Encoding]::ASCII)
 Write-Host "Compiling portable Discogger unit tests with MSVC for $Architecture."
