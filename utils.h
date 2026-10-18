@@ -135,11 +135,11 @@ inline bool vregex_util_get(const pfc::string8& expr, std::regex& regex_v, bool 
 	return (!regex_v._Empty());
 }
 
-extern inline bool remove_continous_space(pfc::string8 in, pfc::string8& out, std::regex& regex_v = std::regex());
+extern inline bool remove_continous_space(pfc::string8 in, pfc::string8& out, std::regex regex_v = std::regex());
 extern inline std::string any_case_substring(std::string s, std::string a, const std::string& b);
 
 extern pfc::string8 sanitize_track_semi_media(const pfc::string8& tracks);
-extern pfc::string8 sanitize_track_commas(const pfc::string8& tracks, std::regex &regex_v = std::regex());
+extern pfc::string8 sanitize_track_commas(const pfc::string8& tracks, std::regex regex_v = std::regex());
 extern pfc::string8 sanitize_track_to(const pfc::string8& tracks);
 extern void replace_track_volume_desc(const pfc::string& sometrack, nota_info& out, std::vector<pfc::string8>alldescs);
 
