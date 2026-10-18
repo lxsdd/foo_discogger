@@ -227,3 +227,24 @@ assert 'path << (core_api::pathInProfile(' not in path_header
 assert 'db_path << core_api::pathInProfile(' not in path_header
 assert path_header.count('path.add_string(core_api::get_my_file_name());') == 2
 print('PASS: cache folder, callback declaration, artist ID and SDK path header regressions.')
+
+# Keep the native matching-mode enum legal in C++20 and references consistent.
+for name in ('track_matching_dialog_presenter.h', 'track_matching_dialog.h', 'track_matching_dialog.cpp'):
+    source = (root / name).read_text(encoding='utf-8-sig')
+    assert 'lsmode::default' not in source.replace('lsmode::default_mode', '')
+assert 'unknown, default_mode = 0' in (root / 'track_matching_dialog_presenter.h').read_text(encoding='utf-8-sig')
+
+# String literals are immutable in C++20; Windows MENUITEMINFO still expects
+# a mutable LPWSTR buffer, not a const_cast of a string literal.
+history = (root / 'history_oplog.cpp').read_text(encoding='utf-8-sig')
+assert 'const char* const qry_tmpl[]' in history
+assert 'wchar_t submenu_add[]' in history
+assert 'LPWSTR submenus_data[3]' in history
+assert 'char* qry_tmpl[]' not in history
+
+# Artist load state must refer to the actual member on every path.
+for name in ('tasks.h', 'tasks.cpp'):
+    source = (root / name).read_text(encoding='utf-8-sig')
+    assert 'bload_releases |=' not in source.replace('m_bload_releases |=', '')
+assert 'get_artist(m_artist_id, m_bload_releases,' in (root / 'tasks.cpp').read_text(encoding='utf-8-sig')
+print('PASS: matching-mode keyword, Win32 menu buffers and artist load-state references.')

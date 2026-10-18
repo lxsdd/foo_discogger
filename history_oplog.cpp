@@ -70,7 +70,7 @@ enum {
 	MENU_SUB_C = 300, MENU_SUB_D = 400
 };
 
-char* qry_tmpl[] = {
+const char* const qry_tmpl[] = {
 	"\tartist=   && title= " ,
 	"\tartist=   && track= ",
 	"\tartist=   && credit= ",
@@ -128,8 +128,11 @@ bool gen_query_submenus(HMENU hParentMenu, const std::string expr, const std::st
 	}
 
 	size_t csubmenus = 3;
+	wchar_t submenu_add[] = L"Add search field";
+	wchar_t submenu_templates[] = L"Search templates";
+	wchar_t submenu_suggestions[] = L"Suggestions";
 	LPWSTR submenus_data[3] = {
-		_T("Add search field"), _T("Search templates"),_T("Suggestions"),
+		submenu_add, submenu_templates, submenu_suggestions,
 	};
 	UINT submenus_ids[3] = {
 		MENU_SUB_A, MENU_SUB_B,

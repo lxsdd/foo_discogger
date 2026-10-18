@@ -131,13 +131,13 @@ public:
 		IDD = IDD_DIALOG_TAG_MAPPINGS,
 	};
 
-	CTagMappingDialog::CTagMappingDialog(HWND p_parent, UINT default_button = IDOK)
+	CTagMappingDialog(HWND p_parent, UINT default_button = IDOK)
 		: cewb_highlight(), m_tag_list(this) {
 
 		m_ptag_map = new pfc::list_t<tag_mapping_entry>();
 	}
 
-	CTagMappingDialog::~CTagMappingDialog() {
+	~CTagMappingDialog() {
 
 		g_discogs->tag_mappings_dialog = nullptr;
 		if (m_ptag_map) {

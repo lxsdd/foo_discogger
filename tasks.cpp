@@ -895,9 +895,9 @@ void get_artist_process_callback::safe_run(threaded_process_status &p_status, ab
 		}
 	}
 
-	bool bsimple_list_sel = (m_cupdsrc == updRelSrc::ArtistProfile) && !bload_releases && !m_cupdsrc.oninit;
+	bool bsimple_list_sel = (m_cupdsrc == updRelSrc::ArtistProfile) && !m_bload_releases && !m_cupdsrc.oninit;
 
-	m_artist = discogs_interface->get_artist(m_artist_id, bload_releases, p_status, p_abort,
+	m_artist = discogs_interface->get_artist(m_artist_id, m_bload_releases, p_status, p_abort,
 		false, false, m_cupdsrc != updRelSrc::ArtistProfile, bsimple_list_sel);
 
 

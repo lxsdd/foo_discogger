@@ -189,7 +189,7 @@ public:
 	get_artist_process_callback(cupdRelSrc cupdsrc, const char *artist_id, const char* artist_name)
 			: m_cupdsrc(cupdsrc), m_artist_id(artist_id), m_artist_name(artist_name) {
 		m_bload_releases = m_cupdsrc != updRelSrc::ArtistProfile && m_cupdsrc != updRelSrc::UndefFast;
-        		bload_releases |= m_cupdsrc.extended;
+        		m_bload_releases |= m_cupdsrc.extended;
 	}
 	void start(HWND parent);
 

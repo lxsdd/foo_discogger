@@ -1061,7 +1061,7 @@ bool CTrackMatchingDialog::context_menu_form(HWND wnd, LPARAM lParamPos) {
 		uAppendMenu(menu, MF_STRING | (!is_enabled() || bva_as_ma ? MF_DISABLED | MF_GRAYED : 0), ID_PREVIEW_CMD_PREVIEW, "&Preview");
 		uAppendMenu(menu, MF_SEPARATOR, 0, 0);
 
-		uAppendMenu(menu, MF_STRING | (!is_enabled() ? MF_DISABLED | MF_GRAYED : 0) | (get_mode() == lsmode::default ? MF_UNCHECKED : MF_CHECKED),
+		uAppendMenu(menu, MF_STRING | (!is_enabled() ? MF_DISABLED | MF_GRAYED : 0) | (get_mode() == lsmode::default_mode ? MF_UNCHECKED : MF_CHECKED),
 			ID_ART_TOOGLE_TRACK_ART_MODES, "&manage artwork");
 
 		uAppendMenu(menu, MF_SEPARATOR, 0, 0);
@@ -1092,7 +1092,7 @@ bool CTrackMatchingDialog::context_menu_form(HWND wnd, LPARAM lParamPos) {
 
 		uAppendMenu(menu, MF_SEPARATOR, 0, 0);
 
-		if (get_mode() != lsmode::default) {
+		if (get_mode() != lsmode::default_mode) {
 
 			uAppendMenu(menu, MF_STRING | (!is_enabled() ? MF_DISABLED | MF_GRAYED : 0), ID_PREVIEW_CMD_WRITE_ARTWORK, "Save artw&ork");
 			uAppendMenu(menu, MF_SEPARATOR, 0, 0);
@@ -1217,7 +1217,7 @@ bool CTrackMatchingDialog::context_menu_track_show(HWND wnd, int idFrom, LPARAM 
 			uAppendMenu(menu, MF_STRING | (bsel && get_mode() == lsmode::art && bver? 0 : MF_DISABLED | MF_GRAYED), ID_ART_IMAGE_VIEWER, "Image Viewer\tDouble Click");
 		}
 		uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-		uAppendMenu(menu, MF_STRING | (!is_enabled() ? MF_DISABLED | MF_GRAYED : 0) | (get_mode() == lsmode::default ? MF_UNCHECKED : MF_CHECKED),
+		uAppendMenu(menu, MF_STRING | (!is_enabled() ? MF_DISABLED | MF_GRAYED : 0) | (get_mode() == lsmode::default_mode ? MF_UNCHECKED : MF_CHECKED),
 			ID_ART_TOOGLE_TRACK_ART_MODES, "&manage artwork");
 
 		if (get_mode() == lsmode::art) {
@@ -1272,7 +1272,7 @@ bool CTrackMatchingDialog::context_menu_track_show(HWND wnd, int idFrom, LPARAM 
 
 		uAppendMenu(menu, MF_SEPARATOR, 0, 0);
 
-		if (get_mode() != lsmode::default) {
+		if (get_mode() != lsmode::default_mode) {
 
 			uAppendMenu(menu, MF_STRING | (citems ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_ARTWORK, "Save &artwork");
 			uAppendMenu(menu, MF_SEPARATOR, 0, 0);
@@ -1303,7 +1303,7 @@ bool CTrackMatchingDialog::context_menu_track_switch(HWND wnd, POINT point, bool
 	switch (cmd)
 	{
 	case ID_ART_TOOGLE_TRACK_ART_MODES: {
-		uButton_SetCheck(m_hWnd, IDC_CHK_MNG_ARTWORK, get_mode() == lsmode::default);
+		uButton_SetCheck(m_hWnd, IDC_CHK_MNG_ARTWORK, get_mode() == lsmode::default_mode);
 		::SendMessage(m_hWnd, WM_COMMAND, MAKEWPARAM(IDC_CHK_MNG_ARTWORK, BN_CLICKED), 0);
 		return true;
 	}

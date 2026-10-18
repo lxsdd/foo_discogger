@@ -221,7 +221,7 @@ private:
 
 	lsmode get_mode() {
 		return uButton_GetCheck(m_hWnd, IDC_CHK_MNG_ARTWORK) == TRUE ?
-			lsmode::art : lsmode::default;
+			lsmode::art : lsmode::default_mode;
 	}
 
 	bool build_current_cfg();

@@ -225,7 +225,7 @@ private:
 
 	std::function<bool()>stdf_conditioned_invalidation = [this]() {
 
-		return  is_wine_light_theme;
+		return m_is_wine_light_theme;
 	};
 
 
