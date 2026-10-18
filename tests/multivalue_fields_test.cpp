@@ -17,7 +17,7 @@ int main() {
     assert(!contains(defaults, "REPLAYGAIN_TRACK_GAIN"));
     assert(!contains(defaults, ""));
     assert(!contains("", "ARTIST"));
-    assert(!contains(" ; ; ARTIST ; ;", "ARTIST"));
+    assert(contains(" ; ; ARTIST ; ;", "ARTIST"));
     assert(!contains(" ; ; ", "ARTIST"));
     assert(contains(" ; custom tag ;GENRE;", " CUSTOM TAG "));
     assert(!contains(" ; custom tag ;GENRE;", "custom"));
