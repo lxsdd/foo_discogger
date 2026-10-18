@@ -203,3 +203,13 @@ assert 'std::pair<size_t, size_t> ignored{0, 0};' in discogs_header
 assert discogs_header.index('namespace Discogs { class missing_data_exception') < discogs_header.index('#include "exposetags.h"')
 assert 'auto it = exposed_tags.find(tag_name.get_ptr());' in (root / 'exposetags.h').read_text(encoding='utf-8-sig')
 print('PASS: exposed metadata methods, exception declaration and legacy parser overload are preserved.')
+
+# Verify the targeted MSVC C++20 header repairs remain present.
+release_utils = (root / 'find_release_utils.h').read_text(encoding='utf-8-sig')
+assert 'mounted_param::' not in release_utils
+assert 'id_tracer::' not in release_utils
+assert 'auto& it = cache.find(' not in release_utils
+assert release_utils.count('auto it = cache.find(') == 4
+artwork_types = (root / 'track_matching_utils.h').read_text(encoding='utf-8-sig')
+assert 'inline bool operator==(const uartwork& rhs) const {' in artwork_types
+print('PASS: in-class qualifiers, temporary iterators and C++20 artwork comparison repairs.')
