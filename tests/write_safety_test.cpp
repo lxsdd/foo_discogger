@@ -27,6 +27,13 @@ int main() {
     assert(plan_metadata_write(true, true, false, true) == decision::write);
     assert(plan_metadata_write(true, true, true, false) == decision::write);
     assert(plan_metadata_write(true, true, false, false) == decision::write);
+    // Artwork requires its own independently captured snapshot.
+    using art_decision = discogger_write_safety::artwork_write_decision;
+    using discogger_write_safety::plan_artwork_write;
+    assert(plan_artwork_write(false, false, false) == art_decision::skip);
+    assert(plan_artwork_write(true, false, false) == art_decision::reject_missing_snapshot);
+    assert(plan_artwork_write(true, true, true) == art_decision::skip);
+    assert(plan_artwork_write(true, true, false) == art_decision::write);
     // Positive, negative, and duplicate-completion regressions.
     int artwork_starts = 0;
     discogger_write_safety::write_completion_gate failed;
