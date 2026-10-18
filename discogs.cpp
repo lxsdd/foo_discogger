@@ -318,8 +318,8 @@ pfc::string8 Discogs::remove_number_suffix(const pfc::string8& src) {
 		regex_v = std::regex("\\(\\d+?\\)");
 	}
 	catch (std::regex_error e) {
-		dst.set_string(e.what());
-		return false;
+		// A failed suffix normalization must not discard the original title.
+		return src;
 	}
 	try {
 		dst.set_string(std::regex_replace(dst.get_ptr(), regex_v, "").c_str());
@@ -327,8 +327,8 @@ pfc::string8 Discogs::remove_number_suffix(const pfc::string8& src) {
 			dst.truncate(dst.length() - 1);
 	}
 	catch (std::regex_error e) {
-		dst.set_string(e.what());
-		return false;
+		// A failed suffix normalization must not discard the original title.
+		return src;
 	}
 	return dst;
 }
@@ -580,7 +580,7 @@ void Discogs::DistReleaseTrackCredits(const pfc::array_t<pfc::string8>& arrTrack
 	if (release->indexes.get_count() && dc_credit_big_pos.get_length() > 2) {
 
 		std::vector<pfc::string8> vindex_mov_nums;
-		for each (ReleaseIndexes_ptr var in release->indexes) {
+		for (const auto& var : release->indexes) {
 			auto bignum = extract_max_number(var->title, 'z', false);
 			if (bignum.get_length()) {
 				vindex_mov_nums.emplace_back(bignum);
@@ -597,7 +597,7 @@ void Discogs::DistReleaseTrackCredits(const pfc::array_t<pfc::string8>& arrTrack
 				}
 
 				auto relh = release->indexes;
-				for each (ReleaseIndexes_ptr var in relh) {
+				for (const auto& var : relh) {
 					std::vector<std::string> mylist = { "Concerto", "Sonata", "Suite" };
 					auto found_it = std::find_if(mylist.begin(), mylist.end(), [=](const std::string& w) {
 						return var->title.contains(w.c_str());
@@ -764,6 +764,7 @@ Image_ptr Discogs::parseImage(json_t *element) {
 }
 
 void Discogs::parseImages(json_t *array, pfc::array_t<Image_ptr> &images) {
+	const size_t param_image_count = images.size();
 	pfc::array_t<Image_ptr> sec_images;
 	if (json_is_array(array)) {
 		for (size_t i = 0; i < json_array_size(array); i++) {

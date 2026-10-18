@@ -1021,7 +1021,7 @@ bool CTrackMatchingDialog::context_menu_form(HWND wnd, LPARAM lParamPos) {
 
 	pfc::string8 discogs_release_id(tw_release->id);
 	pfc::string8 master_release_id(tw_release->master_id);
-	pfc::string8 artist_id = tw_release->artists[0]->full_artist ? tw_release->artists[0]->full_artist->id : "0";
+	pfc::string8 artist_id = tw_release->artists[0]->full_artist ? tw_release->artists[0]->full_artist->id : pfc::string8("0");
 
 	std::vector<std::pair<std::string, std::string>>vartists;
 
@@ -1184,18 +1184,20 @@ bool CTrackMatchingDialog::context_menu_track_show(HWND wnd, int idFrom, LPARAM 
 		HMENU _childmenuTemplate = CreatePopupMenu();
 		MENUITEMINFO mi_align = { 0 };
 		MENUITEMINFO mi_template = { 0 };
+		TCHAR align_title[] = _T("Column alignment");
+		TCHAR template_title[] = _T("Templates");
 
 		mi_align.cbSize = sizeof(MENUITEMINFO);
 		mi_align.fMask = MIIM_SUBMENU | MIIM_STRING | MIIM_ID;
 		mi_align.wID = ID_SUBMENU_SELECTOR_ALIGN;
 		mi_align.hSubMenu = _childmenuAlign;
-		mi_align.dwTypeData = _T("Column alignment");
+		mi_align.dwTypeData = align_title;
 
 		mi_template.cbSize = sizeof(MENUITEMINFO);
 		mi_template.fMask = MIIM_SUBMENU | MIIM_STRING | MIIM_ID;
 		mi_template.wID = ID_SUBMENU_SELECTOR_TEMPLATES;
 		mi_template.hSubMenu = _childmenuTemplate;
-		mi_template.dwTypeData = _T("Templates");
+		mi_template.dwTypeData = template_title;
 
 		bool bver = core_version_info_v2::get()->test_version(1, 6, 2, 0);
 

@@ -470,7 +470,7 @@ std::pair<rppair_t, rppair_t> release_tree_cache::update_releases(const pfc::str
 							// ADD NOT INSERTED PARENT
 							if (delete_on_enter) {
 
-								std::string master_str_rol = find_release_artist->master_releases[master_index]->search_role;
+								std::string master_str_rol = find_release_artist->master_releases[master_index]->search_role.get_ptr();
 								master_match_role = !brolemain_filter || (master_str_rol.find("Main") != master_str_rol.npos);
 								if (master_match_role) {
 
@@ -1824,7 +1824,7 @@ LRESULT CFindReleaseTree::OnReleaseTreeExpanding(int, LPNMHDR hdr, BOOL&) {
 	if (pItemExpanding->mask & TVIF_CHILDREN || fix_wine)
 	{
 		mounted_param myparam(pItemExpanding->lParam);
-		auto& cache_parent = cache_ptr->cache.find(pItemExpanding->lParam);
+		auto cache_parent = cache_ptr->cache.find(pItemExpanding->lParam);
 
 		bool children_done = false;
 		cache_ptr->GetCacheFlag(cache_parent, NodeFlag::added, &children_done);

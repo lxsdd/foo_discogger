@@ -239,8 +239,8 @@ void CFindReleaseDialog::init_cfged_dialog_controls() {
 		print_root_stats(m_row_stats, false, true, CONF.awt_get_alt_mode());
 	}
 	else {
-		pfc::string8 artist_name = m_alist.Get_Artist() ? m_alist.Get_Artist()->name : "";
-		pfc::string8 artist_id = m_alist.Get_Artist() ? m_alist.Get_Artist()->id : "";
+		pfc::string8 artist_name = m_alist.Get_Artist() ? m_alist.Get_Artist()->name : pfc::string8();
+		pfc::string8 artist_id = m_alist.Get_Artist() ? m_alist.Get_Artist()->id : pfc::string8();
 		rppair row_stats{ std::pair("",""), std::pair(artist_name, artist_id) };
 
 		print_root_stats(row_stats, /*overwrite*/ !m_row_stats.second.first.get_length());
@@ -724,7 +724,7 @@ LRESULT CFindReleaseDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARA
 		}
 	}
 	// set dlg title
-	uSetWindowText( m_hWnd, bk_frm_album.get_length() ? bk_frm_album : "Find releases");
+	uSetWindowText( m_hWnd, bk_frm_album.get_length() ? bk_frm_album.get_ptr() : "Find releases");
 
 	if (cfg_on_init_query_enabled && m_query_mode & SearchMode::AT) {
 		search_query::MapToText(m_qdm_search_query, exp_pair, false);
