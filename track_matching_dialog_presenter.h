@@ -11,7 +11,7 @@
 #define ENCODE_DISCOGS(d,t)		((d==-1||t==-1) ? -1 : ((d<<16)|t))
 #define DEF_TIME_COL_WIDTH 45  //96dpi
 
-enum class lsmode { tracks_ui = 0, art, unknown, default = 0 };
+enum class lsmode { tracks_ui = 0, art, unknown, default_mode = 0 };
 
 class coord_presenters;
 
