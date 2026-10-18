@@ -17,6 +17,7 @@
 #define SKIP_RELEASE_DLG_IDED                  1 << 1
 #define SKIP_PREVIEW_DLG                       1 << 2
 #define SKIP_BRAINZ_ID_FETCH                   1 << 5
+#define SKIP_RELEASE_DLG_VA_AUTO_LOAD          (1 << 6)
 
 //CFG_ON_INIT_QUERY_FLAG/on_init_query
 #define ON_INIT_QUERY_FLG_ENABLED              1 << 0
