@@ -84,3 +84,14 @@ for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
     standard = item.find(msbuild_ns + "ClCompile/" + msbuild_ns + "LanguageStandard")
     assert standard is not None and standard.text == "stdcpp20", config
 print("PASS: all four actual component configurations request SDK-required C++20.")
+
+# Dependent artwork must be callback-driven, not launched while tag I/O is pending.
+header = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
+assert "write_infos(std::function<void()> after_success" in header
+assert "write_completion_gate m_gate" in header
+assert "m_gate.finish(success" in manager
+assert "m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags))" in tasks
+assert "artwork_after_tags = [release_id, physical_items, bfile_match]" in tasks
+assert tasks.index("artwork_after_tags = [release_id") < tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags))")
+assert "new service_impl_t<download_art_task>" in tasks[tasks.index("artwork_after_tags = [release_id"):tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags))")]
+print("PASS: dependent artwork is gated by asynchronous physical tag completion; positive/negative portable gate tests are separate.")

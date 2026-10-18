@@ -30,7 +30,7 @@ void file_info_manager::read_infos_new() {
 		callback);
 }
 
-void file_info_manager::write_infos() {
+void file_info_manager::write_infos(std::function<void()> after_success) {
 	size_t n = 0;
 	size_t outptr = 0;
 	const size_t count = items.get_count();
@@ -55,7 +55,7 @@ void file_info_manager::write_infos() {
 
 	if (outptr != 0) {
 		static_api_ptr_t<metadb_io_v2> api;
-		service_ptr_t<write_tags_completion> callback = new service_impl_t<write_tags_completion>();
+		service_ptr_t<write_tags_completion> callback = new service_impl_t<write_tags_completion>(std::move(after_success));
 		api->update_info_async_simple(
 			pfc::list_const_array_t<metadb_handle_ptr, const pfc::array_t<metadb_handle_ptr>&>(items_to_update, outptr),
 			pfc::list_const_array_t<const file_info*, const pfc::array_t<const file_info*>&>(infos_to_write, outptr),
@@ -63,13 +63,37 @@ void file_info_manager::write_infos() {
 			0,
 			callback);
 	}
+    else if (after_success) {
+        // No tag writer was scheduled; an explicitly requested artwork action
+        // may still proceed. Artwork no-op detection remains a separate gate.
+        after_success();
+    }
 }
 
 void write_tags_completion::on_completion(unsigned p_code) {
-	if (p_code != metadb_io::load_info_success) {
-		add_error("Writing tags failed. Verify the physical files before retrying; artwork may have been started separately.", true);
-		display_errors();
-	}
+    const bool success = p_code == metadb_io::load_info_success;
+    try {
+        m_gate.finish(success, [this]() {
+            if (m_after_success) {
+                auto action = std::move(m_after_success);
+                action();
+            }
+        });
+    }
+    catch (const std::exception& e) {
+        add_error(e.what(), true);
+        display_errors();
+        return;
+    }
+    catch (...) {
+        add_error("Tag write completed, but starting dependent artwork failed.", true);
+        display_errors();
+        return;
+    }
+    if (!success) {
+        add_error("Writing tags failed; dependent artwork was not started. Verify the physical files before retrying.", true);
+        display_errors();
+    }
 }
 
 void read_tags_completion::on_completion(unsigned p_code) {

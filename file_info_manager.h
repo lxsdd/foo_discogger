@@ -1,6 +1,9 @@
 #pragma once
 
 #include "error_manager.h"
+#include "discogger_write_safety.h"
+#include <functional>
+#include <utility>
 
 class file_info_manager;
 
@@ -18,8 +21,12 @@ public:
 
 class write_tags_completion : public completion_notify_dummy, public ErrorManager
 {
+    discogger_write_safety::write_completion_gate m_gate;
+    std::function<void()> m_after_success;
 public:
-	void on_completion(unsigned p_code) override;
+    explicit write_tags_completion(std::function<void()> after_success = {})
+        : m_after_success(std::move(after_success)) {}
+    void on_completion(unsigned p_code) override;
 };
 
 
@@ -53,7 +60,8 @@ public:
 	bool read_infos();
 	void read_infos_new();
 
-	void write_infos();
+	// Dependent artwork must start only after the async tag write succeeds.
+	void write_infos(std::function<void()> after_success = {});
 
 	void copy_from(file_info_manager &other, size_t index) {
 		items.add_item(other.items[index]);

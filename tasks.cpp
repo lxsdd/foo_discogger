@@ -287,8 +287,9 @@ void write_tags_task::safe_run(threaded_process_status &p_status, abort_callback
 
 void write_tags_task::on_success(HWND p_wnd) {
 
-	m_tag_writer->m_finfo_manager->write_infos();
-
+	// Prepare optional artwork, but never launch it until the physical tag
+	// writer reports success. The previous code launched it immediately.
+	std::function<void()> artwork_after_tags;
 	if (!m_tag_writer->tag_results_mask.size()) {
 
 		int lpskip = CONF.album_art_skip_default_cust;
@@ -302,11 +303,16 @@ void write_tags_task::on_success(HWND p_wnd) {
 		bool bfile_match = CONF_MULTI_ARTWORK.file_match;
 
 		if (!bskip_art && (bconf_art_save || bcustom_art_save)) {
-			service_ptr_t<download_art_task> task =
-				new service_impl_t<download_art_task>(m_tag_writer->GetRelease()->id, m_tag_writer->m_finfo_manager->items, bfile_match);
-			task->start();
+            const pfc::string8 release_id = m_tag_writer->GetRelease()->id;
+            const metadb_handle_list physical_items = m_tag_writer->m_finfo_manager->items;
+            artwork_after_tags = [release_id, physical_items, bfile_match]() {
+                service_ptr_t<download_art_task> task =
+                    new service_impl_t<download_art_task>(release_id, physical_items, bfile_match);
+                task->start();
+            };
 		}
 	}
+    m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags));
 
 	if (g_discogs->preview_tags_dialog && ::IsWindow(g_discogs->preview_tags_dialog->m_hWnd)) {
 
