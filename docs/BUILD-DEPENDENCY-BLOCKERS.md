@@ -46,3 +46,15 @@ correction, **not** evidence that the original source compiles under C++20.
 Official reference: https://www.foobar2000.org/changelog-sdk (2026-09-16).
 Portable unit tests remain C++17 to preserve their separate minimum-standard
 contract; only actual SDK-consuming component builds require C++20.
+
+## SDK library compile diagnostic (2026-10-18)
+
+The first real SDK compilation CI attempt (run 39127187269, SHA
+`a3df926b858213aa895d5c6b6efb5a2ca8337357`) successfully compiled
+`pfc`, `foobar2000_SDK`, and `foobar2000_component_client` for Win32,
+then stopped at `libPPUI` with MSVC C1083: missing `atlapp.h`.
+This is a missing **WTL header dependency**, not a Discogger compiler error.
+The follow-up stages WTL 10.0.9163 from its fixed-version NuGet package,
+checks its NuGet signature and records its SHA-256 for an independently
+verified immutable pin. The WTL SHA pin and full Discogger DLL build remain
+separate release gates; no binary is uploaded.

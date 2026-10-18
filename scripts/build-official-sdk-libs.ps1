@@ -14,6 +14,24 @@ $projects = @(
     'foobar2000\\foobar2000_component_client\\foobar2000_component_client.vcxproj',
     'libPPUI\\libPPUI.vcxproj'
 )
+# libPPUI depends on WTL's atlapp.h, which is not shipped in the SDK.
+# Use the exact historical WTL version referenced by Discogger's VS project.
+# NuGet verifies the signed package before any of its headers reach MSVC.
+$wtlVersion = '10.0.9163'
+$wtlUrl = "https://api.nuget.org/v3-flatcontainer/wtl/$wtlVersion/wtl.$wtlVersion.nupkg"
+$wtlPackage = Join-Path $env:RUNNER_TEMP "wtl.$wtlVersion.nupkg"
+$wtlRoot = Join-Path $env:RUNNER_TEMP "discogger-wtl-$wtlVersion"
+Invoke-WebRequest -Uri $wtlUrl -OutFile $wtlPackage -MaximumRedirection 3
+$wtlSha256 = (Get-FileHash -LiteralPath $wtlPackage -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "WTL $wtlVersion NuGet package SHA256: $wtlSha256 (pin after independent verification)"
+& dotnet nuget verify --all $wtlPackage
+if ($LASTEXITCODE -ne 0) { throw 'WTL NuGet package signature verification failed.' }
+[System.IO.Compression.ZipFile]::ExtractToDirectory($wtlPackage, $wtlRoot)
+$wtlHeaders = @(Get-ChildItem -LiteralPath $wtlRoot -Filter 'atlapp.h' -File -Recurse)
+if ($wtlHeaders.Count -ne 1) { throw "Expected exactly one WTL atlapp.h; found $($wtlHeaders.Count)." }
+$wtlInclude = $wtlHeaders[0].DirectoryName
+$env:CL = "/I`"$wtlInclude`" " + $env:CL
+Write-Host "WTL include staged for MSVC from verified package: $wtlInclude"
 $msbuild = (Get-Command 'msbuild.exe' -ErrorAction Stop).Source
 foreach ($project in $projects) {
     if (-not (Test-Path -LiteralPath (Join-Path $staging $project))) {

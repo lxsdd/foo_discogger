@@ -123,5 +123,8 @@ assert "run: ./scripts/build-official-sdk-libs.ps1" in workflow
 assert "microsoft/setup-msbuild@v2" in workflow
 for required in ("pfc.vcxproj", "foobar2000_SDK.vcxproj", "foobar2000_component_client.vcxproj", "libPPUI.vcxproj", "'Win32', 'x64'", "/t:Build", "Release", "LASTEXITCODE"):
     assert required in sdk_build, required
+assert "10.0.9163" in sdk_build
+assert "dotnet nuget verify --all" in sdk_build
+assert "atlapp.h" in sdk_build
 assert "upload-artifact" not in workflow
 print("PASS: official SDK Win32/x64 compilation is wired without publishing binaries.")
