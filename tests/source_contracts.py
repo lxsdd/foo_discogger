@@ -64,3 +64,13 @@ for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
 assert checked == configs
 assert "disgogger libs" not in (root / "foo_discogger.vcxproj").read_text(encoding="utf-8-sig")
 print("PASS: all four SQLite paths and both Release stack protections are consistent.")
+
+# Both preflight boundaries must reject virtual handles before invoking a writer.
+# These source checks do not establish real foobar2000 host behavior.
+tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+manager = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
+assert tasks.index("discogger_write_safety::contains_virtual_subsong") < tasks.index("m_tag_writer->write_tags();")
+assert manager.index("discogger_write_safety::contains_virtual_subsong") < manager.index("api->update_info_async_simple(")
+assert "add_error(\"Writing tags failed." in manager
+assert "display_errors();" in manager[manager.index("void write_tags_completion::on_completion"):manager.index("void read_tags_completion::on_completion")]
+print("PASS: fail-closed virtual subsong preflight and async write failure notification are wired.")

@@ -32,6 +32,10 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
       - name: Run collaboration search fallback tests
         run: /tmp/discogger-search-test
+      - name: Compile physical/subsong write-safety preflight tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/write_safety_test.cpp -o /tmp/discogger-write-safety-test
+      - name: Run physical/subsong write-safety regression tests
+        run: /tmp/discogger-write-safety-test
 
   windows-baseline:
     runs-on: windows-2022

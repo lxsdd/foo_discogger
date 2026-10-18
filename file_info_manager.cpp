@@ -1,6 +1,7 @@
 #include "stdafx.h"
 
 #include "file_info_manager.h"
+#include "discogger_write_safety.h"
 
 bool file_info_manager::read_infos() {
 	static_api_ptr_t<metadb_io> api;
@@ -33,6 +34,12 @@ void file_info_manager::write_infos() {
 	size_t n = 0;
 	size_t outptr = 0;
 	const size_t count = items.get_count();
+	// Defense in depth: reject a mixed physical/virtual batch before scheduling
+	// any asynchronous write. Do not partially commit the physical members.
+	if (discogger_write_safety::contains_virtual_subsong(count,
+		[&](size_t index) { return items[index]->get_subsong_index(); })) {
+		throw foo_discogs_exception("Tagging stopped: virtual CUE/subsong handles cannot be written through the physical metadata writer.");
+	}
 	pfc::array_t<metadb_handle_ptr> items_to_update;
 	pfc::array_t<file_info *> infos_to_write;
 	items_to_update.set_size(count);
@@ -60,7 +67,8 @@ void file_info_manager::write_infos() {
 
 void write_tags_completion::on_completion(unsigned p_code) {
 	if (p_code != metadb_io::load_info_success) {
-		//..
+		add_error("Writing tags failed. Verify the physical files before retrying; artwork may have been started separately.", true);
+		display_errors();
 	}
 }
 

@@ -8,6 +8,7 @@
 #include "configuration_dialog.h"
 #include "crc.h"
 #include "tasks.h"
+#include "discogger_write_safety.h"
 
 void foo_discogs_threaded_process_callback::run(threaded_process_status &p_status, abort_callback &p_abort) {
 	try {
@@ -273,6 +274,13 @@ void write_tags_task::start() {
 
 void write_tags_task::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 
+	// A virtual CUE/subsong exposes a projected file_info, not the complete physical
+	// metadata. Never pass that projection to the generic physical-file writer.
+	const auto& selected_items = m_tag_writer->m_finfo_manager->items;
+	if (discogger_write_safety::contains_virtual_subsong(selected_items.get_count(),
+		[&](size_t index) { return selected_items[index]->get_subsong_index(); })) {
+		throw foo_discogs_exception("Tagging stopped: virtual CUE/subsong selections are not safe for physical metadata writes. Select the physical file (subsong 0) instead.");
+	}
 	m_tag_writer->write_tags();
 
 }

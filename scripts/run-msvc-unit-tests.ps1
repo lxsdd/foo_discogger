@@ -22,7 +22,8 @@ New-Item -ItemType Directory -Force -Path $Work | Out-Null
 $Batch = Join-Path $Work 'compile-and-test.cmd'
 $Sources = @(
     'http_status_parser_test.cpp',
-    'collaboration_fallback_test.cpp'
+    'collaboration_fallback_test.cpp',
+    'write_safety_test.cpp'
 )
 $Commands = [System.Collections.Generic.List[string]]::new()
 $Commands.Add('@echo off')
