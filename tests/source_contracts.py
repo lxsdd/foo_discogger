@@ -144,3 +144,13 @@ assert "Sleep(2000 * tries);" not in fetcher
 assert "Sleep(2000 * (tries > 1 ? 2 : 1));" not in fetcher
 assert "tests/interruptible_wait_test.cpp" in workflow
 print("PASS: all four throttle/retry backoffs are cancellation-aware and tested.")
+
+# Require ASLR in all four Windows component configurations.
+for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
+    condition = item.attrib.get("Condition", "")
+    config = next((name for name in configs if name in condition), None)
+    if config is None:
+        continue
+    aslr = item.find(msbuild_ns + "Link/" + msbuild_ns + "RandomizedBaseAddress")
+    assert aslr is not None and aslr.text == "true", config
+print("PASS: Win32/x64 Debug/Release DLL configurations enable ASLR.")
