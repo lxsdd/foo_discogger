@@ -18,13 +18,13 @@ const struct mounted_param {
 	mounted_param()
 		: master_ndx(~0), release_ndx(~0), bmaster(false), brelease(false) {}
 
-	bool mounted_param::is_master() const {
+	bool is_master() const {
 		return bmaster && !brelease;
 	}
-	bool mounted_param::is_release() const {
+	bool is_release() const {
 		return bmaster && brelease;
 	}
-	bool mounted_param::is_nmrelease() const {
+	bool is_nmrelease() const {
 		return !bmaster && brelease;
 	}
 
@@ -105,49 +105,49 @@ public:
 
 	// artist_id
 
-	size_t id_tracer::get_artist_id() const {
+	size_t get_artist_id() const {
 		return artist_id;
 	}
 
-	bool id_tracer::get_artist_id_is_vun() const {
+	bool get_artist_id_is_vun() const {
 		bool is_various = artist_id == 194; //various
 		is_various |= artist_id == 355;     //unknown
 		is_various |= artist_id == 118760;  //no artist
 		return is_various;
 	}
 
-	size_t id_tracer::get_artist_ovr_id() const {
+	size_t get_artist_ovr_id() const {
 		return artist_ovr_id;
 	}
 
-	void id_tracer::set_artist_ovr_id(size_t id) {
+	void set_artist_ovr_id(size_t id) {
 		artist_ovr_id = id;
 	}
 
-	size_t id_tracer::get_artist_id_store() {
+	size_t get_artist_id_store() {
 		return is_multi_artist() ? vmulti_artist_ids.at(0) : artist_id;
 	}
 
 	// has
 
-	bool id_tracer::has_artist() {
+	bool has_artist() {
 		return get_artist_id_store() != pfc_infinite;
 	}
-	bool id_tracer::has_master() const {
+	bool has_master() const {
 		return master_id != pfc_infinite;
 	}
-	bool id_tracer::has_release() const {
+	bool has_release() const {
 		return release_id != pfc_infinite;
 	}
 
-	bool id_tracer::need_artist() {
+	bool need_artist() {
 		return (
 			enabled &&
 			!is_multi_artist() && has_artist() &&
 			artist_pos == pfc_infinite);
 	}
 
-	bool id_tracer::need_master() {
+	bool need_master() {
 		return (
 			enabled &&
 			drop_check() &&
@@ -155,7 +155,7 @@ public:
 			master_pos == pfc_infinite && !release_i.is_nmrelease());
 	}
 
-	bool id_tracer::need_release() {
+	bool need_release() {
 		return 
 			enabled &&
 			drop_check() &&
@@ -165,21 +165,21 @@ public:
 
 	// reset 
 
-	void id_tracer::artist_reset() {
+	void artist_reset() {
 		artist_pos = pfc_infinite;
 	}
 
-	void id_tracer::master_reset() {
+	void master_reset() {
 		master_pos = pfc_infinite;
 	}
 
-	void id_tracer::release_reset() {
+	void release_reset() {
 		release_pos = pfc_infinite;
 	}
 
 	// check
 
-	bool id_tracer::artist_check(const pfc::string8 currentid, int currentndx) {
+	bool artist_check(const pfc::string8 currentid, int currentndx) {
 		if (need_artist()) {
 			if (artist_id == std::atoi(currentid)) {
 				artist_pos = currentndx;
@@ -189,7 +189,7 @@ public:
 		return false;
 	}
 
-	bool id_tracer::release_check(const pfc::string8 currentid, int currentndx, const  mounted_param item, int masterndx, int masteri) {
+	bool release_check(const pfc::string8 currentid, int currentndx, const  mounted_param item, int masterndx, int masteri) {
 		if (item.is_master()) {
 			if (need_master()) {
 				if (master_id == std::atoi(currentid)) {
@@ -220,7 +220,7 @@ public:
 		return false;
 	}
 
-	bool id_tracer::drop_check() {
+	bool drop_check() {
 		if (has_artist()) {
 			if (!has_master() && !has_release()) return true;
 			else if (!has_master() && has_release()) return true;
@@ -233,7 +233,7 @@ public:
 		return false;
 	}
 
-	bool id_tracer::has_amr() {
+	bool has_amr() {
 		if (release_i.is_nmrelease()) 
 			return has_artist() && has_release();
 		else
@@ -264,7 +264,7 @@ public:
 		}
 	}
 
-	bool id_tracer::init_tracker_tags(metadb_handle_list items) {
+	bool init_tracker_tags(metadb_handle_list items) {
 
 		pfc::string8 walk_artist_id, master_id, release_id;
 
@@ -377,7 +377,7 @@ struct filter_cache {
 
 	bool GetCacheFlag(t_size lparam, NodeFlag flagtype) {
 		bool bres = false;
-		auto& it = cache.find(lparam);
+		auto it = cache.find(lparam);
 		if (it != cache.end()) {
 
 			std::pair<row_col_data, flagreg >& my_rel_cache = it->second;
@@ -429,7 +429,7 @@ struct filter_cache {
 
 	bool GetCacheFlag(t_size lparam, NodeFlag flagtype, bool& val) {
 		bool bres = false;
-		auto& it = cache.find(lparam);
+		auto it = cache.find(lparam);
 		if (it != cache.end()) {
 			std::pair<row_col_data, flagreg >& my_rel_cache = it->second;
 			flagreg& fr = my_rel_cache.second;
@@ -451,7 +451,7 @@ struct filter_cache {
 
 	bool SetCacheFlag(t_size lparam, NodeFlag flagtype, int& val) {
 		bool bres = false;
-		auto& it = cache.find(lparam);
+		auto it = cache.find(lparam);
 
 		if (it != cache.end()) {
 
@@ -498,7 +498,7 @@ struct filter_cache {
 
 	bool SetCacheFlag(t_size lparam, NodeFlag flagtype, bool val) {
 		bool bres = false;
-		auto& it = cache.find(lparam);
+		auto it = cache.find(lparam);
 		if (it != cache.end()) {
 
 			std::pair<row_col_data, flagreg >& my_rel_cache = it->second;
