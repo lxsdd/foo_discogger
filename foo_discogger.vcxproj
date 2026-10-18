@@ -100,7 +100,7 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <TreatSpecificWarningsAsErrors>4715</TreatSpecificWarningsAsErrors>
-      <AdditionalIncludeDirectories>.;..;../..;../../../WTL10_9163/Include;zlib;jansson;oauthcpp;../disgogger libs/sqlite-amal-336/Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..;../..;../../../WTL10_9163/Include;zlib;jansson;oauthcpp;../discogger libs/sqlite-amal-336/Include</AdditionalIncludeDirectories>
       <FloatingPointModel>Fast</FloatingPointModel>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <StringPooling>false</StringPooling>
@@ -115,7 +115,7 @@
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\disgogger libs\sqlite-amal-336\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-336\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
@@ -136,7 +136,7 @@
       <StringPooling>
       </StringPooling>
       <OmitFramePointers>false</OmitFramePointers>
-      <AdditionalIncludeDirectories>.;..;../..;../../../WTL10_9163/Include;zlib;jansson;oauthcpp;../disgogger libs/sqlite-amal-336/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..;../..;../../../WTL10_9163/Include;zlib;jansson;oauthcpp;../discogger libs/sqlite-amal-336/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <FloatingPointModel>Precise</FloatingPointModel>
       <PreprocessorDefinitions>NDEBUG;_WINDLL;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -157,7 +157,7 @@
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\disgogger libs\sqlite-amal-336\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-336\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
       <IgnoreSpecificDefaultLibraries>LIBCMT;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
@@ -174,7 +174,7 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <TreatSpecificWarningsAsErrors>4715</TreatSpecificWarningsAsErrors>
-      <AdditionalIncludeDirectories>.;..;../..;../../../WTL10_9163/Include;zlib;jansson;oauthcpp;../disgogger libs/sqlite-amal-336/Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..;../..;../../../WTL10_9163/Include;zlib;jansson;oauthcpp;../discogger libs/sqlite-amal-336/Include</AdditionalIncludeDirectories>
       <FloatingPointModel>Fast</FloatingPointModel>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <StringPooling>false</StringPooling>
@@ -189,7 +189,7 @@
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention>
       </DataExecutionPrevention>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\disgogger libs\sqlite-amal-336\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-336\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
@@ -206,10 +206,10 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <AdditionalOptions>/d2notypeopt %(AdditionalOptions)</AdditionalOptions>
       <TreatSpecificWarningsAsErrors>4715</TreatSpecificWarningsAsErrors>
-      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
       <StringPooling>true</StringPooling>
       <OmitFramePointers>true</OmitFramePointers>
-      <AdditionalIncludeDirectories>.;..;../..;../../../WTL10_9163/Include;zlib;jansson;oauthcpp;../disgogger libs/sqlite-amal-336/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..;../..;../../../WTL10_9163/Include;zlib;jansson;oauthcpp;../discogger libs/sqlite-amal-336/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <FloatingPointModel>Fast</FloatingPointModel>
       <PreprocessorDefinitions>NDEBUG;_WIN64;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>

@@ -16,9 +16,10 @@ repository checkout:
 - SQLite: ../discogger libs/sqlite-amal-336
 - Shared static library: ../shared/shared-$(Platform).lib
 
-An inconsistency remains: Debug Win32, Release Win32 and Debug x64
-refer to 'disgogger libs' for SQLite, but Release x64 refers to
-'discogger libs'. Neither path has been validated on a clean runner.
+The four SQLite include/library references now consistently use 'discogger libs'.
+Release x64 also enables /GS stack buffer security like Release Win32.
+These changes remove configuration drift, but the dependency paths remain
+unvalidated on a clean runner until a full component build passes.
 
 The project no longer runs an automatic post-build DLL copy, and
 both property sheets now omit developer-specific host paths.

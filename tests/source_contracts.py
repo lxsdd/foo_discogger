@@ -42,3 +42,25 @@ for name in ("PlatformPropertySheet.props", "PlatformPropertySheet_64.props"):
     for forbidden in ("c:", "foobar2000.exe", "foo_cmd_dir", "foo_comp_wd"):
         assert forbidden not in source, f"{name}: forbidden build-time host setting {forbidden}"
 print("PASS: MSBuild Win32/x64 properties have no implicit host deployment.")
+
+# Static SQLite include/link consistency across all four configurations.
+# This does not claim that the libraries exist or that the DLL compiles.
+checked = set()
+for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
+    condition = item.attrib.get("Condition", "")
+    config = next((name for name in configs if name in condition), None)
+    if config is None:
+        continue
+    checked.add(config)
+    include = item.find(msbuild_ns + "ClCompile/" + msbuild_ns + "AdditionalIncludeDirectories")
+    dependencies = item.find(msbuild_ns + "Link/" + msbuild_ns + "AdditionalDependencies")
+    assert include is not None and dependencies is not None, config
+    assert "../discogger libs/sqlite-amal-336/Include" in (include.text or ""), config
+    assert "discogger libs" in (dependencies.text or ""), config
+    assert "sqlite-amal-336" in (dependencies.text or ""), config
+    if config.startswith("Release|"):
+        security = item.find(msbuild_ns + "ClCompile/" + msbuild_ns + "BufferSecurityCheck")
+        assert security is not None and security.text == "true", config
+assert checked == configs
+assert "disgogger libs" not in (root / "foo_discogger.vcxproj").read_text(encoding="utf-8-sig")
+print("PASS: all four SQLite paths and both Release stack protections are consistent.")
