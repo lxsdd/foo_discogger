@@ -53,8 +53,8 @@ string_encoded_array ExposedTags<T>::get_data(pfc::string8 &tag_name, threaded_p
 			load_func();
 		}
 
-		pfc::string8 out = x();
-		return out;
+		// Preserve encoded multivalue tag data.
+		return x();
 	}
 	else {
 		return get_sub_data(tag_name, p_status, p_abort);

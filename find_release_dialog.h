@@ -330,14 +330,16 @@ private:
 				else {
 					t_size fld_size = tmpField.get_length();
 					tmpField << in.subString(dwEnd);
-					buffer = in.subString(0, dwStart) << " & " << tmpField;
+					buffer = in.subString(0, dwStart);
+					buffer << " & " << tmpField;
 					ins_pos = dwStart + fld_size + 3;
 				}
 			}
 			else {
 				pfc::string8 join = "";
 				if (dwStart) join = " & ";
-				buffer = in.subString(0, dwStart) << join << tmpField << " " << in.subString(dwEnd, in.get_length());
+				buffer = in.subString(0, dwStart);
+					buffer << join << tmpField << " " << in.subString(dwEnd, in.get_length());
 				ins_pos = dwStart + tmpField.get_length() + join.get_length();
 			}
 		}
@@ -428,7 +430,7 @@ private:
 			std::vector<pfc::string8> vsplit_title;
 			split(m_frm_album, "-", 0, vsplit_title);
 			tmp_artist << (m_frm_album_artist.get_length() ?
-				m_frm_album_artist : m_frm_artist.get_length() ? m_frm_artist : vsplit_title.size() > 1 ? vsplit_title[0] : "");
+				m_frm_album_artist : m_frm_artist.get_length() ? m_frm_artist : vsplit_title.size() > 1 ? vsplit_title[0] : pfc::string8());
 
 			//title
 			tmp_title << (vsplit_title.size() > 1 ? vsplit_title[1] : m_frm_album);
@@ -559,7 +561,11 @@ private:
 	// artist get/search service callbacks
 
 	void on_get_artist_done(cupdRelSrc updsrc, Artist_ptr& artist);
-	void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap = std::pair<size_t, size_t>(0,0));
+	void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap);
+	void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append) {
+		std::pair<size_t, size_t> unused_va_cap{0, 0};
+		on_search_artist_done(p_artist_exact_matches, p_artist_other_matches, append, unused_va_cap);
+	}
 
 	// route artist search
 	void route_artist_search(pfc::string8 artistname, bool dlgbutton, bool idded);
