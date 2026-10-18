@@ -29,6 +29,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $oauthRoot 'LICENSE'))) { throw 'OAu
 $oauthInclude = Join-Path $oauthRoot 'include'
 if (-not (Test-Path -LiteralPath (Join-Path $oauthInclude 'liboauthcpp/liboauthcpp.h'))) { throw 'OAuth header missing.' }
 Write-Host "OAuth source pinned and license present: $actualRevision"
+# CL is honored by cl.exe; AdditionalIncludeDirectories is item metadata, not a reliable global MSBuild property.
+$env:CL = '/I"' + $oauthInclude + '" ' + $env:CL
 
 $wtlRoot = Join-Path $env:RUNNER_TEMP 'discogger-wtl-10.0.9163'
 $wtl = @(Get-ChildItem -LiteralPath $wtlRoot -Filter atlapp.h -File -Recurse)
