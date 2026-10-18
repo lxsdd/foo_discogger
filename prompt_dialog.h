@@ -19,7 +19,7 @@ public:
 		COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
 	MY_END_MSG_MAP()
 
-	CPromptDialog() : m_ask(), mp_result(nullptr)/ {}
+	CPromptDialog() : m_ask(), mp_result(nullptr) {}
 	CPromptDialog(const pfc::string8 &ask, pfc::string8 &result) : m_ask(ask), mp_result(&result) {}
 	~CPromptDialog() {};
 

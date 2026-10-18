@@ -187,3 +187,10 @@ assert 'class db_fetcher {' not in opaque
 assert '#include "db_fetcher.h"' in (root / 'discogs.h').read_text(encoding='utf-8-sig')
 assert 'console::print((PFC_string_formatter() << "foo_discogger: " << msg).c_str());' in (root / 'utils.h').read_text(encoding='utf-8-sig')
 print('PASS: legacy DB pointer header is opaque and SDK console formatter is explicit.')
+
+assert 'cache_lru_test.cpp' in workflow
+assert 'cache_lru_test.cpp' in (root / 'scripts/run-msvc-unit-tests.ps1').read_text(encoding='utf-8-sig')
+assert 'mp_result(nullptr)/' not in (root / 'prompt_dialog.h').read_text(encoding='utf-8-sig')
+cache_src = (root / 'cache.h').read_text(encoding='utf-8-sig')
+assert 'bool try_get(' in cache_src and 'catch (...)' in cache_src
+print('PASS: qualified LRU cache regressions and prompt constructor are wired.')
