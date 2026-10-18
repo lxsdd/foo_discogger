@@ -135,3 +135,12 @@ wrapper = (root / 'sqlite3.h').read_text(encoding='utf-8-sig')
 assert 'sqlite-amal-3401' in wrapper
 assert 'sqlite-amal-336' not in (root / 'foo_discogger.vcxproj').read_text(encoding='utf-8-sig')
 print('PASS: SQLite wrapper/include/link version consistency (3.40.1).')
+
+# All long network backoff sites must be abort-aware, not raw Sleep().
+assert '#include "interruptible_wait.h"' in fetcher
+assert fetcher.count("discogger_net::interruptible_wait(") == 3
+assert "Sleep(dw);" not in fetcher
+assert "Sleep(2000 * tries);" not in fetcher
+assert "Sleep(2000 * (tries > 1 ? 2 : 1));" not in fetcher
+assert "tests/interruptible_wait_test.cpp" in workflow
+print("PASS: all three throttle/retry backoffs are cancellation-aware and tested.")
