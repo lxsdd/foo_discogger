@@ -100,13 +100,13 @@ public:
 	string_encoded_array(const char c);
 	string_encoded_array(const pfc::string8 &str); 
 	string_encoded_array(const pfc::array_t<pfc::string8> &arr);
-	string_encoded_array::string_encoded_array(int i) : m_depth(0) {
+	string_encoded_array(int i) : m_depth(0) {
 		value << i;
 	}
-	string_encoded_array::string_encoded_array(unsigned i) : m_depth(0) {
+	string_encoded_array(unsigned i) : m_depth(0) {
 		value << i;
 	}
-	string_encoded_array::string_encoded_array(const char *i) : m_depth(0) {
+	string_encoded_array(const char *i) : m_depth(0) {
 		value << i;
 	}
 
