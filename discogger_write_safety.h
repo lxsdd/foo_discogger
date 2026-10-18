@@ -22,6 +22,17 @@ inline metadata_write_decision plan_metadata_write(bool selected, bool snapshot_
                                                : metadata_write_decision::write;
 }
 
+
+// Explicit artwork no-op decision: an unchanged tag snapshot alone is NOT
+// sufficient evidence that an artwork write can be skipped.
+enum class artwork_write_decision { skip, write, reject_missing_snapshot };
+inline artwork_write_decision plan_artwork_write(bool requested,
+    bool artwork_snapshot_available, bool artwork_equal) noexcept {
+    if (!requested) return artwork_write_decision::skip;
+    if (!artwork_snapshot_available) return artwork_write_decision::reject_missing_snapshot;
+    return artwork_equal ? artwork_write_decision::skip : artwork_write_decision::write;
+}
+
 // Single-shot completion gate: never start dependent artwork after a failed
 // physical tag commit, and never dispatch twice on duplicate notifications.
 class write_completion_gate {
