@@ -361,7 +361,7 @@ public:
 	}
 
 	// shallow copy
-	CConf::CConf(CConf const& other) {
+	CConf(CConf const& other) {
 
 		*this = other;
 	}
