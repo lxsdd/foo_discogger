@@ -13,7 +13,7 @@ repository checkout:
 - zlib: ../discogger libs/zlib-1.2.11
 - Jansson: ../discogger libs/jansson-2.14 - win32
 - OAuth C++: ../discogger libs/oauth/liboauthcpp-master
-- SQLite: ../discogger libs/sqlite-amal-336
+- SQLite: ../discogger libs/sqlite-amal-3401 (SQLite 3.40.1)
 - Shared static library: ../shared/shared-$(Platform).lib
 
 The four SQLite include/library references now consistently use 'discogger libs'.
