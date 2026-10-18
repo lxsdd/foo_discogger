@@ -168,3 +168,14 @@ assert 'discogger_multivalue::contains(CONF.multivalue_fields.get_ptr(), field.g
 assert 'multivalue_fields_test.cpp' in workflow
 assert 'multivalue_fields_test.cpp' in (root / 'scripts/run-msvc-unit-tests.ps1').read_text(encoding='utf-8-sig')
 print('PASS: C++20 compatibility fixes and exact-token configurable multivalue mapping are wired.')
+
+# Pinned third-party diagnostic staging is not a DLL/link success claim.
+probe = (root / 'scripts/diagnose-component-compile.ps1').read_text(encoding='utf-8-sig')
+for expected in ('684e18c927e89615c2d501737e90018f4930d6c5',
+                 '49112cc7328392aa4e3e5dae0b2f6736d0153430143d21f69327788ff4efe734',
+                 'sqlite-amalgamation-3400100.zip', 'Get-FileHash',
+                 'jansson_config.h', 'JANSSON_WITHOUT_TESTS=ON',
+                 'Jansson revision mismatch', 'SQLite source SHA-256 mismatch'):
+    assert expected in probe, expected
+assert 'exit 0' in probe  # Nonblocking compiler diagnostic remains explicitly non-release.
+print('PASS: Jansson and SQLite header staging pins and fail-closed integrity checks are wired.')

@@ -72,3 +72,19 @@ or any host/write-safety acceptance.
 ## SQLite source mismatch identified (2026-10-18)
 
 The checked-in `sqlite3.h` wrapper already references `sqlite-amal-3401` (SQLite 3.40.1), but all four project configurations referenced `sqlite-amal-336` (SQLite 3.36). The project now uses `sqlite-amal-3401` consistently. This is source-path alignment only: a verified SQLite 3.40.1 static library, correct symbol renaming via `sqlite3ren.h`, real DLL linking and host tests are still REQUIRED. The official SQLite 3.40.1 amalgamation ZIP SHA-256 is `49112cc7328392aa4e3e5dae0b2f6736d0153430143d21f69327788ff4efe734` (source: historical Conan Center manifest; must be checked against the downloaded official archive). No third-party source or binaries are committed.
+
+
+## Pinned header bootstrap diagnostic (2026-10-18, pending Windows CI)
+
+The isolated compile diagnostic now provisions Jansson 2.14 from upstream signed
+v2.14 tag's immutable commit `684e18c927e89615c2d501737e90018f4930d6c5`
+(MIT license checked), generates `jansson_config.h` per target using CMake,
+and verifies the official SQLite 3.40.1 amalgamation archive with SHA-256
+`49112cc7328392aa4e3e5dae0b2f6736d0153430143d21f69327788ff4efe734`
+before staging its `sqlite3.h` at the wrapper's exact include path.
+The earlier diagnostic already pinned zlib and liboauthcpp sources. This only
+makes headers available to MSVC: no Jansson/SQLite/OAuth/zlib static link,
+full component DLL, PE architecture check, or foobar host test has passed yet.
+Any network/hash/CMake error must fail the diagnostic step instead of claiming
+that dependencies were installed. No third-party files are committed or
+published as artifacts.
