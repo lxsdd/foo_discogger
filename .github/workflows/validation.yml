@@ -80,3 +80,6 @@ jobs:
       - name: Compile official SDK core libraries for Win32 and x64 (not Discogger DLL)
         shell: pwsh
         run: ./scripts/build-official-sdk-libs.ps1
+      - name: Diagnose first-party Discogger compilation (no DLL link or deploy)
+        shell: pwsh
+        run: ./scripts/diagnose-component-compile.ps1
