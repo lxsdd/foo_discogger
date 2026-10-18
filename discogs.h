@@ -6,6 +6,8 @@
 #include "jansson.h"
 #include "db_fetcher.h"
 #include "string_encoded_array.h"
+// Define the concrete exception before the template that throws it.
+namespace Discogs { class missing_data_exception : public foo_discogs_exception {}; }
 #include "exposetags.h"
 
 #include <map>
@@ -13,7 +15,6 @@
 
 namespace Discogs
 {
-	class missing_data_exception : public foo_discogs_exception	{};
 
 	extern pfc::string8 remove_number_suffix(const pfc::string8 &src);
 	extern pfc::string8 move_the_to_start(const pfc::string8 &src);
@@ -1088,6 +1089,9 @@ namespace Discogs
 		string_encoded_array get_search_major_formats() const {
 			return search_major_formats;
 		}
+		string_encoded_array get_query_major_formats_qty() const {
+			return query_major_formats_qty;
+		}
 		string_encoded_array get_search_formats() const {
 			return search_formats;
 		}
@@ -1195,7 +1199,11 @@ namespace Discogs
 	extern void parseImages(json_t *array, pfc::array_t<Image_ptr> &images);
 	extern Image_ptr parseImage(json_t *element);
 
-	extern void parseArtistReleases(json_t *element, Artist *artist, int query_mode, std::map<std::string, MasterRelease_ptr>& mva_masters, std::pair<size_t, size_t>& qry_mr_found = std::pair<size_t, size_t>{ 0,0 }/*, pfc::array_t<MasterRelease_ptr> va_masters, pfc::array_t<Release_ptr> va_releases*/);
+	extern void parseArtistReleases(json_t *element, Artist *artist, int query_mode, std::map<std::string, MasterRelease_ptr>& mva_masters, std::pair<size_t, size_t>& qry_mr_found);
+	inline void parseArtistReleases(json_t *element, Artist *artist, int query_mode, std::map<std::string, MasterRelease_ptr>& mva_masters) {
+		std::pair<size_t, size_t> ignored{0, 0};
+		parseArtistReleases(element, artist, query_mode, mva_masters, ignored);
+	}
 	extern void parseMasterVersions(json_t *element, MasterRelease *master_release, int query_mode);
 
 	extern ReleaseArtist_ptr parseReleaseArtist(json_t *element, bool preload = false);

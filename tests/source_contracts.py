@@ -194,3 +194,12 @@ assert 'mp_result(nullptr)/' not in (root / 'prompt_dialog.h').read_text(encodin
 cache_src = (root / 'cache.h').read_text(encoding='utf-8-sig')
 assert 'bool try_get(' in cache_src and 'catch (...)' in cache_src
 print('PASS: qualified LRU cache regressions and prompt constructor are wired.')
+
+# Repair root SDK compile errors without removing exposed metadata tags.
+discogs_header = (root / 'discogs.h').read_text(encoding='utf-8-sig')
+assert 'string_encoded_array get_query_major_formats_qty() const' in discogs_header
+assert 'm["QUERY_MAJOR_FORMATS_QTY"]' in discogs_header
+assert 'std::pair<size_t, size_t> ignored{0, 0};' in discogs_header
+assert discogs_header.index('namespace Discogs { class missing_data_exception') < discogs_header.index('#include "exposetags.h"')
+assert 'auto it = exposed_tags.find(tag_name.get_ptr());' in (root / 'exposetags.h').read_text(encoding='utf-8-sig')
+print('PASS: exposed metadata methods, exception declaration and legacy parser overload are preserved.')
