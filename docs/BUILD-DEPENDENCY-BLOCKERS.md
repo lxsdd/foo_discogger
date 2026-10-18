@@ -68,3 +68,7 @@ SHA-256 `0ae7fd90a938d97da7532eae98e824450861c1cd88c6a2a4e7ab9cbe5ec6bedb`.
 The next run enforces that SHA-256 and adds the SDK helpers project required
 by Discogger's solution. These are SDK-library results, **not** a Discogger DLL
 or any host/write-safety acceptance.
+
+## SQLite source mismatch identified (2026-10-18)
+
+The checked-in `sqlite3.h` wrapper already references `sqlite-amal-3401` (SQLite 3.40.1), but all four project configurations referenced `sqlite-amal-336` (SQLite 3.36). The project now uses `sqlite-amal-3401` consistently. This is source-path alignment only: a verified SQLite 3.40.1 static library, correct symbol renaming via `sqlite3ren.h`, real DLL linking and host tests are still REQUIRED. The official SQLite 3.40.1 amalgamation ZIP SHA-256 is `49112cc7328392aa4e3e5dae0b2f6736d0153430143d21f69327788ff4efe734` (source: historical Conan Center manifest; must be checked against the downloaded official archive). No third-party source or binaries are committed.

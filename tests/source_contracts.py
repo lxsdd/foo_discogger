@@ -55,9 +55,9 @@ for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
     include = item.find(msbuild_ns + "ClCompile/" + msbuild_ns + "AdditionalIncludeDirectories")
     dependencies = item.find(msbuild_ns + "Link/" + msbuild_ns + "AdditionalDependencies")
     assert include is not None and dependencies is not None, config
-    assert "../discogger libs/sqlite-amal-336/Include" in (include.text or ""), config
+    assert "../discogger libs/sqlite-amal-3401/Include" in (include.text or ""), config
     assert "discogger libs" in (dependencies.text or ""), config
-    assert "sqlite-amal-336" in (dependencies.text or ""), config
+    assert "sqlite-amal-3401" in (dependencies.text or ""), config
     if config.startswith("Release|"):
         security = item.find(msbuild_ns + "ClCompile/" + msbuild_ns + "BufferSecurityCheck")
         assert security is not None and security.text == "true", config
@@ -129,3 +129,9 @@ assert "dotnet nuget verify --all" in sdk_build
 assert "atlapp.h" in sdk_build
 assert "upload-artifact" not in workflow
 print("PASS: official SDK Win32/x64 compilation is wired without publishing binaries.")
+
+# SQLite wrapper and linker must resolve the same source release.
+wrapper = (root / 'sqlite3.h').read_text(encoding='utf-8-sig')
+assert 'sqlite-amal-3401' in wrapper
+assert 'sqlite-amal-336' not in (root / 'foo_discogger.vcxproj').read_text(encoding='utf-8-sig')
+print('PASS: SQLite wrapper/include/link version consistency (3.40.1).')
