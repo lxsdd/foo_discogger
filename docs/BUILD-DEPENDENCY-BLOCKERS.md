@@ -34,3 +34,15 @@ Next acceptance gates:
 
 This document is an actionable BLOCKED inventory, not a successful build
 or authorization to distribute the component. See issues #2, #7 and #8.
+
+## Official SDK C++ language gate
+
+The foobar2000 SDK 2026-09-16 change log explicitly requires a C++20-capable
+compiler and Visual Studio 2022 or newer; SDK 2026-10-01 inherits that
+requirement. The four Discogger component configurations now use MSBuild
+`stdcpp20` instead of `stdcpp17`. This is a necessary configuration
+correction, **not** evidence that the original source compiles under C++20.
+
+Official reference: https://www.foobar2000.org/changelog-sdk (2026-09-16).
+Portable unit tests remain C++17 to preserve their separate minimum-standard
+contract; only actual SDK-consuming component builds require C++20.

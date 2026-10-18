@@ -74,3 +74,13 @@ assert manager.index("discogger_write_safety::contains_virtual_subsong") < manag
 assert "add_error(\"Writing tags failed." in manager
 assert "display_errors();" in manager[manager.index("void write_tags_completion::on_completion"):manager.index("void read_tags_completion::on_completion")]
 print("PASS: fail-closed virtual subsong preflight and async write failure notification are wired.")
+
+# SDK 2026-09-16+ requires C++20; portable helper tests may remain C++17.
+for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
+    condition = item.attrib.get("Condition", "")
+    config = next((name for name in configs if name in condition), None)
+    if config is None:
+        continue
+    standard = item.find(msbuild_ns + "ClCompile/" + msbuild_ns + "LanguageStandard")
+    assert standard is not None and standard.text == "stdcpp20", config
+print("PASS: all four actual component configurations request SDK-required C++20.")
