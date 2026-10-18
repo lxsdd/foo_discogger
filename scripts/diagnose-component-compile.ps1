@@ -16,13 +16,27 @@ New-Item -ItemType Directory -Path $componentRoot -Force | Out-Null
 # Only first-party source is copied into the isolated SDK workspace.
 Copy-Item -Path (Join-Path $repo '*') -Destination $componentRoot -Recurse -Force
 $project = Join-Path $componentRoot 'foo_discogger.vcxproj'
+# Pinned upstream source is staged outside the repository; no vendor files are published.
+$oauthRevision = '2893f1bf42e1dfd5acf0dd849519cf27ac9c7395'
+$oauthRoot = Join-Path $env:RUNNER_TEMP 'discogger-liboauthcpp'
+& git clone --quiet --no-checkout https://github.com/sirikata/liboauthcpp.git $oauthRoot
+if ($LASTEXITCODE -ne 0) { throw 'OAuth source clone failed.' }
+& git -C $oauthRoot checkout --quiet --detach $oauthRevision
+if ($LASTEXITCODE -ne 0) { throw 'Pinned OAuth revision unavailable.' }
+$actualRevision = (& git -C $oauthRoot rev-parse HEAD).Trim()
+if ($actualRevision -ne $oauthRevision) { throw 'OAuth revision mismatch.' }
+if (-not (Test-Path -LiteralPath (Join-Path $oauthRoot 'LICENSE'))) { throw 'OAuth license missing.' }
+$oauthInclude = Join-Path $oauthRoot 'include'
+if (-not (Test-Path -LiteralPath (Join-Path $oauthInclude 'liboauthcpp/liboauthcpp.h'))) { throw 'OAuth header missing.' }
+Write-Host "OAuth source pinned and license present: $actualRevision"
+
 $wtlRoot = Join-Path $env:RUNNER_TEMP 'discogger-wtl-10.0.9163'
 $wtl = @(Get-ChildItem -LiteralPath $wtlRoot -Filter atlapp.h -File -Recurse)
 if ($wtl.Count -ne 1) { throw 'Verified WTL headers not staged.' }
 $wtlInclude = $wtl[0].DirectoryName
 $env:CL = '/I"' + $wtlInclude + '" ' + $env:CL
 $foobar = Join-Path $staging 'foobar2000'
-$includes = @($staging, $foobar, $wtlInclude, $componentRoot, (Join-Path $componentRoot 'zlib'), (Join-Path $componentRoot 'jansson'), (Join-Path $componentRoot 'oauthcpp')) -join ';'
+$includes = @($staging, $foobar, $wtlInclude, $oauthInclude, $componentRoot, (Join-Path $componentRoot 'zlib'), (Join-Path $componentRoot 'jansson'), (Join-Path $componentRoot 'oauthcpp')) -join ';'
 $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
 foreach ($platform in $Platforms) {
     Write-Host "=== Discogger first-party C++ compilation diagnostic: $platform ==="
@@ -39,3 +53,4 @@ foreach ($platform in $Platforms) {
     }
 }
 Write-Host 'Diagnostic only. No DLL was linked or published.'
+exit 0
