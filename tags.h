@@ -1,5 +1,6 @@
 #pragma once
 
+#include "conf.h"
 #include "formatting_script.h"
 #include "string_encoded_array.h"
 #include "utils.h"
