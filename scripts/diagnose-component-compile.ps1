@@ -9,13 +9,20 @@ Set-StrictMode -Version Latest
 # The SDK and WTL have already been independently verified by the preceding steps.
 $staging = Join-Path $env:RUNNER_TEMP 'discogger-sdk-probe'
 $repo = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repo 'foo_discogger.vcxproj'
+$componentRoot = Join-Path $staging 'foobar2000/foo_discogger'
+if (Test-Path -LiteralPath $componentRoot) { throw 'Refusing to overwrite existing staged component directory.' }
+New-Item -ItemType Directory -Path $componentRoot -Force | Out-Null
+# Preserve the historical relative paths: ../helpers, ../SDK, ../../pfc, ../../libPPUI.
+# Only first-party source is copied into the isolated SDK workspace.
+Copy-Item -Path (Join-Path $repo '*') -Destination $componentRoot -Recurse -Force
+$project = Join-Path $componentRoot 'foo_discogger.vcxproj'
 $wtlRoot = Join-Path $env:RUNNER_TEMP 'discogger-wtl-10.0.9163'
 $wtl = @(Get-ChildItem -LiteralPath $wtlRoot -Filter atlapp.h -File -Recurse)
 if ($wtl.Count -ne 1) { throw 'Verified WTL headers not staged.' }
 $wtlInclude = $wtl[0].DirectoryName
+$env:CL = '/I"' + $wtlInclude + '" ' + $env:CL
 $foobar = Join-Path $staging 'foobar2000'
-$includes = @($staging, $foobar, $wtlInclude, $repo, (Join-Path $repo 'zlib'), (Join-Path $repo 'jansson'), (Join-Path $repo 'oauthcpp')) -join ';'
+$includes = @($staging, $foobar, $wtlInclude, $componentRoot, (Join-Path $componentRoot 'zlib'), (Join-Path $componentRoot 'jansson'), (Join-Path $componentRoot 'oauthcpp')) -join ';'
 $msbuild = (Get-Command msbuild.exe -ErrorAction Stop).Source
 foreach ($platform in $Platforms) {
     Write-Host "=== Discogger first-party C++ compilation diagnostic: $platform ==="
