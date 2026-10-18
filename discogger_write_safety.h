@@ -12,6 +12,16 @@ bool contains_virtual_subsong(std::size_t count, SubsongIndexAt index_at) {
     }
     return false;
 }
+// Metadata-only no-op planner: caller compares full physical metadata and ReplayGain.
+enum class metadata_write_decision { skip, write, reject_missing_snapshot };
+inline metadata_write_decision plan_metadata_write(bool selected, bool snapshot_available,
+    bool metadata_equal, bool replaygain_equal) noexcept {
+    if (!selected) return metadata_write_decision::skip;
+    if (!snapshot_available) return metadata_write_decision::reject_missing_snapshot;
+    return metadata_equal && replaygain_equal ? metadata_write_decision::skip
+                                               : metadata_write_decision::write;
+}
+
 // Single-shot completion gate: never start dependent artwork after a failed
 // physical tag commit, and never dispatch twice on duplicate notifications.
 class write_completion_gate {
