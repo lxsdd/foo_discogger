@@ -48,12 +48,21 @@ void file_info_manager::write_infos(std::function<void()> after_success) {
 	infos_to_write.set_size(count);
 
 	for (n = 0; n < count; n++) {
-		if (info_wrappers[n]->mask) {
-			items_to_update[outptr] = items[n];
-			infos_to_write[outptr] = &info_wrappers[n]->info;
-			outptr++;
-		}
-	}
+\t\tconst auto& wrapper = info_wrappers[n];
+\t\tif (!wrapper->mask) continue;
+\t\tif (!wrapper->original_captured) {
+\t\t\tthrow foo_discogs_exception("Tagging stopped: original physical metadata snapshot is missing.");
+\t\t}
+\t\tconst bool metadata_equal = file_info::g_is_meta_equal(wrapper->original_info, wrapper->info);
+\t\tconst bool replaygain_equal = replaygain_info::g_equal(
+\t\t\twrapper->original_info.get_replaygain(), wrapper->info.get_replaygain());
+\t\tconst auto decision = discogger_write_safety::plan_metadata_write(
+\t\t\ttrue, true, metadata_equal, replaygain_equal);
+\t\tif (decision == discogger_write_safety::metadata_write_decision::skip) continue;
+\t\titems_to_update[outptr] = items[n];
+\t\tinfos_to_write[outptr] = &wrapper->info;
+\t\t++outptr;
+\t}
 
 	if (outptr != 0) {
 		static_api_ptr_t<metadb_io_v2> api;

@@ -18,6 +18,15 @@ int main() {
     assert(discogger_write_safety::contains_virtual_subsong(mixed.size(),
         [&](std::size_t i) { ++calls; return mixed[i]; }));
     assert(calls == 2); // stop before considering later physical members
+    // Snapshot/no-op planning: unchanged metadata and ReplayGain never schedule I/O.
+    using decision = discogger_write_safety::metadata_write_decision;
+    using discogger_write_safety::plan_metadata_write;
+    assert(plan_metadata_write(false, false, false, false) == decision::skip);
+    assert(plan_metadata_write(true, false, false, false) == decision::reject_missing_snapshot);
+    assert(plan_metadata_write(true, true, true, true) == decision::skip);
+    assert(plan_metadata_write(true, true, false, true) == decision::write);
+    assert(plan_metadata_write(true, true, true, false) == decision::write);
+    assert(plan_metadata_write(true, true, false, false) == decision::write);
     // Positive, negative, and duplicate-completion regressions.
     int artwork_starts = 0;
     discogger_write_safety::write_completion_gate failed;

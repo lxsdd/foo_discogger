@@ -95,3 +95,17 @@ assert "artwork_after_tags = [release_id, physical_items, bfile_match]" in tasks
 assert tasks.index("artwork_after_tags = [release_id") < tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags))")
 assert "new service_impl_t<download_art_task>" in tasks[tasks.index("artwork_after_tags = [release_id"):tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags))")]
 print("PASS: dependent artwork is gated by asynchronous physical tag completion; positive/negative portable gate tests are separate.")
+
+# Real physical metadata no-op: compare the pre-edit snapshot including ReplayGain.
+# Artwork no-op and actual host byte/timestamp preservation remain separate gates.
+manager_header = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
+writer = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+assert "m_finfo_manager->invalidate_all();" in writer
+assert "wrapper->original_info = wrapper->info;" in manager_header
+assert "wrapper->original_captured = true;" in manager_header
+assert "original_captured" in manager
+assert "file_info::g_is_meta_equal" in manager
+assert "replaygain_info::g_equal" in manager
+assert manager.index("plan_metadata_write(") < manager.index("api->update_info_async_simple(")
+assert "metadata_write_decision::skip" in manager
+print("PASS: physical metadata no-op snapshot and ReplayGain comparison are wired; artwork and host gates remain open.")
