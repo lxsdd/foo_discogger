@@ -481,7 +481,7 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 					error_msg << ": " << e.what();
 				error_msg << ". Retrying: " << tries;
 				log_msg(error_msg);
-				Sleep(2000 * (tries > 1 ? 2 : 1));
+				discogger_net::interruptible_wait(2000u * (tries > 1 ? 2 : 1), p_abort);
 			}
 			tries++;
 		}
