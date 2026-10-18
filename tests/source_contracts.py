@@ -109,3 +109,8 @@ assert "replaygain_info::g_equal" in manager
 assert manager.index("plan_metadata_write(") < manager.index("api->update_info_async_simple(")
 assert "metadata_write_decision::skip" in manager
 print("PASS: physical metadata no-op snapshot and ReplayGain comparison are wired; artwork and host gates remain open.")
+
+# Reject accidental literal backslash-t indentation in C++ source edits.
+for name in ("file_info_manager.cpp", "file_info_manager.h"):
+    lines = (root / name).read_text(encoding="utf-8-sig").splitlines()
+    assert not any(line.startswith("\\t") for line in lines), name

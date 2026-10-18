@@ -35,10 +35,10 @@ class file_info_impl_wrapper
 {
 public:
 	file_info_impl info;
-\t// Snapshot taken before Discogger modifies the selected physical file_info.
-\tfile_info_impl original_info;
-\tbool original_captured = false;
-\tbool mask = false;
+	// Snapshot taken before Discogger modifies the selected physical file_info.
+	file_info_impl original_info;
+	bool original_captured = false;
+	bool mask = false;
 };
 typedef std::shared_ptr<file_info_impl_wrapper> file_info_impl_wrapper_ptr;
 
@@ -95,10 +95,10 @@ public:
 		const size_t count = info_wrappers.get_count();
 		for (size_t p_index = 0; p_index < count; p_index++) {
 			auto& wrapper = info_wrappers[p_index];
-\t\t\twrapper->original_info = wrapper->info;
-\t\t\twrapper->original_captured = true;
-\t\t\twrapper->mask = false;
-\t\t}
-\t}
+			wrapper->original_info = wrapper->info;
+			wrapper->original_captured = true;
+			wrapper->mask = false;
+		}
+	}
 };
 typedef std::shared_ptr<file_info_manager> file_info_manager_ptr;
