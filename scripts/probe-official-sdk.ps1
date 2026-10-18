@@ -42,5 +42,15 @@ $Readme = Get-Content -LiteralPath (Join-Path $Staging 'sdk-readme.html') -Raw
 if (-not $Readme.Contains("foobar2000 SDK, version $SdkVersion")) {
     throw 'Extracted SDK does not match version pin.'
 }
+# Verify SDK-provided linker inputs rather than assuming they are third-party.
+# Use a recursive search because the SDK's packaging layout may change.
+foreach ($library in @('shared-Win32.lib', 'shared-x64.lib')) {
+    $matches = @(Get-ChildItem -LiteralPath $Staging -Filter $library -File -Recurse -ErrorAction Stop)
+    if ($matches.Count -ne 1) {
+        throw "Expected exactly one $library in official SDK archive; found $($matches.Count)."
+    }
+    $relative = [System.IO.Path]::GetRelativePath($Staging, $matches[0].FullName)
+    Write-Host "SDK linker input verified: $relative"
+}
 Write-Host "PASS: official foobar2000 SDK $SdkVersion integrity and structure verified."
 Write-Host 'NOT YET TESTED: full Discogger build. WTL and third-party dependencies still need reproducible bootstrap.'
