@@ -321,9 +321,9 @@ const struct vspec {
 
 		vec_spec_t* vec = rhs.vspecs;
 		auto itrhs = std::find_if(vec->begin(), vec->end(),
-			[rhs](auto e) {return e == rhs; });
+			[rhs](auto e) {return e.operator==(rhs); });
 		auto itthis = std::find_if(vec->begin(), vec->end(),
-			[=](auto e) {return e == *this; });
+			[=](auto e) {return e.operator==(*this); });
 		return ((itthis != vec->end()) && itthis < itrhs);
 	}
 	inline bool operator>(const vspec& rhs)
@@ -332,9 +332,9 @@ const struct vspec {
 		PFC_ASSERT(rhs.vspecs != nullptr);
 		vec_spec_t* vec = rhs.vspecs;
 		auto itrhs = std::find_if(vec->begin(), vec->end(),
-			[rhs](auto e) {return e == rhs; });
+			[rhs](auto e) {return e.operator==(rhs); });
 		auto itthis = std::find_if(vec->begin(), vec->end(),
-			[=](auto e) {return e == *this; });
+			[=](auto e) {return e.operator==(*this); });
 
 		return (itthis == vec->end() || itthis > itrhs);
 	}
