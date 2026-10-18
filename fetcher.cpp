@@ -242,10 +242,10 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 					std::stringstream human_read_time;
 					human_read_time << std::setprecision(3) << m_throttle_delta;
 					if (msg_ratelimits.get_length()) {
-						msg_ratelimits << " - Throttle engaged (" << pfc::string8(human_read_time.str().c_str()) << u8" \u03BCs)";
+						msg_ratelimits << " - Throttle engaged (" << pfc::string8(human_read_time.str().c_str()) << "\xCE\xBCs)";
 					}
 					else {
-						msg_ratelimits << "Image Throttle engaged (" << pfc::string8(human_read_time.str().c_str()) << u8" \u03BCs)";
+						msg_ratelimits << "Image Throttle engaged (" << pfc::string8(human_read_time.str().c_str()) << "\xCE\xBCs)";
 					}
 				}
 

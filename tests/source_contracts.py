@@ -154,3 +154,17 @@ for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
     aslr = item.find(msbuild_ns + "Link/" + msbuild_ns + "RandomizedBaseAddress")
     assert aslr is not None and aslr.text == "true", config
 print("PASS: Win32/x64 Debug/Release DLL configurations enable ASLR.")
+
+# SDK C++20 migration: no char8_t stream insertions or dangling references.
+assert 'u8" \\u03BCs)"' not in fetcher
+assert '"\\xCE\\xBCs)"' in fetcher
+assert 'auto & part = sub_array[i].print_raw();' not in (root / 'string_encoded_array.cpp').read_text(encoding='utf-8-sig')
+assert 'out.first = sanitized.get_ptr();' in (root / 'querydefmap.cpp').read_text(encoding='utf-8-sig')
+assert 'out.second = scaped.get_ptr();' in (root / 'querydefmap.cpp').read_text(encoding='utf-8-sig')
+for name in ('tags.h', 'tags.cpp', 'tag_writer.cpp', 'foo_discogs.cpp', 'tag_mappings_dialog.cpp'):
+    source = (root / name).read_text(encoding='utf-8-sig')
+    assert 'discogger_is_multivalue_meta(' in source, name
+assert 'discogger_multivalue::contains(CONF.multivalue_fields.get_ptr(), field.get_ptr())' in (root / 'tags.h').read_text(encoding='utf-8-sig')
+assert 'multivalue_fields_test.cpp' in workflow
+assert 'multivalue_fields_test.cpp' in (root / 'scripts/run-msvc-unit-tests.ps1').read_text(encoding='utf-8-sig')
+print('PASS: C++20 compatibility fixes and exact-token configurable multivalue mapping are wired.')

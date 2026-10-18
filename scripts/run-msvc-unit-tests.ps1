@@ -24,6 +24,7 @@ $Sources = @(
     'http_status_parser_test.cpp',
     'collaboration_fallback_test.cpp',
     'write_safety_test.cpp',
+    'multivalue_fields_test.cpp',
     'interruptible_wait_test.cpp'
 )
 $Commands = [System.Collections.Generic.List[string]]::new()

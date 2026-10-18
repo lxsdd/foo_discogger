@@ -1208,7 +1208,7 @@ pfc::string8 string_encoded_array::print_raw() const {
 		result.add_char(LIST_START_PRETTY);
 		const size_t count = get_width();
 		for (size_t i = 0; i < count; i++) {
-			auto & part = sub_array[i].print_raw();
+			const auto part = sub_array[i].print_raw();
 			//if (part.get_length()) {
 				result << part;
 				if (i != count - 1) {

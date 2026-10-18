@@ -279,7 +279,7 @@ void init_with_default_tag_mappings() {
 
 	for (size_t i = 0; i < count; i++) {
 		cfg_tag_mappings.add_item(*(default_tag_mappings[i].clone()));
-		cfg_tag_mappings[i].is_multival_meta = is_multivalue_meta(default_tag_mappings[i].tag_name);
+		cfg_tag_mappings[i].is_multival_meta = discogger_is_multivalue_meta(default_tag_mappings[i].tag_name);
 	}
 }
 
@@ -303,7 +303,7 @@ void copy_default_tag_mappings(tag_mapping_list_type* out_tmt) {
 
 		out_tmt->add_item(*(default_tag_mappings[i].clone()));
 		tag_mapping_entry& new_map_entry = out_tmt->get_item(i);
-		new_map_entry.is_multival_meta = is_multivalue_meta(default_tag_mappings[i].tag_name);
+		new_map_entry.is_multival_meta = discogger_is_multivalue_meta(default_tag_mappings[i].tag_name);
 	}
 }
 
@@ -359,7 +359,7 @@ void copy_id3_default_tag_mappings(tag_mapping_list_type * out_tmt, bool onlyms,
 				entry.enable_write = true;
 			}
 
-			entry.is_multival_meta = is_multivalue_meta(entry.tag_name);
+			entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
 			out_tmt->add_item(*entry.clone());
 		}
 	}
@@ -428,11 +428,11 @@ int awt_update_mod_flag(bool fromFlag) {
 
 void update_loaded_tagmaps_multivalues() {
 	for (auto& entry : cfg_tag_mappings) {
-		entry.is_multival_meta = is_multivalue_meta(entry.tag_name);
+		entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
 	}
 
 	for (auto& entry : default_tag_mappings) {
-		entry.is_multival_meta = is_multivalue_meta(entry.tag_name);
+		entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
 	}
 }
 

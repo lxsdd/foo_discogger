@@ -410,7 +410,7 @@ LRESULT CTagMappingDialog::OnImport(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndC
 						m_ptag_map->remove_all();
 						deleted = true;
 					}
-					buf->is_multival_meta = is_multivalue_meta(buf->tag_name);
+					buf->is_multival_meta = discogger_is_multivalue_meta(buf->tag_name);
 
 					bool badd_new = true;
 
@@ -461,7 +461,7 @@ LRESULT CTagMappingDialog::OnImport(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndC
 				m_ptag_map->remove_all();
 				deleted = true;
 			}
-			wentry.is_multival_meta = is_multivalue_meta(wentry.tag_name);
+			wentry.is_multival_meta = discogger_is_multivalue_meta(wentry.tag_name);
 
 			bool badd_new = true;
 

@@ -58,7 +58,7 @@ class initquit_discogs : public initquit
 				entry.enable_update = current_alt & (1 << 1);
 			}
 
-			entry.is_multival_meta = is_multivalue_meta(entry.tag_name);
+			entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
 
 		}
 		init_tag_mappings();

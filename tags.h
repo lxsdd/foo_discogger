@@ -1,10 +1,17 @@
 #pragma once
 
 #include "conf.h"
+#include "discogger_multivalue.h"
 #include "formatting_script.h"
 #include "string_encoded_array.h"
 #include "utils.h"
 
+
+// Resolve multi-value mappings against the live user configuration.
+// The portable matcher compares complete semicolon-delimited fields.
+inline bool discogger_is_multivalue_meta(const pfc::string8& field) {
+    return discogger_multivalue::contains(CONF.multivalue_fields.get_ptr(), field.get_ptr());
+}
 
 typedef struct
 {
@@ -47,7 +54,7 @@ public:
 	tag_mapping_entry(GUID guid, const char *tn, bool ew, bool eu, bool fw, bool fu, bool ft, const char *fs) : guid_tag(guid),
 		tag_name(tn), enable_write(ew), enable_update(eu), freeze_write(fw), freeze_update(fu), freeze_tag_name(ft), formatting_script(fs) {
 
-		is_multival_meta = is_multivalue_meta(pfc::string8(tn));
+		is_multival_meta = discogger_is_multivalue_meta(pfc::string8(tn));
 	}
 
 	tag_mapping_entry * clone() {

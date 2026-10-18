@@ -926,7 +926,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 
 		if (bauto_add_mfield) {
 
-			if (is_multivalue_meta(entry.tag_name)) {
+			if (discogger_is_multivalue_meta(entry.tag_name)) {
 				bauto_fresh_mfield = true;
 			}
 			else {
