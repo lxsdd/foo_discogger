@@ -23,7 +23,8 @@ foreach ($platform in $Platforms) {
     $output = Join-Path $env:RUNNER_TEMP "discogger-first-party-$platform.log"
     # ClCompile is intentionally not Build: missing link libraries must not mask
     # the first actual component compiler diagnostics.
-    & $msbuild $project /t:ClCompile /p:Configuration=Release "/p:Platform=$platform" "/p:AdditionalIncludeDirectories=$includes" /m:1 /v:minimal /nologo 2>&1 | Tee-Object -FilePath $output
+    $global:LASTEXITCODE = 0
+    & $msbuild $project /t:ClCompile /p:Configuration=Release "/p:Platform=$platform" "/p:AdditionalIncludeDirectories=$($includes.Replace(';', '%3B'))" /m:1 /v:minimal /nologo 2>&1 | Tee-Object -FilePath $output
     if ($LASTEXITCODE -ne 0) {
         Write-Host "EXPECTED DIAGNOSTIC (not a DLL build): $platform compiler failed. See errors above."
     } else {
