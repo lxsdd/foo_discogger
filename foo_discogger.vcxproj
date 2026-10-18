@@ -119,9 +119,6 @@
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
-    <PostBuildEvent>
-      <Command>mkdir "$(FOO_COMP_WD)" &amp; copy "$(TargetPath)" "$(FOO_COMP_WD)"</Command>
-    </PostBuildEvent>
     <Bscmake>
       <PreserveSbr>true</PreserveSbr>
     </Bscmake>
@@ -166,9 +163,6 @@
       <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
     </Link>
-    <PostBuildEvent>
-      <Command>mkdir "$(FOO_COMP_WD)" &amp; copy "$(TargetPath)" "$(FOO_COMP_WD)"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -199,9 +193,6 @@
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
-    <PostBuildEvent>
-      <Command>mkdir "$(FOO_COMP_WD)" &amp; copy "$(TargetPath)" "$(FOO_COMP_WD)"</Command>
-    </PostBuildEvent>
     <Bscmake>
       <PreserveSbr>true</PreserveSbr>
     </Bscmake>
@@ -242,9 +233,6 @@
       <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
     </Link>
-    <PostBuildEvent>
-      <Command>mkdir "$(FOO_COMP_WD)" &amp; copy "$(TargetPath)" "$(FOO_COMP_WD)"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="artwork_list.cpp" />
