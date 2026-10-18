@@ -58,3 +58,13 @@ The follow-up stages WTL 10.0.9163 from its fixed-version NuGet package,
 checks its NuGet signature and records its SHA-256 for an independently
 verified immutable pin. The WTL SHA pin and full Discogger DLL build remain
 separate release gates; no binary is uploaded.
+
+### SDK core library acceptance (SHA 05b890e6, run 39127345690)
+
+The official SDK 2026-10-01 project builds passed for both Win32 and x64:
+`pfc`, `foobar2000_SDK`, `foobar2000_component_client`, `libPPUI`.
+WTL 10.0.9163 was signature-verified from NuGet and measured as
+SHA-256 `0ae7fd90a938d97da7532eae98e824450861c1cd88c6a2a4e7ab9cbe5ec6bedb`.
+The next run enforces that SHA-256 and adds the SDK helpers project required
+by Discogger's solution. These are SDK-library results, **not** a Discogger DLL
+or any host/write-safety acceptance.

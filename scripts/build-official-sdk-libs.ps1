@@ -11,6 +11,7 @@ $staging = Join-Path $env:RUNNER_TEMP 'discogger-sdk-probe'
 $projects = @(
     'pfc\\pfc.vcxproj',
     'foobar2000\\SDK\\foobar2000_SDK.vcxproj',
+    'foobar2000\\helpers\\foobar2000_sdk_helpers.vcxproj',
     'foobar2000\\foobar2000_component_client\\foobar2000_component_client.vcxproj',
     'libPPUI\\libPPUI.vcxproj'
 )
@@ -23,7 +24,11 @@ $wtlPackage = Join-Path $env:RUNNER_TEMP "wtl.$wtlVersion.nupkg"
 $wtlRoot = Join-Path $env:RUNNER_TEMP "discogger-wtl-$wtlVersion"
 Invoke-WebRequest -Uri $wtlUrl -OutFile $wtlPackage -MaximumRedirection 3
 $wtlSha256 = (Get-FileHash -LiteralPath $wtlPackage -Algorithm SHA256).Hash.ToLowerInvariant()
-Write-Host "WTL $wtlVersion NuGet package SHA256: $wtlSha256 (pin after independent verification)"
+$expectedWtlSha256 = '0ae7fd90a938d97da7532eae98e824450861c1cd88c6a2a4e7ab9cbe5ec6bedb'
+if ($wtlSha256 -ne $expectedWtlSha256) {
+    throw "WTL package SHA256 mismatch: expected $expectedWtlSha256, got $wtlSha256"
+}
+Write-Host "WTL $wtlVersion NuGet package SHA256 pinned and verified: $wtlSha256"
 & dotnet nuget verify --all $wtlPackage
 if ($LASTEXITCODE -ne 0) { throw 'WTL NuGet package signature verification failed.' }
 [System.IO.Compression.ZipFile]::ExtractToDirectory($wtlPackage, $wtlRoot)

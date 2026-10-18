@@ -121,9 +121,10 @@ sdk_build = (root / "scripts/build-official-sdk-libs.ps1").read_text(encoding="u
 assert "run: ./scripts/probe-official-sdk.ps1" in workflow
 assert "run: ./scripts/build-official-sdk-libs.ps1" in workflow
 assert "microsoft/setup-msbuild@v2" in workflow
-for required in ("pfc.vcxproj", "foobar2000_SDK.vcxproj", "foobar2000_component_client.vcxproj", "libPPUI.vcxproj", "'Win32', 'x64'", "/t:Build", "Release", "LASTEXITCODE"):
+for required in ("pfc.vcxproj", "foobar2000_SDK.vcxproj", "foobar2000_component_client.vcxproj", "foobar2000_sdk_helpers.vcxproj", "libPPUI.vcxproj", "'Win32', 'x64'", "/t:Build", "Release", "LASTEXITCODE"):
     assert required in sdk_build, required
 assert "10.0.9163" in sdk_build
+assert "0ae7fd90a938d97da7532eae98e824450861c1cd88c6a2a4e7ab9cbe5ec6bedb" in sdk_build
 assert "dotnet nuget verify --all" in sdk_build
 assert "atlapp.h" in sdk_build
 assert "upload-artifact" not in workflow
