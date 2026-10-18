@@ -2,6 +2,7 @@
 
 #include "fetcher.h"
 #include "http_status_util.h"
+#include "interruptible_wait.h"
 #include "exception.h"
 #include "utils.h"
 
@@ -175,7 +176,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 			m_throttle_delta = (std::max)(sleep_base - (isImageUrl ? 0 : time_span_milli.count()), 0.0);
 
 			DWORD dw = static_cast<DWORD>((int)m_throttle_delta);
-			Sleep(dw);
+			discogger_net::interruptible_wait(dw, p_abort);
 		}
 		else {
 			m_throttle_delta = 0;
@@ -321,7 +322,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 				pfc::string8 error_msg;
 				error_msg << "Rate-limited. Retrying: " << tries;
 				log_msg(error_msg);
-				Sleep(2000 * tries);
+				discogger_net::interruptible_wait(2000u * tries, p_abort);
 			}
 			catch (foobar2000_io::exception_io &e) {
 
@@ -335,7 +336,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 
 				log_msg(error_msg);
 
-				Sleep(2000 * (tries > 1 ? 2 : 1));
+				discogger_net::interruptible_wait(2000u * (tries > 1 ? 2 : 1), p_abort);
 			}
 			tries++;
 		}
