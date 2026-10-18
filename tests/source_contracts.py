@@ -71,7 +71,7 @@ tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
 manager = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
 assert tasks.index("discogger_write_safety::contains_virtual_subsong") < tasks.index("m_tag_writer->write_tags();")
 assert manager.index("discogger_write_safety::contains_virtual_subsong") < manager.index("api->update_info_async_simple(")
-assert "add_error(\"Writing tags failed." in manager
+assert "Writing tags failed; dependent artwork was not started." in manager
 assert "display_errors();" in manager[manager.index("void write_tags_completion::on_completion"):manager.index("void read_tags_completion::on_completion")]
 print("PASS: fail-closed virtual subsong preflight and async write failure notification are wired.")
 

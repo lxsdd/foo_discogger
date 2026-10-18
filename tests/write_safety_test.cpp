@@ -2,6 +2,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <stdexcept>
 
 int main() {
     const std::array<unsigned, 3> physical = {0, 0, 0};
@@ -27,6 +28,13 @@ int main() {
     assert(succeeded.finish(true, [&] { ++artwork_starts; }));
     assert(!succeeded.finish(true, [&] { ++artwork_starts; }));
     assert(!succeeded.finish(false, [&] { ++artwork_starts; }));
+    assert(artwork_starts == 1);
+    discogger_write_safety::write_completion_gate throwing;
+    bool caught = false;
+    try { throwing.finish(true, [] { throw std::runtime_error("synthetic callback failure"); }); }
+    catch (const std::runtime_error&) { caught = true; }
+    assert(caught);
+    assert(!throwing.finish(true, [&] { ++artwork_starts; }));
     assert(artwork_starts == 1);
     assert(!discogger_write_safety::contains_virtual_subsong(0,
         [&](std::size_t) -> unsigned { assert(false); return 0; }));

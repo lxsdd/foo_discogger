@@ -1,5 +1,7 @@
 #include "stdafx.h"
 #include <unordered_set>
+#include <functional>
+#include <utility>
 #include "discogs_interface.h"
 
 #include "tags.h"

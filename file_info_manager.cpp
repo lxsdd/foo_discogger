@@ -2,6 +2,8 @@
 
 #include "file_info_manager.h"
 #include "discogger_write_safety.h"
+#include <exception>
+#include <utility>
 
 bool file_info_manager::read_infos() {
 	static_api_ptr_t<metadb_io> api;
