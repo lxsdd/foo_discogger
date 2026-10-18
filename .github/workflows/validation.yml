@@ -68,9 +68,13 @@ jobs:
 
   official-sdk-probe:
     runs-on: windows-2022
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
       - name: Verify pinned official SDK 2026-10-01 on Windows
         shell: pwsh
         run: ./scripts/probe-official-sdk.ps1
+      - name: Compile official SDK core libraries for Win32 and x64 (not Discogger DLL)
+        shell: pwsh
+        run: ./scripts/build-official-sdk-libs.ps1

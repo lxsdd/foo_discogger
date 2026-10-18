@@ -114,3 +114,14 @@ print("PASS: physical metadata no-op snapshot and ReplayGain comparison are wire
 for name in ("file_info_manager.cpp", "file_info_manager.h"):
     lines = (root / name).read_text(encoding="utf-8-sig").splitlines()
     assert not any(line.startswith("\\t") for line in lines), name
+
+# Official SDK core compilation is a real MSBuild gate, not a Discogger DLL gate.
+workflow = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+sdk_build = (root / "scripts/build-official-sdk-libs.ps1").read_text(encoding="utf-8-sig")
+assert "run: ./scripts/probe-official-sdk.ps1" in workflow
+assert "run: ./scripts/build-official-sdk-libs.ps1" in workflow
+assert "microsoft/setup-msbuild@v2" in workflow
+for required in ("pfc.vcxproj", "foobar2000_SDK.vcxproj", "foobar2000_component_client.vcxproj", "libPPUI.vcxproj", "'Win32', 'x64'", "/t:Build", "Release", "LASTEXITCODE"):
+    assert required in sdk_build, required
+assert "upload-artifact" not in workflow
+print("PASS: official SDK Win32/x64 compilation is wired without publishing binaries.")
