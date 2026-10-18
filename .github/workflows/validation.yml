@@ -28,6 +28,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/http_status_parser_test.cpp -o /tmp/discogger-http-test
       - name: Run HTTP status regression tests
         run: /tmp/discogger-http-test
+      - name: Compile and run abort-responsive network wait regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/interruptible_wait_test.cpp -o /tmp/discogger-wait-test && /tmp/discogger-wait-test
       - name: Compile collaboration search fallback helper
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
       - name: Run collaboration search fallback tests
