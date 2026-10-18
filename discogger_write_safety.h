@@ -12,6 +12,25 @@ bool contains_virtual_subsong(std::size_t count, SubsongIndexAt index_at) {
     }
     return false;
 }
+// Fail closed before scheduling any asynchronous write if the item/wrapper
+// vectors are out of sync, a wrapper is absent, or an edited item has no
+// original physical metadata snapshot. This is intentionally SDK-independent.
+enum class snapshot_batch_decision {
+    ready, reject_count_mismatch, reject_missing_wrapper, reject_missing_snapshot
+};
+template <typename HasWrapperAt, typename SelectedAt, typename SnapshotAt>
+snapshot_batch_decision plan_snapshot_batch(std::size_t item_count,
+    std::size_t wrapper_count, HasWrapperAt has_wrapper,
+    SelectedAt selected, SnapshotAt has_snapshot) {
+    if (item_count != wrapper_count) return snapshot_batch_decision::reject_count_mismatch;
+    for (std::size_t i = 0; i < item_count; ++i) {
+        if (!has_wrapper(i)) return snapshot_batch_decision::reject_missing_wrapper;
+    }
+    for (std::size_t i = 0; i < item_count; ++i) {
+        if (selected(i) && !has_snapshot(i)) return snapshot_batch_decision::reject_missing_snapshot;
+    }
+    return snapshot_batch_decision::ready;
+}
 // Metadata-only no-op planner: caller compares full physical metadata and ReplayGain.
 enum class metadata_write_decision { skip, write, reject_missing_snapshot };
 inline metadata_write_decision plan_metadata_write(bool selected, bool snapshot_available,
