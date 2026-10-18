@@ -32,6 +32,22 @@ Write-Host "OAuth source pinned and license present: $actualRevision"
 # CL is honored by cl.exe; AdditionalIncludeDirectories is item metadata, not a reliable global MSBuild property.
 $env:CL = '/I"' + $oauthInclude + '" ' + $env:CL
 
+# Stage upstream zlib headers at an immutable, verified Git revision. No vendor
+# source is copied into the repository and no binaries are published.
+$zlibRevision = '51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf'
+$zlibRoot = Join-Path $env:RUNNER_TEMP 'discogger-zlib-1.3.1'
+& git clone --quiet --no-checkout https://github.com/madler/zlib.git $zlibRoot
+if ($LASTEXITCODE -ne 0) { throw 'zlib source clone failed.' }
+& git -C $zlibRoot checkout --quiet --detach $zlibRevision
+if ($LASTEXITCODE -ne 0) { throw 'Pinned zlib revision unavailable.' }
+$actualZlibRevision = (& git -C $zlibRoot rev-parse HEAD).Trim()
+if ($actualZlibRevision -ne $zlibRevision) { throw 'zlib revision mismatch.' }
+foreach ($required in @('LICENSE', 'zlib.h', 'zconf.h')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $zlibRoot $required))) { throw "zlib missing required file: $required" }
+}
+$env:CL = '/I"' + $zlibRoot + '" ' + $env:CL
+Write-Host "zlib source pinned and license present: $actualZlibRevision"
+
 $wtlRoot = Join-Path $env:RUNNER_TEMP 'discogger-wtl-10.0.9163'
 $wtl = @(Get-ChildItem -LiteralPath $wtlRoot -Filter atlapp.h -File -Recurse)
 if ($wtl.Count -ne 1) { throw 'Verified WTL headers not staged.' }
