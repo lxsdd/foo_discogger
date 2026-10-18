@@ -481,20 +481,15 @@ namespace Offline {
 
 		std::error_code ec;
 
-		bool bfolder_ready = fs::exists(os_path, ec);
-
-		if (!bfolder_ready && !ec.value()) {
-
-			try {
-
-			return bfolder_exists && !ec.value();
+		if (fs::exists(os_path, ec)) {
+			return !ec && fs::is_directory(os_path, ec) && !ec;
 		}
-		catch (...) {
-			return false;
-		}
-	}
+		if (ec) return false;
 
-		return bfolder_ready && !ec.value();
+		// create_directories() returns false if the directory already exists.
+		// Validate the resulting path rather than treating that as failure.
+		fs::create_directories(os_path, ec);
+		return !ec && fs::is_directory(os_path, ec) && !ec;
 	}
 
 	// create offline path for artist and release ids

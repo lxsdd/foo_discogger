@@ -213,3 +213,17 @@ assert release_utils.count('auto it = cache.find(') == 4
 artwork_types = (root / 'track_matching_utils.h').read_text(encoding='utf-8-sig')
 assert 'inline bool operator==(const uartwork& rhs) const {' in artwork_types
 print('PASS: in-class qualifiers, temporary iterators and C++20 artwork comparison repairs.')
+
+# Compile-blocker regressions: no undeclared cache path variable, explicit
+# callback pointer declaration, and SDK-safe path string construction.
+cache_header = (root / 'ol_cache.h').read_text(encoding='utf-8-sig')
+assert 'bfolder_exists' not in cache_header
+assert 'fs::create_directories(os_path, ec);' in cache_header
+assert 'fs::is_directory(os_path, ec)' in cache_header
+assert 'class foo_discogs_threaded_locked_process_callback;' in (root / 'foo_discogs.h').read_text(encoding='utf-8-sig')
+assert 'return p ? p->id : pfc::string8();' in (root / 'find_artist_list.h').read_text(encoding='utf-8-sig')
+path_header = (root / 'utils_path.h').read_text(encoding='utf-8-sig')
+assert 'path << (core_api::pathInProfile(' not in path_header
+assert 'db_path << core_api::pathInProfile(' not in path_header
+assert path_header.count('path.add_string(core_api::get_my_file_name());') == 2
+print('PASS: cache folder, callback declaration, artist ID and SDK path header regressions.')

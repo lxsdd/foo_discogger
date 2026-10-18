@@ -17,9 +17,11 @@ static pfc::string8 dll_db_filename() {
 static pfc::string8 profile_usr_components_path(bool native = true) {
 	pfc::string8 path;
 #ifdef _WIN64
-	path << (core_api::pathInProfile("user-components-x64\\") << core_api::get_my_file_name());
+	path = core_api::pathInProfile("user-components-x64\\");
+	path.add_string(core_api::get_my_file_name());
 #else
-	path << (core_api::pathInProfile("user-components\\") << core_api::get_my_file_name());
+	path = core_api::pathInProfile("user-components\\");
+	path.add_string(core_api::get_my_file_name());
 #endif
 	if (native)
 		extract_native_path(path, path);
@@ -28,7 +30,8 @@ static pfc::string8 profile_usr_components_path(bool native = true) {
 
 static pfc::string8 full_dll_db_name(bool native = true) {
 	pfc::string8 db_path;
-	db_path << core_api::pathInProfile("configuration\\") << dll_db_filename();
+	db_path = core_api::pathInProfile("configuration\\");
+	db_path.add_string(dll_db_filename());
 	if (native)
 		extract_native_path(db_path, db_path);
 	return db_path.c_str();

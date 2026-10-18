@@ -16,6 +16,7 @@ const UINT WM_CUSTOM_ANV_CHANGED = WM_USER + 100;
 const UINT WM_CUSTOM_VA_AS_MA_RESET = WM_USER + 101;
 
 
+class foo_discogs_threaded_locked_process_callback;
 class CFindReleaseDialog;
 class CFindReleaseArtistDialog;
 class CTrackMatchingDialog;
