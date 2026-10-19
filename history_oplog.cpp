@@ -221,7 +221,7 @@ bool gen_query_submenus(HMENU hParentMenu, const std::string expr, const std::st
 		}
 	}
 
-	lbl = frm_album_artist.get_length() ? frm_album_artist : frm_artist.get_length()? frm_artist : "";
+	lbl = frm_album_artist.get_length() ? frm_album_artist : (frm_artist.get_length() ? frm_artist : pfc::string8());
 	if (lbl.get_length()) {
 		if (GetMenuItemCount(submenus[item])) {
 			AppendMenu(submenus[item], MF_STRING, MF_SEPARATOR, 0);

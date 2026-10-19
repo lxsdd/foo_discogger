@@ -3,6 +3,7 @@
 #include "libPPUI/clipboard.h"
 #include "preview_dialog.h"
 #include "preview_leading_tag_dialog.h"
+#include <string>
 
 // {7924918F-1A18-4873-AB52-8E2CC3C3C1F6}
 static const GUID guid_cfg_dialog_position_preview_modal_tag_dlg = { 0x7924918f, 0x1a18, 0x4873, { 0xab, 0x52, 0x8e, 0x2c, 0xc3, 0xc3, 0xc1, 0xf6 } };
@@ -89,7 +90,8 @@ LRESULT CPreviewLeadingTagDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/,
 	item.mask = TCIF_TEXT;
 	for (size_t n = 0; n < MY_NUM_TABS; n++) {
 		PFC_ASSERT(m_tab_table[n].m_pszName != nullptr);
-		item.pszText = m_tab_table[n].m_pszName;
+		std::string tab_text(m_tab_table[n].m_pszName);
+		item.pszText = tab_text.data(); // Win32 requires a writable buffer during insertion.
 		uTabCtrl_InsertItem(hWndTab, n, &item);
 	}
 

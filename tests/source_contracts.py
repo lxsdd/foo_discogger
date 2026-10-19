@@ -315,3 +315,18 @@ assert "m_query_custom_fs->" not in release_dialog
 assert "m_query_custom_script->run_hook(" in release_dialog
 assert "using foo_discogs_locked_threaded_process_callback = foo_discogs_threaded_locked_process_callback;" in task_header
 print("PASS: release routing, shared track lifetime, native query, config syntax and read lock base.")
+
+# C++20 native string/Win32 mutable-buffer and temporary lifetime guards.
+native_utils = (root / "utils.cpp").read_text(encoding="utf-8-sig")
+assert "std::string tmpstr(in.c_str());" in native_utils
+assert "std::string str_suffix(trim(i->suffix().str().c_str()).c_str());" in native_utils
+assert "CWindow* cwnd = &CWindow(walk);" not in native_utils
+assert "CWindow cwnd(walk);" in native_utils
+assert "catch (std::regex_error e) {\n\t\treturn tracks;" in native_utils
+history = (root / "history_oplog.cpp").read_text(encoding="utf-8-sig")
+assert "frm_artist : pfc::string8()" in history
+leading = (root / "preview_leading_tag_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "std::string tab_text(m_tab_table[n].m_pszName);" in leading
+assert "item.pszText = tab_text.data();" in leading
+assert "item.pszText = m_tab_table[n].m_pszName;" not in leading
+print("PASS: native string, CWindow lifetime and writable Win32 tab labels.")

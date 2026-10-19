@@ -75,7 +75,7 @@ inline pfc::string EscapeWin(pfc::string8 keyWord) {
 
 inline bool remove_continous_space(pfc::string8 in, pfc::string8& out, std::regex &regex_v) {
 
-	std::string tmpstr = in;
+	std::string tmpstr(in.c_str());
 
 	if (regex_v._Empty()) {
 		try {
@@ -192,7 +192,7 @@ pfc::string8 sanitize_track_commas(const pfc::string8& tracks, std::regex& regex
 		res_no_extra_comma_spc = std::regex_replace(res_no_extra_comma_spc.c_str(), regex_v, ", ");
 	}
 	catch (std::regex_error e) {
-		return false;
+		return tracks;
 	}
 
 	pfc::string8 tracks_semied = sanitize_track_semi_media(res_no_extra_comma_spc.c_str());
@@ -253,7 +253,7 @@ pfc::string8 sanitize_track_to(const pfc::string8& tracks) {
 		res << i->prefix().str().c_str();
 	}
 	res << i->str().c_str();
-	std::string str_suffix = trim(i->suffix().str().c_str());
+	std::string str_suffix(trim(i->suffix().str().c_str()).c_str());
 	if (i->suffix().matched && str_suffix.length()) {
 		if (str_suffix.at(0) != ',') {
 			res << ",";
@@ -1353,12 +1353,12 @@ void CustomFont(HWND hwndParent, size_t flag, bool check_font, bool apply) {
 			HWND next = ::GetWindow(walk, GW_HWNDNEXT);
 			if (next && ::IsWindow(next)) {
 				if (g_hFont && (((_wcsnicmp(cls, L"libPPUI:", 8) == 0) || (_wcsnicmp(cls, L"SysTreeV", 8) == 0)))) {
-					CWindow* cwnd = &CWindow(walk);
-					cwnd->SetFont(g_hFont);
+					CWindow cwnd(walk);
+					cwnd.SetFont(g_hFont);
 				}
 				else if (g_hFontTabs && (_wcsnicmp(cls, L"SysTabControl32", 15) == 0)) {
-					CWindow* cwnd = &CWindow(walk);
-					cwnd->SetFont(g_hFontTabs);
+					CWindow cwnd(walk);
+					cwnd.SetFont(g_hFontTabs);
 				}
 			}
 			walk = next;
