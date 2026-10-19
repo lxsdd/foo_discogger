@@ -99,7 +99,7 @@ foreach ($platform in $Platforms) {
         # Do not copy the x86 configuration into the x64 source tree (or vice versa).
         $zconf = Join-Path $zlibBuild 'zconf.h'
         if (-not (Test-Path -LiteralPath $zconf -PathType Leaf)) {
-            throw "Generated zlib zconf.h missing for $platform: $zconf"
+            throw "Generated zlib zconf.h missing for ${platform}: $zconf"
         }
         if ((Get-Item -LiteralPath $zconf).Length -eq 0) { throw "Empty generated zlib config: $zconf" }
         $nativeIncludes = @($zlibBuild, $includes) -join ';'

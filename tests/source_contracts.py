@@ -439,7 +439,7 @@ print("PASS: native MSVC x86/x64 strict DLL link gate, pinned libraries, PE SHA 
 # Strict dual-architecture zlib generated config contract.
 native = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
 assert "$zconf = Join-Path $zlibBuild 'zconf.h'" in native
-assert "Generated zlib zconf.h missing for $platform" in native
+assert "Generated zlib zconf.h missing for ${platform}" in native
 assert "$nativeIncludes = @($zlibBuild, $includes) -join ';'" in native
 assert 'AdditionalIncludeDirectories=$($nativeIncludes.Replace' in native
 assert 'Copy-Item -LiteralPath $zconf' not in native
