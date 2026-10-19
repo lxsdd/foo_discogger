@@ -69,11 +69,23 @@ print("PASS: all four SQLite paths and both Release stack protections are consis
 # These source checks do not establish real foobar2000 host behavior.
 tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
 manager = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
-assert tasks.index("discogger_write_safety::contains_virtual_subsong") < tasks.index("m_tag_writer->write_tags();")
-assert manager.index("discogger_write_safety::contains_virtual_subsong") < manager.index("api->update_info_async_simple(")
+assert tasks.index("discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);") < tasks.index("m_tag_writer->write_tags();")
+assert manager.index("discogger_require_physical_targets(items);") < manager.index("api->update_info_async_simple(")
+assert "discogger_physical_targets.h" in tasks and "discogger_physical_targets.h" in manager
+assert manager.index("discogger_inspect_file_targets(items, false)") < manager.index("api->load_info_multi(")
 assert "Writing tags failed; dependent artwork was not started." in manager
 assert "display_errors();" in manager[manager.index("void write_tags_completion::on_completion"):manager.index("void read_tags_completion::on_completion")]
-print("PASS: fail-closed virtual subsong preflight and async write failure notification are wired.")
+assert "discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);" in tasks
+assert "discogger_inspect_file_targets(m_items, false)" in tasks
+assert tasks.index("discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);", tasks.index("void write_tags_task::on_success")) < tasks.index("inspect_tag_deletions(")
+adapter = (root / "discogger_physical_targets.h").read_text(encoding="utf-8-sig")
+pure_targets = (root / "discogger_write_safety.h").read_text(encoding="utf-8-sig")
+assert "inspect_target_batch(" in adapter and "pfc::stringCompareCaseInsensitive" in adapter
+for outcome in ("reject_empty_selection", "reject_null_handle", "reject_empty_path",
+                "reject_virtual_subsong", "reject_duplicate_path"):
+    assert "target_batch_decision::" + outcome in adapter
+    assert outcome in pure_targets
+print("PASS: physical tag/artwork target preflight rejects null, empty, virtual and duplicate paths; preview remains read-only.")
 
 # SDK 2026-09-16+ requires C++20; portable helper tests may remain C++17.
 for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
@@ -273,7 +285,7 @@ print('PASS: matching-mode keyword, Win32 menu buffers and artist load-state ref
 # Entire physical batch must be preflighted before dereferencing wrappers or queuing I/O.
 assert "discogger_write_safety::plan_snapshot_batch(" in manager
 assert "count, info_wrappers.get_count()" in manager
-assert manager.index("discogger_write_safety::plan_snapshot_batch(") < manager.index("items_to_update.set_size(count)")
+assert manager.index("discogger_write_safety::plan_snapshot_batch(") < manager.index("payload->items_to_update.set_size(count)")
 assert manager.index("discogger_write_safety::plan_snapshot_batch(") < manager.index("api->update_info_async_simple(")
 for outcome in ("reject_count_mismatch", "reject_missing_wrapper", "reject_missing_snapshot"):
     assert "snapshot_batch_decision::" + outcome in manager
@@ -589,8 +601,8 @@ part = art_tasks[art_tasks.index("void download_art_paths_task::safe_run"):art_t
 assert "m_write_lease" in art_header
 assert "acquire_physical_write_lease()" in art_tasks[art_tasks.index("download_art_paths_task::download_art_paths_task"):art_tasks.index("void download_art_paths_task::start")]
 assert "if (!m_to_path_only)" in part and "if (!m_write_lease)" in part
-assert "contains_virtual_subsong(m_items.get_count()" in part
-assert part.index("contains_virtual_subsong(") < part.index("get_release(lkey")
+assert "discogger_require_physical_targets(m_items);" in part
+assert part.index("discogger_require_physical_targets(m_items);") < part.index("get_release(lkey")
 assert part.count(", m_to_path_only, {}, bfile_match") == 4
 assert ", false, {}, bfile_match" not in part
 print("PASS: manual artwork operations acquire shared write lease, reject cue subsongs and honor preview-only mode.")
@@ -609,7 +621,7 @@ for artwork_branch in (album_write, artist_write):
     assert "Cannot write empty artwork data." in artwork_branch
 chained_art = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
 chained_art = chained_art[chained_art.index("void download_art_task::safe_run"):chained_art.index("download_art_paths_task::download_art_paths_task")]
-assert chained_art.index("contains_virtual_subsong(items.get_count()") < chained_art.index("get_release(lkey")
+assert chained_art.index("discogger_require_physical_targets(items);") < chained_art.index("get_release(lkey")
 print("PASS: deferred artwork directory creation, empty-path guards, preview-only and chained CUE safety.")
 
 # Physical metadata deletion/cue mutation cannot silently bypass explicit approval.

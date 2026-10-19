@@ -2,6 +2,7 @@
 
 #include "file_info_manager.h"
 #include "discogger_write_safety.h"
+#include "discogger_physical_targets.h"
 #include <exception>
 #include <utility>
 
@@ -9,6 +10,7 @@ bool file_info_manager::read_infos() {
     // Clear previous snapshot permissions before any operation that may fail.
     begin_physical_read();
     if (items.get_count() != info_wrappers.get_count()) return false;
+    if (discogger_inspect_file_targets(items, false) != discogger_write_safety::target_batch_decision::ready) return false;
     for (size_t i = 0; i < info_wrappers.get_count(); ++i)
         if (!info_wrappers[i]) return false;
 	static_api_ptr_t<metadb_io> api;
@@ -32,6 +34,8 @@ bool file_info_manager::read_infos() {
 void file_info_manager::read_infos_new() {
     // This async read has no validated complete-snapshot callback yet: fail closed.
     begin_physical_read();
+    if (discogger_inspect_file_targets(items, false) != discogger_write_safety::target_batch_decision::ready)
+        throw foo_discogs_exception("Reading tags stopped: invalid or empty file target.");
 	static_api_ptr_t<metadb_io_v2> api;
 	service_ptr_t<read_tags_completion> callback = new service_impl_t<read_tags_completion>(*this);
 	api->load_info_async(items,
@@ -48,12 +52,8 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 	size_t n = 0;
 	size_t outptr = 0;
 	const size_t count = items.get_count();
-	// Defense in depth: reject a mixed physical/virtual batch before scheduling
-	// any asynchronous write. Do not partially commit the physical members.
-	if (discogger_write_safety::contains_virtual_subsong(count,
-		[&](size_t index) { return items[index]->get_subsong_index(); })) {
-		throw foo_discogs_exception("Tagging stopped: virtual CUE/subsong handles cannot be written through the physical metadata writer.");
-	}
+    // Reject every unsafe target atomically before any handle dereference or I/O.
+    discogger_require_physical_targets(items);
 	// Validate the complete batch before dereferencing wrappers or scheduling I/O.
 	const auto batch = discogger_write_safety::plan_snapshot_batch(
 		count, info_wrappers.get_count(),

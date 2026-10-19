@@ -1,12 +1,44 @@
 #pragma once
 #include <cstddef>
 #include <memory>
+#include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
 // Pure, SDK-independent preflight used by both the task and the final writer.
 // A mixed selection is rejected atomically before any asynchronous tag writes.
 namespace discogger_write_safety {
+// Fail closed on unsafe handles before any SDK dereference or file write.
+ // Reads may legitimately contain virtual CUE tracks or duplicate physical
+ // locations; writes must reject them atomically. The comparison callback
+ // supplies the host's case-insensitive path ordering, without filesystem I/O.
+enum class target_batch_decision {
+    ready, reject_empty_selection, reject_null_handle, reject_empty_path,
+    reject_virtual_subsong, reject_duplicate_path
+};
+template <typename HasHandleAt, typename PathAt, typename SubsongAt, typename ComparePaths>
+target_batch_decision inspect_target_batch(std::size_t count, bool physical_write,
+    HasHandleAt has_handle, PathAt path_at, SubsongAt subsong_at, ComparePaths compare_paths) {
+    if (count == 0) return target_batch_decision::reject_empty_selection;
+    auto less = [&](const std::string& a, const std::string& b) {
+        return compare_paths(a, b) < 0;
+    };
+    std::set<std::string, decltype(less)> seen(less);
+    for (std::size_t i = 0; i < count; ++i) {
+        if (!has_handle(i)) return target_batch_decision::reject_null_handle;
+        const char* path = path_at(i);
+        if (!path || !*path) return target_batch_decision::reject_empty_path;
+        if (physical_write) {
+            if (subsong_at(i) != 0)
+                return target_batch_decision::reject_virtual_subsong;
+            if (!seen.insert(path).second)
+                return target_batch_decision::reject_duplicate_path;
+        }
+    }
+    return target_batch_decision::ready;
+}
+
 template <typename SubsongIndexAt>
 bool contains_virtual_subsong(std::size_t count, SubsongIndexAt index_at) {
     for (std::size_t i = 0; i < count; ++i) {

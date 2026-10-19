@@ -6,6 +6,57 @@
 #include <string>
 
 int main() {
+    // Pure target validation: no filesystem access and no host writes.
+    using target = discogger_write_safety::target_batch_decision;
+    struct input { bool handle; const char* path; unsigned subsong; };
+    std::vector<input> entries = {{true, "file://C:\\Music\\Track.mp3", 0},
+                                  {true, "file://C:\\Music\\Other.flac", 0}};
+    int paths_examined = 0;
+    const auto cmp = [](const std::string& a, const std::string& b) {
+        auto fold = [](std::string s) {
+            for (auto& ch : s) if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+            return s;
+        };
+        const auto lhs = fold(a), rhs = fold(b);
+        return lhs < rhs ? -1 : (lhs > rhs ? 1 : 0);
+    };
+    const auto check = [&](bool write) {
+        paths_examined = 0;
+        return discogger_write_safety::inspect_target_batch(entries.size(), write,
+            [&](std::size_t i) { return entries[i].handle; },
+            [&](std::size_t i) { ++paths_examined; return entries[i].path; },
+            [&](std::size_t i) { return entries[i].subsong; }, cmp);
+    };
+    assert(check(true) == target::ready && paths_examined == 2);
+    assert(check(false) == target::ready);
+    entries[1].path = "FILE://c:\\music\\TRACK.mp3";
+    assert(check(true) == target::reject_duplicate_path);
+    assert(check(false) == target::ready); // repeated paths are valid for reads
+    entries[1].subsong = 2;
+    assert(check(true) == target::reject_virtual_subsong);
+    assert(check(false) == target::ready); // virtual CUE reads remain supported
+    entries[1].subsong = 0;
+    entries[1].path = "";
+    assert(check(true) == target::reject_empty_path);
+    assert(check(false) == target::reject_empty_path);
+    entries[1].path = nullptr;
+    assert(check(true) == target::reject_empty_path);
+    entries[1].handle = false;
+    assert(check(true) == target::reject_null_handle && paths_examined == 1);
+    assert(check(false) == target::reject_null_handle);
+    entries.clear();
+    assert(check(true) == target::reject_empty_selection && paths_examined == 0);
+    entries = {{true, "file://C:\\Music\\Good.mp3", 0}};
+    assert(check(true) == target::ready);
+    // Regression: a repeated large selection stays bounded by ordered lookup.
+    std::vector<std::string> generated;
+    for (int i = 0; i < 128; ++i) generated.push_back("file://D:/synthetic/" + std::to_string(i) + ".flac");
+    entries.clear();
+    for (const auto& path : generated) entries.push_back({true, path.c_str(), 0});
+    assert(check(true) == target::ready);
+    entries.push_back({true, "FILE://d:/SYNTHETIC/37.FLAC", 0});
+    assert(check(true) == target::reject_duplicate_path);
+
     // A successful SDK call is not sufficient if even one physical file_info
     // failed to load. Re-reading must revoke any previously valid snapshot.
     discogger_write_safety::initial_metadata_read initial_read;

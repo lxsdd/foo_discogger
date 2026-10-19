@@ -13,6 +13,7 @@
 #include "crc.h"
 #include "tasks.h"
 #include "discogger_write_safety.h"
+#include "discogger_physical_targets.h"
 
 void foo_discogs_threaded_process_callback::run(threaded_process_status &p_status, abort_callback &p_abort) {
 	try {
@@ -277,18 +278,16 @@ void write_tags_task::start() {
 
 void write_tags_task::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 
-	// A virtual CUE/subsong exposes a projected file_info, not the complete physical
-	// metadata. Never pass that projection to the generic physical-file writer.
-	const auto& selected_items = m_tag_writer->m_finfo_manager->items;
-	if (discogger_write_safety::contains_virtual_subsong(selected_items.get_count(),
-		[&](size_t index) { return selected_items[index]->get_subsong_index(); })) {
-		throw foo_discogs_exception("Tagging stopped: virtual CUE/subsong selections are not safe for physical metadata writes. Select the physical file (subsong 0) instead.");
-	}
+    // A virtual/subsong projection, empty path, missing handle or duplicate
+    // physical file must never reach the generic metadata tag writer.
+    discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);
 	m_tag_writer->write_tags();
 
 }
 
 void write_tags_task::on_success(HWND p_wnd) {
+    // Revalidate on UI thread before destructive-change approval or artwork.
+    discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);
 
     // Explicit user approval is required for any deletion, including a
     // reduction in the number of values of a multivalue field. This runs on
@@ -441,11 +440,8 @@ void download_art_task::start() {
 }
 
 void download_art_task::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
-	// Defense in depth: a direct or chained artwork task must not mutate virtual CUE tracks.
-	if (discogger_write_safety::contains_virtual_subsong(items.get_count(),
-		[&](size_t index) { return items[index]->get_subsong_index(); })) {
-		throw foo_discogs_exception("Artwork write stopped: virtual CUE/subsong handles are not physical files.");
-	}
+    // The direct and chained artwork paths require the same physical target gate.
+    discogger_require_physical_targets(items);
 
 	size_t lkey = encode_mr(0, release_id);
 	Release_ptr release = discogs_interface->get_release(lkey, p_status, p_abort);
@@ -597,10 +593,11 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
         if (!m_write_lease) {
             throw locked_task_exception("Another Discogger physical tag/artwork write is still active.");
         }
-        if (discogger_write_safety::contains_virtual_subsong(m_items.get_count(),
-                [&](size_t index) { return m_items[index]->get_subsong_index(); })) {
-            throw foo_discogs_exception("Artwork write stopped: virtual CUE/subsong handles are not physical files.");
-        }
+        discogger_require_physical_targets(m_items);
+    } else if (discogger_inspect_file_targets(m_items, false) != discogger_write_safety::target_batch_decision::ready) {
+        // Previews may include CUE subsongs and multiple tracks per file;
+        // reject only unusable handles/paths, never perform a physical write.
+        throw foo_discogs_exception("Artwork preview stopped: invalid or empty file target.");
     }
 
 	size_t lkey = encode_mr(0, m_release_id);
