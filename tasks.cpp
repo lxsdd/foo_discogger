@@ -306,14 +306,15 @@ void write_tags_task::on_success(HWND p_wnd) {
 		if (!bskip_art && (bconf_art_save || bcustom_art_save)) {
             const pfc::string8 release_id = m_tag_writer->GetRelease()->id;
             const metadb_handle_list physical_items = m_tag_writer->m_finfo_manager->items;
-            artwork_after_tags = [release_id, physical_items, bfile_match]() {
+            const auto artwork_lease = m_write_lease;
+            artwork_after_tags = [release_id, physical_items, bfile_match, artwork_lease]() {
                 service_ptr_t<download_art_task> task =
-                    new service_impl_t<download_art_task>(release_id, physical_items, bfile_match);
+                    new service_impl_t<download_art_task>(release_id, physical_items, bfile_match, artwork_lease);
                 task->start();
             };
 		}
 	}
-    m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags));
+    m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease);
 
 	if (g_discogs->preview_tags_dialog && ::IsWindow(g_discogs->preview_tags_dialog->m_hWnd)) {
 
@@ -370,8 +371,11 @@ public:
 	};
 };
 
-download_art_task::download_art_task(pfc::string8 release_id, metadb_handle_list items, bool file_match) :
-		release_id(release_id), items(items), m_file_match(file_match) {
+download_art_task::download_art_task(pfc::string8 release_id, metadb_handle_list items, bool file_match,
+    discogger_write_safety::async_write_gate::lease write_lease) :
+    release_id(release_id), items(items), m_file_match(file_match),
+    m_write_lease(write_lease ? std::move(write_lease) : discogger_write_safety::acquire_physical_write_lease()) {
+    if (!m_write_lease) throw locked_task_exception("Another Discogger tag/artwork write is active");
 }
 
 void download_art_task::start() {

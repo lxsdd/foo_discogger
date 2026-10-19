@@ -47,6 +47,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cfg_snapshot_ops_test.cpp -o /tmp/discogger-cfg-test && /tmp/discogger-cfg-test
       - name: Verify private SQLite namespace mapping across all linker imports
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/sqlite_symbol_namespace_test.cpp -o /tmp/discogger-sqlite-namespace-test && /tmp/discogger-sqlite-namespace-test
+      - name: Compile and run async write ownership tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/async_write_lease_test.cpp -o /tmp/discogger-write-lease && /tmp/discogger-write-lease
       - name: Compile physical/subsong write-safety preflight tests
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/write_safety_test.cpp -o /tmp/discogger-write-safety-test
       - name: Run physical/subsong write-safety regression tests

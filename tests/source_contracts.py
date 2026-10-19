@@ -90,10 +90,10 @@ header = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
 assert "write_infos(std::function<void()> after_success" in header
 assert "write_completion_gate m_gate" in header
 assert "m_gate.finish(success" in manager
-assert "m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags))" in tasks
-assert "artwork_after_tags = [release_id, physical_items, bfile_match]" in tasks
-assert tasks.index("artwork_after_tags = [release_id") < tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags))")
-assert "new service_impl_t<download_art_task>" in tasks[tasks.index("artwork_after_tags = [release_id"):tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags))")]
+assert "m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease)" in tasks
+assert "artwork_after_tags = [release_id, physical_items, bfile_match, artwork_lease]" in tasks
+assert tasks.index("artwork_after_tags = [release_id") < tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease)")
+assert "new service_impl_t<download_art_task>" in tasks[tasks.index("artwork_after_tags = [release_id"):tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease)")]
 print("PASS: dependent artwork is gated by asynchronous physical tag completion; positive/negative portable gate tests are separate.")
 
 # Real physical metadata no-op: compare the pre-edit snapshot including ReplayGain.
@@ -383,8 +383,8 @@ print("PASS: snapshot config persistence, ID migration and MSVC/portable test wi
 
 # Native C++20 compile-cluster regression contracts (not DLL acceptance).
 native_tasks = (root / "tasks.h").read_text(encoding="utf-8-sig")
-assert "class foo_discogs_write_tag_locked_threaded_process_callback : public foo_discogs_threaded_process_callback" in native_tasks
-assert "write_tag_locked_operation_rw_mutex" in native_tasks
+assert "class write_tags_task : public foo_discogs_threaded_process_callback" in native_tasks
+assert "acquire_physical_write_lease()" in native_tasks
 assert "discogger_crc::crc32(s.begin(), s.end())" in tasks
 assert "crc32_test.cpp" in workflow
 assert "crc32_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
@@ -534,3 +534,13 @@ assert "MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)" not in dialog
 assert "CHAIN_MSG_MAP_MEMBER(m_dctree)" in dialog
 assert "MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)" in tree
 print("PASS: namespace-correct SQLite link, native cache policy and chained tree context menu.")
+
+# Async exclusive metadata-write lease spans worker completion and optional artwork.
+lease = (root / "discogger_async_write_lease.h").read_text(encoding="utf-8-sig")
+assert "compare_exchange_strong" in lease and "std::shared_ptr<void>" in lease
+assert "m_write_lease" in (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
+assert "metadb_io::update_info_success" in manager
+assert "artwork_lease" in tasks
+for path in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
+    assert "async_write_lease_test.cpp" in (root / path).read_text(encoding="utf-8-sig")
+print("PASS: async write/physical artwork operation lease contracts.")

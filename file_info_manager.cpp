@@ -32,7 +32,9 @@ void file_info_manager::read_infos_new() {
 		callback);
 }
 
-void file_info_manager::write_infos(std::function<void()> after_success) {
+void file_info_manager::write_infos(std::function<void()> after_success,
+    discogger_write_safety::async_write_gate::lease write_lease) {
+    if (!write_lease) throw foo_discogs_exception("Tagging stopped: no exclusive physical write lease");
 	size_t n = 0;
 	size_t outptr = 0;
 	const size_t count = items.get_count();
@@ -81,7 +83,7 @@ void file_info_manager::write_infos(std::function<void()> after_success) {
 
 	if (outptr != 0) {
 		static_api_ptr_t<metadb_io_v2> api;
-		service_ptr_t<write_tags_completion> callback = new service_impl_t<write_tags_completion>(std::move(after_success));
+		service_ptr_t<write_tags_completion> callback = new service_impl_t<write_tags_completion>(std::move(after_success), std::move(write_lease));
 		api->update_info_async_simple(
 			pfc::list_const_array_t<metadb_handle_ptr, const pfc::array_t<metadb_handle_ptr>&>(items_to_update, outptr),
 			pfc::list_const_array_t<const file_info*, const pfc::array_t<const file_info*>&>(infos_to_write, outptr),
@@ -97,7 +99,7 @@ void file_info_manager::write_infos(std::function<void()> after_success) {
 }
 
 void write_tags_completion::on_completion(unsigned p_code) {
-    const bool success = p_code == metadb_io::load_info_success;
+    const bool success = p_code == metadb_io::update_info_success;
     try {
         m_gate.finish(success, [this]() {
             if (m_after_success) {

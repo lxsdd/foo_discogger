@@ -2,6 +2,7 @@
 
 #include "error_manager.h"
 #include "discogger_write_safety.h"
+#include "discogger_async_write_lease.h"
 #include <functional>
 #include <utility>
 
@@ -23,9 +24,11 @@ class write_tags_completion : public completion_notify_dummy, public ErrorManage
 {
     discogger_write_safety::write_completion_gate m_gate;
     std::function<void()> m_after_success;
+    discogger_write_safety::async_write_gate::lease m_write_lease;
 public:
-    explicit write_tags_completion(std::function<void()> after_success = {})
-        : m_after_success(std::move(after_success)) {}
+    write_tags_completion(std::function<void()> after_success,
+        discogger_write_safety::async_write_gate::lease write_lease)
+        : m_after_success(std::move(after_success)), m_write_lease(std::move(write_lease)) {}
     void on_completion(unsigned p_code) override;
 };
 
@@ -64,7 +67,8 @@ public:
 	void read_infos_new();
 
 	// Dependent artwork must start only after the async tag write succeeds.
-	void write_infos(std::function<void()> after_success = {});
+	void write_infos(std::function<void()> after_success,
+        discogger_write_safety::async_write_gate::lease write_lease);
 
 	void copy_from(file_info_manager &other, size_t index) {
 		items.add_item(other.items[index]);
