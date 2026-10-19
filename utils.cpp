@@ -360,7 +360,7 @@ size_t encode_mr(const int a, const unsigned long b) {
 	return coded;
 }
 
-size_t encode_mr(const int a, pfc::string8& sb) {
+size_t encode_mr(const int a, const pfc::string8& sb) {
 	return encode_mr(a, atoi(sb));
 }
 
@@ -1247,7 +1247,7 @@ bool check_os_wine_dark_no_theme() {
 		hres = GetThemeDocumentationProperty(theme_name,
 			SZ_THDOCPROP_DISPLAYNAME, theme_name, MAX_PATH);
 	}
-	pfc::string8 str_cvt = pfc::stringcvt::string_utf8_from_os(theme_name, MAX_PATH);
+	pfc::string8 str_cvt = pfc::stringcvt::string_utf8_from_os(theme_name, MAX_PATH).get_ptr();
 
 	is_wine_dark_no_theme &= !str_cvt.length();
 

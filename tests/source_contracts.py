@@ -401,6 +401,23 @@ assert "bool is_default = false;" in preview_cpp and ".default" not in preview_c
 assert "scope.Open(core_api::get_main_window(), true);" not in preview_cpp
 assert "scope.Open(core_api::get_main_window(), true);" not in (root / "track_matching_dialog.cpp").read_text(encoding="utf-8-sig")
 find_cpp = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
-assert "test_no_artists_artist_in_title" not in find_cpp and "debug_ok" not in find_cpp
+assert "test_no_artists_artist_in_title" not in find_cpp
+# Ignore historical identifiers in explanatory comments; ban executable debug paths.
+assert "debug_ok =" not in find_cpp and "if (debug_ok" not in find_cpp
 assert "const std::string os_root_utf8(" in (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
 print("PASS: native compile-cluster source regressions (tag write lock, C++20, UI and CRC32).")
+
+# C++20 / SDK cfg_objList mapping ownership and pointer lifetime contracts.
+writer = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+writer_h = (root / "tag_writer.h").read_text(encoding="utf-8-sig")
+assert "m_mapping_snapshot.from_config(TAGS)" in writer
+assert "m_mapping_snapshot.from_list(*alt_mappings)" in writer
+assert "result->tag_entry = &entry" in writer
+assert "m_mapping_snapshot.at(wtags)" in writer
+assert "owned_snapshot<tag_mapping_entry> m_mapping_snapshot" in writer_h
+assert "TAGS.get_item_ref" not in writer and "tag_mapping_list_type* ptags = &TAGS" not in writer
+assert "encode_mr(const int a, const pfc::string8& sb)" in (root / "utils.h").read_text(encoding="utf-8-sig")
+assert "operator==(const multi_uartwork& rhs) const" in (root / "track_matching_utils.h").read_text(encoding="utf-8-sig")
+for name in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
+    assert "mapping_snapshot_test.cpp" in (root / name).read_text(encoding="utf-8-sig")
+print("PASS: stable tag mapping ownership and native string/const compatibility contracts.")

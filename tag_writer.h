@@ -3,6 +3,7 @@
 #include "file_info_manager.h"
 #include "error_manager.h"
 #include "track_matching_utils.h"
+#include "discogger_mapping_snapshot.h"
 
 #define MATCH_NA       -1
 #define MATCH_SUCCESS   0
@@ -94,6 +95,8 @@ public:
 private:
 
 	Release_ptr release;
+    // tag_result::tag_entry points here; never at a temporary cfg_objList snapshot.
+    discogger_mapping::owned_snapshot<tag_mapping_entry> m_mapping_snapshot;
 
 	service_ptr_t<titleformat_object> m_track_script;
 	const static std::vector<int(TagWriter::*)(track_mappings_list_type &)> m_matching_functions;

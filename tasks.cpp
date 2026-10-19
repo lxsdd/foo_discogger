@@ -113,8 +113,7 @@ void generate_tags_task::on_success(HWND p_wnd) {
 
 		m_preview_dialog->Enabled(true);
 
-		tag_mapping_list_type* ptags = &TAGS;
-		size_t debug = ptags->get_count();
+		const size_t debug = TAGS.get_count();
 		size_t new_res_count = m_tag_writer->tag_results.get_count();
 
 
@@ -1345,7 +1344,7 @@ void on_get_artist_done_process_callback::start(HWND parent) {
 }
 
 void on_get_artist_done_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
-	p_status.set_item(m_artist.get() ? m_artist->name : "");
+	p_status.set_item(m_artist.get() ? m_artist->name.get_ptr() : "");
 
 	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
 	try {

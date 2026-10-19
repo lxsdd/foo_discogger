@@ -1130,12 +1130,12 @@ bool DiscogsInterface::delete_artist_cache(const pfc::string8& artist_id, const 
 
 	if (!bmissingArtist && artist.get()) {
 
-		size_t lkey = encode_mr(0, pfc::string8(release_id));
+		size_t lkey = encode_mr(0, release_id);
 		delres = cache_releases->remove(lkey);
 		delres = cache_artists->remove(artist_id);
 
 		if (bonlyRelease) {
-			size_t lkey = encode_mr(artist->search_role_list_pos, pfc::string8(release_id));
+			size_t lkey = encode_mr(artist->search_role_list_pos, release_id);
 			delres &= cache_releases->remove(lkey);
 		}
 		else {
@@ -1176,13 +1176,13 @@ bool DiscogsInterface::delete_artist_cache(const pfc::string8& artist_id, const 
 	}
 	else {
 		if (!bmissingRelease) {
-			size_t lkey = encode_mr(0, pfc::string8(release_id));
+			size_t lkey = encode_mr(0, release_id);
 			delres = cache_releases->remove(lkey);
 			//todo: clean-up encode_mr with 0, artist_id and search_artist_rol pos
 			if (artist) {
-				lkey = encode_mr(artist->search_role_list_pos, pfc::string8(release_id));
+				lkey = encode_mr(artist->search_role_list_pos, release_id);
 				delres &= cache_releases->remove(lkey);
-				lkey = encode_mr(atoi(artist->id), pfc::string8(release_id));
+				lkey = encode_mr(atoi(artist->id), release_id);
 				delres &= cache_releases->remove(lkey);
 			}
 			// exit

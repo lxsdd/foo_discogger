@@ -166,7 +166,7 @@ extern size_t split(pfc::string8 str, pfc::string8 token, size_t index, std::vec
 extern bool sanitaze_track_title(pfc::string8& out);
 
 size_t encode_mr(const int a, const unsigned long b);
-size_t encode_mr(const int a, pfc::string8& sb);
+size_t encode_mr(const int a, const pfc::string8& sb);
 std::pair<int, unsigned long> decode_mr(const size_t coded);
 
 extern void szcstr(size_t n, pfc::string8& out);

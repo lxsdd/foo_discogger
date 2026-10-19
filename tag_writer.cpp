@@ -347,14 +347,6 @@ bool check_multiple_results(pfc::array_t<string_encoded_array> where, string_enc
 
 void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_process_status& p_status, abort_callback& p_abort) {
 
-	tag_mapping_list_type* ptags;
-	if (alt_mappings) {
-		ptags = alt_mappings;
-	}
-	else {
-		ptags = &TAGS;
-	}
-
 	atm_tag_results_ready = false;
 
 	auto masksize = tag_results_mask.size();
@@ -391,12 +383,17 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 
 	persistent_store prompt_store;
 
+    // Own complete mapping values until preview approval and physical commit finish.
+    // The active cfg_objList returns values, not stable references.
+    if (alt_mappings) m_mapping_snapshot.from_list(*alt_mappings);
+    else m_mapping_snapshot.from_config(TAGS);
+
 	size_t lkey = encode_mr(0, release ? atoi(release->master_id): 0);
 	MasterRelease_ptr master = discogs_interface->get_master_release(lkey);
 
-	for (size_t wtags = 0; wtags < ptags->get_size(); wtags++) {
+	for (size_t wtags = 0; wtags < m_mapping_snapshot.size(); wtags++) {
 
-		const tag_mapping_entry& entry = ptags->get_item_ref(wtags);
+		const tag_mapping_entry& entry = m_mapping_snapshot.at(wtags);
 
 		if ((entry.enable_write) || (entry.enable_update)) {
 
@@ -717,6 +714,8 @@ void TagWriter::write_tags() {
 	m_finfo_manager->invalidate_all();
 
 	bit_array_bittable info_man_validate_mask(bit_array_false(), m_finfo_manager->items.get_count());
+    // Snapshot once per physical write; preserve all original fields by default.
+    const auto active_mappings = TAGS.get();
 
 	bool bhasmask = tag_results_mask.size();
 
@@ -817,9 +816,8 @@ void TagWriter::write_tags() {
 				const char * tag_name = info.meta_enum_name(j);
 
 				//do not remove current map tags
-				for (size_t k = 0; k < TAGS.get_size(); k++) {
-					const auto &tag = TAGS.get_item_ref(k);
-					bool match = !pfc::stringCompareCaseInsensitive(tag_name, tag.tag_name);
+				for (const auto& tag : active_mappings) {
+                    bool match = stricmp_utf8(tag_name, tag.tag_name.get_ptr()) == 0;
 					if (match) {
 						delete_mask.set(j, false);
 						break;
@@ -869,7 +867,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 		else {
 			logtrack = "";
 		}
-		logmsg << logtrack << "T < single-val: " << entry.tag_name << " < " << (tag_value.get_length()? tag_value : "(empty)");
+		logmsg << logtrack << "T < single-val: " << entry.tag_name << " < " << (tag_value.get_length()? tag_value.get_ptr() : "(empty)");
 		log_msg(logmsg); logmsg = "";
 	} //..log
 
@@ -890,7 +888,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 	if (tag_value.get_length()) {
 		//log
 		if (blog) {
-			logmsg << logtrack << "Tw < set " << entry.tag_name << " = " << (tag_value.get_length() ? tag_value : "(empty)");
+			logmsg << logtrack << "Tw < set " << entry.tag_name << " = " << (tag_value.get_length() ? tag_value.get_ptr() : "(empty)");
 			log_msg(logmsg); logmsg = "";
 		}	//..log
 		try {
@@ -972,7 +970,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 			dbgflat << tag_values[ws].get_pure_cvalue();
 		}
 		logmsg << logtrack << "T < multi-value (array " << tag_values.get_size() << ") < " << (!entry.is_multival_meta && !bauto_fresh_mfield ? "not " : "") << "multi-val "
-			<< entry.tag_name << " < " << (tag_values.get_size() ? dbgflat : "(empty)");
+			<< entry.tag_name << " < " << (tag_values.get_size() ? dbgflat.get_ptr() : "(empty)");
 		log_msg(logmsg); logmsg = "";
 	}//..log
 
@@ -1034,7 +1032,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 					//log
 					if (blog) {
 						pfc::string8 dbgflat(setval);
-						logmsg << logtrack << "TW < sets " << entry.tag_name << " = " << (setval.get_length() ? setval : "(empty)");
+						logmsg << logtrack << "TW < sets " << entry.tag_name << " = " << (setval.get_length() ? setval.get_ptr() : "(empty)");
 						log_msg(logmsg); logmsg = "";
 					}//..log
 
@@ -1051,7 +1049,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 					//log
 					if (blog) {
 						pfc::string8 dbgflat = tag_values[i].get_pure_cvalue();
-						logmsg << logtrack << "TW < adds " << entry.tag_name << " + " << (dbgflat.get_length() ? dbgflat : "(empty)");
+						logmsg << logtrack << "TW < adds " << entry.tag_name << " + " << (dbgflat.get_length() ? dbgflat.get_ptr() : "(empty)");
 						log_msg(logmsg); logmsg = "";
 					}//..log
 

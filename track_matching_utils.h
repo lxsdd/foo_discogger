@@ -358,7 +358,7 @@ const struct multi_uartwork {
 		init = false;
 	};
 
-	inline bool operator==(const multi_uartwork& rhs) {
+	inline bool operator==(const multi_uartwork& rhs) const {
 
 		if (file_match != rhs.file_match) return false;
 

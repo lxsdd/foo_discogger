@@ -221,7 +221,8 @@ inline bool get_diff_release_name(TagWriter_ptr tag_writer, pfc::string8& rel_de
 		tag_writer_rel_id = tw_release->id;
 	}
 
-	diff_rel_id = bdiffid ? "" : tag_writer_rel_id;
+	if (bdiffid) diff_rel_id = "";
+    else diff_rel_id = tag_writer_rel_id;
 	rel_desc = bdiffid ? "!! " : "";
 	rel_desc << ltrim(compact_release);
 

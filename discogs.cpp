@@ -912,7 +912,7 @@ bool get_format_info(const pfc::string8 dc_track, const std::pair<ReleaseFormat_
 
 	if (format_nfo_next.first) {
 
-		pfc::string8 name = format_nfo_curr.first->get_name();
+		pfc::string8 name = format_nfo_curr.first->get_name().get_value();
 		ptpos.altformat = name;
 		bool bname = dc_track.has_prefix(name);
 
@@ -964,7 +964,7 @@ bool get_format_info(const pfc::string8 dc_track, const std::pair<ReleaseFormat_
 
 		if (format_nfo_next.first) {
 
-			pfc::string8 name = format_nfo_next.first->get_name();
+			pfc::string8 name = format_nfo_next.first->get_name().get_value();
 			ptpos.altformat = name;
 			bool bname = dc_track.has_prefix(name);
 
@@ -1226,7 +1226,7 @@ void parseTrackPosition(ReleaseTrack_ptr& track, const pfc::array_t<ReleaseForma
 	if (ptpos.bmod_subtrack_track_is_disc && !bminuspos) {
 		//fix entry typos 30,3 -> 30.3
 		if (subdotpos > mod_dc_tn.get_length() && mod_dc_tn.get_length() > 2 && !pfc::string_is_numeric(mod_dc_tn)) {
-			std::string s = mod_dc_tn;
+			std::string s = mod_dc_tn.get_ptr();
 			std::replace_if(s.begin(), s.end(), [](unsigned char c)
 				{
 					return !std::isdigit(c);
@@ -1249,9 +1249,9 @@ void parseTrackPosition(ReleaseTrack_ptr& track, const pfc::array_t<ReleaseForma
 			ptpos.subtrk_postfix = "0";
 		}
 
-		std::string tmpPre = ptpos.vol_preffix;
-		std::string tmpPost = ptpos.trk_postfix;
-		std::string tmpSub = ptpos.subtrk_postfix;
+		std::string tmpPre = ptpos.vol_preffix.get_ptr();
+		std::string tmpPost = ptpos.trk_postfix.get_ptr();
+		std::string tmpSub = ptpos.subtrk_postfix.get_ptr();
 		tmpPre.erase(0, tmpPre.find_first_not_of('0'));
 		tmpPost.erase(0, tmpPost.find_first_not_of('0'));
 		tmpSub.erase(0, tmpSub.find_first_not_of('0'));
@@ -2258,7 +2258,7 @@ void Discogs::parseRelease(Release *release, json_t *root) {
 
 
 	auto master_id = JSONAttributeString(root, "master_id");
-	master_id = !(atoi(master_id)) ? "" : master_id;
+	if (!atoi(master_id)) master_id = "";
 	if (master_id.get_length()) {
 		MasterRelease_ptr master = discogs_interface->get_master_release(master_id);
 		release->set_master_release(std::move(master));
@@ -2458,7 +2458,7 @@ void parse_release_search_fields(json_t* rel, Release_ptr release) {
 		release->id = JSONAttributeString(rel, "id");
 		//MASTER_ID
 		release->master_id = JSONAttributeString(rel, "master_id");
-		release->master_id = !atoi(release->master_id) ? "" : release->master_id;
+		if (!atoi(release->master_id)) release->master_id = "";
 		//TITLE
 		release->title = JSONAttributeString(rel, "title");
 		//COUNTRY
@@ -2709,7 +2709,7 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 
 						if (query_mode ||(!release->loaded_preview && !release->loaded)) {
 							release->master_id = JSONAttributeString(rel, "master_id");
-							release->master_id = !atoi(release->master_id) ? "" : release->master_id;
+							if (!atoi(release->master_id)) release->master_id = "";
 							if (!atoi(release->master_id)) {
 								bool duplicate = false;
 								// NON-MASTER RELEASE
@@ -2995,7 +2995,8 @@ void Discogs::Artist::load(threaded_process_status &p_status, abort_callback &p_
 		}
 		else {
 			if (offline_avail_data) {
-				discogs_interface->get_entity_offline_cache(ol::GetFrom::Artist, id, pfc::string8(), json, p_abort, "Fetching offline cache artist releases...", p_status);
+				pfc::string8 empty_release_id;
+                discogs_interface->get_entity_offline_cache(ol::GetFrom::Artist, id, empty_release_id, json, p_abort, "Fetching offline cache artist releases...", p_status);
 
 				if (json.get_length()) {
 					offline_can_write = false;
@@ -3210,6 +3211,9 @@ void Discogs::Release::load(threaded_process_status &p_status, abort_callback &p
 		//..
 
 		loaded = true;
+        // Stable, explicitly narrow UTF-8 stamp; the pfc formatter cannot stream string8 objects directly.
+        pfc::string8 cache_stamp;
+        cache_stamp << date_added.get_ptr() << " " << date_changed.get_ptr();
 
 		bool bCacheSaved = false;
 
@@ -3236,7 +3240,7 @@ void Discogs::Release::load(threaded_process_status &p_status, abort_callback &p
 				if (bFolderReady) {
 
 					//mark PENDING
-					bool bmark_loading = ol::stamp_download(pfc::string_formatter() << date_added << " " << date_changed, n8_rel_path, false/*done*/);
+					bool bmark_loading = ol::stamp_download(cache_stamp, n8_rel_path, false/*done*/);
 
 					pfc::string8 page_path = ol::get_offline_path(target_artist_id, ol::GetFrom::Release, id, true);
 					page_path << "\\root.json";
@@ -3254,7 +3258,7 @@ void Discogs::Release::load(threaded_process_status &p_status, abort_callback &p
 			if (bCacheSaved) {
 				try {
 					//mark DONE
-					bool bmark_done = ol::stamp_download(pfc::string_formatter() << date_added << " " << date_changed, n8_rel_path, true/*done*/);
+					bool bmark_done = ol::stamp_download(cache_stamp, n8_rel_path, true/*done*/);
 				}
 				catch (...) {
 					//..
