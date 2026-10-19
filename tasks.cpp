@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include <unordered_set>
 #include <functional>
+#include <set>
+#include <string>
 #include <utility>
 #include "discogs_interface.h"
 
@@ -288,6 +290,53 @@ void write_tags_task::safe_run(threaded_process_status &p_status, abort_callback
 
 void write_tags_task::on_success(HWND p_wnd) {
 
+    // Explicit user approval is required for any deletion, including a
+    // reduction in the number of values of a multivalue field. This runs on
+    // the UI callback thread before ANY asynchronous SDK write is scheduled.
+    std::size_t removed_fields = 0, removed_values = 0;
+    std::set<std::string> removed_names;
+    const auto& finfo = m_tag_writer->m_finfo_manager;
+    for (size_t index = 0; index < finfo->info_wrappers.get_count(); ++index) {
+        const auto& wrapper = finfo->info_wrappers[index];
+        if (!wrapper || !wrapper->mask || !wrapper->original_captured) continue;
+        const auto report = discogger_write_safety::inspect_tag_deletions(
+            wrapper->original_info, wrapper->info, [&](const char* name) {
+                if (removed_names.size() >= 16 || !name) return;
+                std::string safe;
+                for (size_t c = 0; name[c] && c < 64; ++c) {
+                    const unsigned char ch = static_cast<unsigned char>(name[c]);
+                    safe.push_back(ch >= 32 && ch <= 126 ? static_cast<char>(ch) : '?');
+                }
+                removed_names.insert(std::move(safe));
+            });
+        if (report.cuesheet_modified) {
+            finfo->discard_pending_changes();
+            m_tag_writer->ResetMask();
+            throw foo_discogs_exception("Writing cancelled: CUESHEET changes require a dedicated, tested cue editor. Original physical tags were not submitted.");
+        }
+        removed_fields += report.removed_fields;
+        removed_values += report.removed_values;
+    }
+    bool tag_deletions_approved = false;
+    if (removed_fields || removed_values) {
+        pfc::string8 warning;
+        warning << "Discogger is about to REMOVE " << removed_fields
+                << " metadata field(s) and " << removed_values
+                << " multivalue entry/entries from physical files.\n\nAffected fields:";
+        for (const auto& name : removed_names) warning << "\n - " << name.c_str();
+        if (removed_names.size() >= 16) warning << "\n - (additional fields may be affected)";
+        warning << "\n\nThese removals cannot be undone automatically after a partial disk write."
+                << "\nContinue with this destructive operation?";
+        if (uMessageBox(p_wnd ? p_wnd : core_api::get_main_window(), warning.get_ptr(),
+            "Discogger: confirm metadata removals",
+            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_APPLMODAL) != IDYES) {
+            finfo->discard_pending_changes();
+            m_tag_writer->ResetMask();
+            return;
+        }
+        tag_deletions_approved = true;
+    }
+
 	// Prepare optional artwork, but never launch it until the physical tag
 	// writer reports success. The previous code launched it immediately.
 	std::function<void()> artwork_after_tags;
@@ -314,7 +363,7 @@ void write_tags_task::on_success(HWND p_wnd) {
             };
 		}
 	}
-    m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease);
+    m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease, tag_deletions_approved);
 
 	if (g_discogs->preview_tags_dialog && ::IsWindow(g_discogs->preview_tags_dialog->m_hWnd)) {
 
@@ -341,6 +390,7 @@ void write_tags_task::on_abort(HWND p_wnd) {
 }
 
 void write_tags_task::on_error(HWND p_wnd) {
+    m_tag_writer->m_finfo_manager->discard_pending_changes();
 	m_tag_writer->ResetMask();
 }
 

@@ -2,6 +2,7 @@
 
 #include "error_manager.h"
 #include "discogger_write_safety.h"
+#include "tag_deletion_preflight.h"
 #include "discogger_async_write_lease.h"
 #include <functional>
 #include <utility>
@@ -68,7 +69,8 @@ public:
 
 	// Dependent artwork must start only after the async tag write succeeds.
 	void write_infos(std::function<void()> after_success,
-        discogger_write_safety::async_write_gate::lease write_lease);
+        discogger_write_safety::async_write_gate::lease write_lease,
+        bool tag_deletions_approved = false);
 
 	void copy_from(file_info_manager &other, size_t index) {
 		items.add_item(other.items[index]);
@@ -94,6 +96,17 @@ public:
 	inline void validate_item(size_t p_index) {
 		info_wrappers[p_index]->mask = true;
 	}
+
+
+    // Cancelled or failed previews must not become the next "original" tag snapshot.
+    void discard_pending_changes() {
+        for (size_t index = 0; index < info_wrappers.get_count(); ++index) {
+            auto& wrapper = info_wrappers[index];
+            if (!wrapper) continue;
+            if (wrapper->original_captured) wrapper->info = wrapper->original_info;
+            wrapper->mask = false;
+        }
+    }
 
 	inline void invalidate_all() {
 		const size_t count = info_wrappers.get_count();

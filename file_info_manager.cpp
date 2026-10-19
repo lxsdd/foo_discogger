@@ -33,7 +33,8 @@ void file_info_manager::read_infos_new() {
 }
 
 void file_info_manager::write_infos(std::function<void()> after_success,
-    discogger_write_safety::async_write_gate::lease write_lease) {
+    discogger_write_safety::async_write_gate::lease write_lease,
+    bool tag_deletions_approved) {
     if (!write_lease) throw foo_discogs_exception("Tagging stopped: no exclusive physical write lease");
 	size_t n = 0;
 	size_t outptr = 0;
@@ -70,6 +71,16 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 		if (!wrapper->original_captured) {
 			throw foo_discogs_exception("Tagging stopped: original physical metadata snapshot is missing.");
 		}
+        // Defense in depth: even future direct writer callers cannot bypass the
+        // explicit destructive-change approval or edit CUESHEET as a flat tag.
+        const auto report = discogger_write_safety::inspect_tag_deletions(
+            wrapper->original_info, wrapper->info, [](const char*) {});
+        if (report.cuesheet_modified) {
+            throw foo_discogs_exception("Tagging stopped: embedded CUESHEET requires a dedicated cue editor.");
+        }
+        if (!tag_deletions_approved && (report.removed_fields || report.removed_values)) {
+            throw foo_discogs_exception("Tagging stopped: metadata removals were not explicitly approved.");
+        }
 		const bool metadata_equal = file_info::g_is_meta_equal(wrapper->original_info, wrapper->info);
 		const bool replaygain_equal = replaygain_info::g_equal(
 			wrapper->original_info.get_replaygain(), wrapper->info.get_replaygain());

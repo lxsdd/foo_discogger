@@ -26,6 +26,7 @@ $Sources = @(
     'mapping_snapshot_test.cpp',
     'collaboration_fallback_test.cpp',
     'write_safety_test.cpp',
+    'tag_deletion_preflight_test.cpp',
     'multivalue_fields_test.cpp',
     'cache_lru_test.cpp',
     'cfg_snapshot_ops_test.cpp',

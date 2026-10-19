@@ -51,6 +51,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/async_write_lease_test.cpp -o /tmp/discogger-write-lease && /tmp/discogger-write-lease
       - name: Compile and run artwork no-op plus bounded-read regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/artwork_noop_test.cpp -o /tmp/discogger-artwork-noop && /tmp/discogger-artwork-noop
+      - name: Test physical tag deletion previews and CUESHEET preservation
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/tag_deletion_preflight_test.cpp -o /tmp/discogger-tag-deletions && /tmp/discogger-tag-deletions
       - name: Compile physical/subsong write-safety preflight tests
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/write_safety_test.cpp -o /tmp/discogger-write-safety-test
       - name: Run physical/subsong write-safety regression tests

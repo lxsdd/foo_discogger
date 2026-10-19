@@ -90,10 +90,10 @@ header = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
 assert "write_infos(std::function<void()> after_success" in header
 assert "write_completion_gate m_gate" in header
 assert "m_gate.finish(success" in manager
-assert "m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease)" in tasks
+assert "m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease, tag_deletions_approved)" in tasks
 assert "artwork_after_tags = [release_id, physical_items, bfile_match, artwork_lease]" in tasks
-assert tasks.index("artwork_after_tags = [release_id") < tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease)")
-assert "new service_impl_t<download_art_task>" in tasks[tasks.index("artwork_after_tags = [release_id"):tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease)")]
+assert tasks.index("artwork_after_tags = [release_id") < tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease, tag_deletions_approved)")
+assert "new service_impl_t<download_art_task>" in tasks[tasks.index("artwork_after_tags = [release_id"):tasks.index("m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease, tag_deletions_approved)")]
 print("PASS: dependent artwork is gated by asynchronous physical tag completion; positive/negative portable gate tests are separate.")
 
 # Real physical metadata no-op: compare the pre-edit snapshot including ReplayGain.
@@ -590,3 +590,19 @@ chained_art = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
 chained_art = chained_art[chained_art.index("void download_art_task::safe_run"):chained_art.index("download_art_paths_task::download_art_paths_task")]
 assert chained_art.index("contains_virtual_subsong(items.get_count()") < chained_art.index("get_release(lkey")
 print("PASS: deferred artwork directory creation, empty-path guards, preview-only and chained CUE safety.")
+
+# Physical metadata deletion/cue mutation cannot silently bypass explicit approval.
+preflight = (root / "tag_deletion_preflight.h").read_text(encoding="utf-8-sig")
+manager = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
+file_manager_h = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
+tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+assert "cuesheet_modified" in preflight and 'meta_find("CUESHEET")' in preflight
+assert "removed_fields" in preflight and "removed_values" in preflight
+assert "discard_pending_changes()" in file_manager_h and "original_info" in file_manager_h
+assert "tag_deletions_approved = false" in file_manager_h
+assert 'if (!tag_deletions_approved && (report.removed_fields || report.removed_values))' in manager
+assert 'MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2' in tasks
+assert tasks.index("inspect_tag_deletions(") < tasks.index("write_infos(std::move(artwork_after_tags)")
+for cfg in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
+    assert "tag_deletion_preflight_test.cpp" in (root / cfg).read_text(encoding="utf-8-sig")
+print("PASS: explicit physical-tag removal approval, protected embedded CUE and restore-on-cancel.")
