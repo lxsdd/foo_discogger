@@ -391,7 +391,7 @@ bool CFindReleaseDialog::GetCustomQueryTF(pfc::string8& frm_custom_tf) {
 		//
 
 		try {
-			m_query_custom_fs->run_hook(m_items[0]->get_location(), &info, &hook, custom_tf, nullptr);
+			m_query_custom_script->run_hook(m_items[0]->get_location(), &info, &hook, custom_tf, nullptr);
 		}
 		catch (...) {
 			pfc::string8 msg("Error running custom search query title-format: ");

@@ -1810,7 +1810,7 @@ void CConfigurationDialog::on_load_search_formatting(HWND wnd) {
 
 	case CMD_4:
 		uid = IDC_EDIT_RELEASE_FORMATTING;
-		frm_string << "[\'[\'%RELEASE_SEARCH_ROLES%\']\' ]" << tmpcfg.search_release_format_string;,[%RELEASE_QUERY_MAJOR_FORMATS_QTY%:]%RELEASE_SEARCH_MAJOR_FORMATS%,%RELEASE_SEARCH_FORMATS%,%RELEASE_YEAR%,%RELEASE_SEARCH_CATNOS%, [%RELEASE_COUNTRY%]))";
+		frm_string << "[\'[\'%RELEASE_SEARCH_ROLES%\']\' ]" << tmpcfg.search_release_format_string;
 		break;
 	case CMD_5: {
 		uid = IDC_EDIT_MASTER_FORMATTING;

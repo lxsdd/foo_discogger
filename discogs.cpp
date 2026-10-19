@@ -1705,8 +1705,8 @@ bool parseAllTrackPositions(pfc::array_t<ReleaseTrack_ptr>& intermediate_tracks,
 			disc->disc_number = atoi(parse_nfo.vol_preffix);
 
 			track->disc_track_number = atoi(parse_nfo.trk_postfix);
-			track->disc_track_side = parse_nfo.bformat_incl_sideb;
-			track->disc_track_in_side = atoi(parse_nfo.side_trk_postfix);
+			track->disc_track_two_sided = parse_nfo.bformat_incl_sideb;
+			track->disc_track_side = atoi(parse_nfo.side_trk_postfix);
 
 				track->track_number = ctrack_number;
 
@@ -1717,8 +1717,8 @@ bool parseAllTrackPositions(pfc::array_t<ReleaseTrack_ptr>& intermediate_tracks,
 			else {
 
 			track->disc_track_number = cdisc_track_number;
-			track->disc_track_side = parse_nfo.bformat_incl_sideb;
-			track->disc_track_in_side = atoi(parse_nfo.side_trk_postfix);
+			track->disc_track_two_sided = parse_nfo.bformat_incl_sideb;
+			track->disc_track_side = atoi(parse_nfo.side_trk_postfix);
 
 				track->track_number = ctrack_number;
 			}
@@ -1747,7 +1747,7 @@ bool parseAllTrackPositions(pfc::array_t<ReleaseTrack_ptr>& intermediate_tracks,
 
 				// ADD NEW TRACK
 
-				disc->tracks.append_single(std::move(track));
+				disc->tracks.append_single(track);
 
 				ctrack_number++;
 
@@ -1789,7 +1789,6 @@ bool parseAllTrackPositions(pfc::array_t<ReleaseTrack_ptr>& intermediate_tracks,
 					// +++
 
 					}
-				}
 				else {
 
 					if ((can_advance_continuous_subtracks)
@@ -1803,7 +1802,6 @@ bool parseAllTrackPositions(pfc::array_t<ReleaseTrack_ptr>& intermediate_tracks,
 					}
 				}
 			}
-		} // end new track precond 2
 		else {
 
 			// ROUTE MERGE TITLES
@@ -1851,7 +1849,7 @@ bool parseAllTrackPositions(pfc::array_t<ReleaseTrack_ptr>& intermediate_tracks,
 				//ignore silence, otherwise move to track's hiddens
 				if (!track->title.equals("(silence)")) {
 
-					disc->tracks[disc->tracks.get_size() - 1]->hidden_tracks.append_single(std::move(track));
+					disc->tracks[disc->tracks.get_size() - 1]->hidden_tracks.append_single(track);
 
 					merging_track = track->discogs_track_number;
 

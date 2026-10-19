@@ -62,6 +62,10 @@ public:
 	}
 };
 
+// Legacy read/filter task name uses the same mutex-protected operation gate.
+// Keep this separate from the asynchronous physical tag-write gate.
+using foo_discogs_locked_threaded_process_callback = foo_discogs_threaded_locked_process_callback;
+
 class generate_tags_task : public foo_discogs_threaded_process_callback
 {
 public:

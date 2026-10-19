@@ -295,3 +295,23 @@ assert "m_conditioned_invalidation && m_conditioned_invalidation()" in edit_head
 assert "Invalidate(); // redraw the edit and its embedded libPPUI buttons" in edit_header
 assert edit_header.count("RefreshConditionedInvalidation();") >= 3
 print("PASS: conditional native edit/button repaint is implemented, not stubbed.")
+
+# Compile-path regressions for Discogs release track routing and native UI.
+parser = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+assert "append_single(std::move(track))" not in parser
+assert parser.count("append_single(track);") >= 2
+assert parser.count("track->disc_track_two_sided = parse_nfo.bformat_incl_sideb;") == 2
+assert parser.count("track->disc_track_side = atoi(parse_nfo.side_trk_postfix);") == 2
+assert "track->disc_track_in_side" not in parser
+assert "} // end new track precond 2" not in parser
+assert "else if (!parse_nfo.btrk_alpha && can_advance_subtrack)" in parser
+assert "if ((can_advance_continuous_subtracks)" in parser
+assert "// ROUTE MERGE TITLES" in parser and "// discard track..." in parser
+cfg_dialog = (root / "configuration_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "tmpcfg.search_release_format_string;,[%" not in cfg_dialog
+assert '<< tmpcfg.search_release_format_string;' in cfg_dialog
+release_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "m_query_custom_fs->" not in release_dialog
+assert "m_query_custom_script->run_hook(" in release_dialog
+assert "using foo_discogs_locked_threaded_process_callback = foo_discogs_threaded_locked_process_callback;" in task_header
+print("PASS: release routing, shared track lifetime, native query, config syntax and read lock base.")
