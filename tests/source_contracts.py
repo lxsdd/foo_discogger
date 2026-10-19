@@ -560,3 +560,16 @@ assert embedded.index("artwork_bytes_equal(") < embedded.index("editor->commit(p
 for workflow_file in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "artwork_noop_test.cpp" in (root / workflow_file).read_text(encoding="utf-8-sig")
 print("PASS: embedded/external artwork exact-byte no-op and staged atomic overwrite contracts.")
+
+# Manual artwork button must share the tag/artwork operation gate and not write virtual cues.
+art_tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+art_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
+part = art_tasks[art_tasks.index("void download_art_paths_task::safe_run"):art_tasks.index("void download_art_paths_task::on_success")]
+assert "m_write_lease" in art_header
+assert "acquire_physical_write_lease()" in art_tasks[art_tasks.index("download_art_paths_task::download_art_paths_task"):art_tasks.index("void download_art_paths_task::start")]
+assert "if (!m_to_path_only)" in part and "if (!m_write_lease)" in part
+assert "contains_virtual_subsong(m_items.get_count()" in part
+assert part.index("contains_virtual_subsong(") < part.index("get_release(lkey")
+assert part.count(", m_to_path_only, {}, bfile_match") == 4
+assert ", false, {}, bfile_match" not in part
+print("PASS: manual artwork operations acquire shared write lease, reject cue subsongs and honor preview-only mode.")

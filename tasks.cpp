@@ -519,7 +519,9 @@ void download_art_task::safe_run(threaded_process_status& p_status, abort_callba
 download_art_paths_task::download_art_paths_task(CTrackMatchingDialog* m_dialog, pfc::string8 release_id, 
 	metadb_handle_list items, pfc::array_t<GUID> album_art_ids, bool to_path_only, bool file_match) :
 	m_dialog(m_dialog), m_release_id(release_id), m_items(items),
-	m_album_art_ids(album_art_ids), m_to_path_only(to_path_only), m_file_match(file_match) {
+	m_album_art_ids(album_art_ids), m_to_path_only(to_path_only), m_file_match(file_match),
+    m_write_lease(to_path_only ? discogger_write_safety::async_write_gate::lease{}
+                               : discogger_write_safety::acquire_physical_write_lease()) {
 
 }
 
@@ -536,6 +538,15 @@ void download_art_paths_task::start() {
 }
 
 void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
+    if (!m_to_path_only) {
+        if (!m_write_lease) {
+            throw locked_task_exception("Another Discogger physical tag/artwork write is still active.");
+        }
+        if (discogger_write_safety::contains_virtual_subsong(m_items.get_count(),
+                [&](size_t index) { return m_items[index]->get_subsong_index(); })) {
+            throw foo_discogs_exception("Artwork write stopped: virtual CUE/subsong handles are not physical files.");
+        }
+    }
 
 	size_t lkey = encode_mr(0, m_release_id);
 	Release_ptr release = discogs_interface->get_release(lkey, p_status, p_abort);
@@ -594,7 +605,7 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 
 			if (bconf_album_save_or_embed && !bcust_album_save_or_embed) {
 
-				ada_mod = art_download_attribs(CONF.save_album_art, CONF.embed_album_art, CONF.album_art_overwrite, CONF.album_art_fetch_all, false, {}, bfile_match, bcust_album_save_or_embed);
+				ada_mod = art_download_attribs(CONF.save_album_art, CONF.embed_album_art, CONF.album_art_overwrite, CONF.album_art_fetch_all, m_to_path_only, {}, bfile_match, bcust_album_save_or_embed);
 				becall = true;
 			}
 			else {
@@ -605,7 +616,7 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 				bool bitem_fetch_all = true;
 
 				if (bitem_write || bitem_embed) {
-					ada_mod = art_download_attribs(bitem_write, bitem_embed, bitem_overwrite, true /*always true to image loop*/, false, {}, bfile_match, bcust_album_save_or_embed);
+					ada_mod = art_download_attribs(bitem_write, bitem_embed, bitem_overwrite, true /*always true to image loop*/, m_to_path_only, {}, bfile_match, bcust_album_save_or_embed);
 					becall = true;
 				}
 			}
@@ -634,7 +645,7 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 
 			if (bconf_artist_save_or_embed && !bcust_artist_save_or_embed) {
 
-				ada_mod = art_download_attribs(CONF.save_artist_art, CONF.embed_artist_art, CONF.artist_art_overwrite, CONF.artist_art_fetch_all, false, {}, bfile_match, bcust_artist_save_or_embed);
+				ada_mod = art_download_attribs(CONF.save_artist_art, CONF.embed_artist_art, CONF.artist_art_overwrite, CONF.artist_art_fetch_all, m_to_path_only, {}, bfile_match, bcust_artist_save_or_embed);
 				bcall = true;
 			}
 			else {
@@ -646,7 +657,7 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 
 				if (bitem_write || bitem_embed) {
 
-					ada_mod = art_download_attribs(bitem_write, bitem_embed, bitem_overwrite, bitem_fetch_all /*always true to loop all images*/, false, {}, bfile_match, bcust_artist_save_or_embed);
+					ada_mod = art_download_attribs(bitem_write, bitem_embed, bitem_overwrite, bitem_fetch_all /*always true to loop all images*/, m_to_path_only, {}, bfile_match, bcust_artist_save_or_embed);
 					bcall = true;
 				}
 			}

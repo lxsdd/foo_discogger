@@ -147,8 +147,9 @@ private:
 	pfc::array_t<GUID> m_album_art_ids;
 	pfc::string8 m_release_id;
 	metadb_handle_list m_items;
-	bool m_to_path_only; //debug sim
+	bool m_to_path_only; // Preview mode must never mutate external/embedded artwork.
 	bool m_file_match;
+    discogger_write_safety::async_write_gate::lease m_write_lease;
 
 	std::vector<std::pair<pfc::string8, bit_array_bittable>> m_vres;
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;

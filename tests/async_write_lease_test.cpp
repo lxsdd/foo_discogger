@@ -23,5 +23,14 @@ int main() {
     for(auto& worker : workers) worker.join();
     assert(denied == 8);
     held.reset();
-    assert(gate.acquire());
+    auto tag_writer = gate.acquire();
+    assert(tag_writer);
+    auto manual_art = gate.acquire();
+    assert(!manual_art);
+    tag_writer.reset();
+    manual_art = gate.acquire();
+    assert(manual_art && gate.busy());
+    assert(!gate.acquire()); // Tag writer cannot race active manual artwork.
+    manual_art.reset();
+    assert(!gate.busy());
 }
