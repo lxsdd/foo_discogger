@@ -215,7 +215,7 @@ public:
 		threaded_process_status& p_status, abort_callback& p_abort);
 
 	void search_artist(const pfc::string8 &name, pfc::array_t<Artist_ptr> &exact_matches, pfc::array_t<Artist_ptr> &other_matches, threaded_process_status &p_status, abort_callback &p_abort);
-#ifdef SEARCH_AT
+
 
 	struct parse_amt_info {
 
@@ -237,11 +237,10 @@ public:
 		std::pair<size_t, size_t>& va_res_cap, std::pair<size_t, size_t>& va_done_cap,
 		threaded_process_status& p_status, abort_callback& p_abort);
 
-	void DiscogsInterface::parse_amt_page(Artist_ptr fakeArtist,  JSONParser_ptr jp, parse_amt_info& pai,
+	void parse_amt_page(Artist_ptr fakeArtist,  JSONParser_ptr jp, parse_amt_info& pai,
 		threaded_process_status& p_status, abort_callback& p_abort);
 
 	rppair_t search_amt_artist(const pfc::string8 &name, const QueryDefMap qdm_search_query, pfc::array_t<Artist_ptr> &exact_matches, pfc::array_t<Artist_ptr> &other_matches, threaded_process_status &p_status, abort_callback &p_abort);
-#endif
 	Release_ptr get_release(const size_t lkey, bool bypass_is_cache = true, bool bypass = false);
 	Release_ptr get_release(const size_t lkey, threaded_process_status& p_status, abort_callback& p_abort, bool bypass_cache = false, bool throw_all = false);
 	Release_ptr get_release(const size_t, const pfc::string8& offline_artist_id, threaded_process_status &p_status, abort_callback &p_abort, bool bypass_cache = false, bool throw_all = false);

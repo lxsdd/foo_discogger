@@ -262,3 +262,16 @@ dialog_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
 assert "NOTIFY_HANDLER(IDC_RELEASE_TREE, TVN_DELETEITEM, OnDeleteTreeItem)" not in dialog_header
 assert "NOTIFY_HANDLER(IDC_RELEASE_TREE, NM_DBLCLK, OnReleaseTreeDoubleClickRelease)" in (root / "find_release_tree.h").read_text(encoding="utf-8-sig")
 print("PASS: batch snapshot preflight and native clipboard/tree callback API contracts.")
+
+# Artist/title/release composite-search declarations must match their
+# unconditional definitions; a stale SEARCH_AT guard hid the entire parser.
+interface_header = (root / "discogs_interface.h").read_text(encoding="utf-8-sig")
+interface_impl = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+assert "#ifdef SEARCH_AT" not in interface_header
+assert "struct parse_amt_info" in interface_header
+assert "void process_amt_parsed_fake_artist(" in interface_header
+assert "void parse_amt_page(" in interface_header
+assert "void DiscogsInterface::parse_amt_page(" not in interface_header
+assert "void DiscogsInterface::process_amt_parsed_fake_artist(" in interface_impl
+assert "void DiscogsInterface::parse_amt_page(" in interface_impl
+print("PASS: composite-search parser declarations are visible and C++-qualified correctly.")
