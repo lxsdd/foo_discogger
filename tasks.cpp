@@ -391,6 +391,11 @@ void download_art_task::start() {
 }
 
 void download_art_task::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
+	// Defense in depth: a direct or chained artwork task must not mutate virtual CUE tracks.
+	if (discogger_write_safety::contains_virtual_subsong(items.get_count(),
+		[&](size_t index) { return items[index]->get_subsong_index(); })) {
+		throw foo_discogs_exception("Artwork write stopped: virtual CUE/subsong handles are not physical files.");
+	}
 
 	size_t lkey = encode_mr(0, release_id);
 	Release_ptr release = discogs_interface->get_release(lkey, p_status, p_abort);

@@ -296,11 +296,10 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 		CONF.album_art_directory_string->run_hook(item->get_location(), &info, &hook, directory, nullptr);
 
 		// hardcoded "nullptr" ?
-		if (!STR_EQUAL(directory, "nullptr")) {
+		if (!STR_EQUAL(directory, "nullptr") && directory.get_length() != 0) {
 			if (directory[directory.get_length() - 1] != '\\') {
 				directory.add_char('\\');
 			}
-			ensure_directory_exists(directory);
 		}
 		else {
 			ada.write_it = false;
@@ -346,7 +345,7 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 
 	for (size_t i = 0; i < cimage_batch; i++) {
 		pfc::string8 path = directory;
-		bool write_this = vwrite_it[i];
+		bool write_this = vwrite_it[i] && ada.write_it;
 		bool embed_req = true; //only embed first album/artist image on non custom jobs
 
 		if (write_this) {
@@ -448,6 +447,11 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 					g_discogs->fetch_image(mbmi.first->second, release->images[i], p_abort);
 					buffer = mbmi.first->second;
 				}
+				// Path previews and unchanged/failed fetches must not create directories.
+				if (!buffer.get_ptr() || buffer.get_count() == 0) {
+					throw foo_discogs_exception("Cannot write empty artwork data.");
+				}
+				ensure_directory_exists(directory);
 				g_discogs->write_image(buffer, path, p_abort);
 
 				saved_mask.set(i, true);
@@ -648,11 +652,10 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 		hook.set_artist(&artist);
 		CONF.artist_art_directory_string->run_hook(item->get_location(), &info, &hook, directory, nullptr);
 
-		if (vwrite_it[i] && !(STR_EQUAL(directory, "nullptr"))) {
+		if (vwrite_it[i] && !STR_EQUAL(directory, "nullptr") && directory.get_length() != 0) {
 			if (directory[directory.get_length() - 1] != '\\') {
 				directory.add_char('\\');
 			}
-			ensure_directory_exists(directory);
 		}
 		else {
 			vwrite_it[i] = false;
@@ -666,7 +669,7 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 		}
 
 		pfc::string8 path = directory;
-		bool write_this = vwrite_it[i];
+		bool write_this = vwrite_it[i] && ada.write_it;
 		bool embed_req = true & b_multiple_artist_head;
 
 		if (write_this) {
@@ -772,6 +775,11 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 					buffer = mbmi.first->second;
 				}
 
+				// Path previews and unchanged/failed fetches must not create directories.
+				if (!buffer.get_ptr() || buffer.get_count() == 0) {
+					throw foo_discogs_exception("Cannot write empty artwork data.");
+				}
+				ensure_directory_exists(directory);
 				g_discogs->write_image(buffer, path, p_abort);
 				saved_mask.set(i + offset, true);
 			}

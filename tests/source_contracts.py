@@ -573,3 +573,20 @@ assert part.index("contains_virtual_subsong(") < part.index("get_release(lkey")
 assert part.count(", m_to_path_only, {}, bfile_match") == 4
 assert ", false, {}, bfile_match" not in part
 print("PASS: manual artwork operations acquire shared write lease, reject cue subsongs and honor preview-only mode.")
+
+# Artwork previews must never create directories; failed/empty paths cannot
+# trigger a write, including custom multi-artwork branches.
+art_source = (root / "foo_discogs.cpp").read_text(encoding="utf-8-sig")
+album_write = art_source[art_source.index("void foo_discogs::save_album_art("):art_source.index("void foo_discogs::save_artist_art(")]
+artist_write = art_source[art_source.index("void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>&"):art_source.index("void foo_discogs::fetch_image(")]
+for artwork_branch in (album_write, artist_write):
+    assert artwork_branch.count("ensure_directory_exists(directory);") == 1
+    assert artwork_branch.index("if (ada.to_path_only)") < artwork_branch.index("ensure_directory_exists(directory);")
+    assert artwork_branch.index("ensure_directory_exists(directory);") < artwork_branch.index("g_discogs->write_image(buffer, path, p_abort);")
+    assert "directory.get_length() != 0" in artwork_branch
+    assert "bool write_this = vwrite_it[i] && ada.write_it;" in artwork_branch
+    assert "Cannot write empty artwork data." in artwork_branch
+chained_art = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+chained_art = chained_art[chained_art.index("void download_art_task::safe_run"):chained_art.index("download_art_paths_task::download_art_paths_task")]
+assert chained_art.index("contains_virtual_subsong(items.get_count()") < chained_art.index("get_release(lkey")
+print("PASS: deferred artwork directory creation, empty-path guards, preview-only and chained CUE safety.")
