@@ -435,3 +435,12 @@ assert "zlibstatic.lib" in native_script and "libPPUI.lib" in native_script
 assert "shared.vcxproj" in (root / "scripts/build-official-sdk-libs.ps1").read_text(encoding="utf-8-sig")
 assert "const auto url_utf8 = pfc::stringcvt::string_utf8_from_os(wurl);" in (root / "utils.cpp").read_text(encoding="utf-8-sig")
 print("PASS: native MSVC x86/x64 strict DLL link gate, pinned libraries, PE SHA and UTF-8 exception safety.")
+
+# Strict dual-architecture zlib generated config contract.
+native = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
+assert "$zconf = Join-Path $zlibBuild 'zconf.h'" in native
+assert "Generated zlib zconf.h missing for $platform" in native
+assert "$nativeIncludes = @($zlibBuild, $includes) -join ';'" in native
+assert 'AdditionalIncludeDirectories=$($nativeIncludes.Replace' in native
+assert 'Copy-Item -LiteralPath $zconf' not in native
+print("PASS: per-architecture CMake zconf.h passed to strict native DLL compiler.")
