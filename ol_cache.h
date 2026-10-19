@@ -119,9 +119,10 @@ namespace Offline {
 
 			for (std::filesystem::directory_entry walk_dir : dirpos) {
 
-				auto u8str = walk_dir.path().u8string();
-
-				folders.add_item(u8str.c_str());
+				const auto u8str = walk_dir.path().u8string();
+				// Copy UTF-8 code units into the narrow-byte SDK string; char8_t* is not char* in C++20.
+				const std::string utf8_path(u8str.begin(), u8str.end());
+				folders.add_item(utf8_path.c_str());
 			}
 
 		}

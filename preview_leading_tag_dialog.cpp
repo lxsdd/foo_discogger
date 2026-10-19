@@ -272,7 +272,7 @@ bool CPreviewLeadingTagDialog::context_menu_switch(HWND wnd, POINT point, bool i
 		m_ui_list.GetSubItemText(isel, 2, out);
 
 		ClipboardHelper::OpenScope scope;
-		scope.Open(core_api::get_main_window(), true);
+		scope.Open(core_api::get_main_window());
 		ClipboardHelper::SetString(out);
 		scope.Close();
 

@@ -356,3 +356,14 @@ assert "menu_more_info.dwTypeData = menu_more_text;" in mapping_ui
 assert "LPWSTR submenus_data" not in mapping_ui
 assert mapping_ui.count("wchar_t submenus_data") == 3
 print("PASS: native mapping menu immutable labels and mutable Win32 item buffer.")
+
+# C++20 native UTF-8 filesystem and current libPPUI clipboard API contracts.
+cache_source = (root / 'ol_cache.h').read_text(encoding='utf-8-sig')
+assert 'const std::string utf8_path(u8str.begin(), u8str.end());' in cache_source
+assert 'folders.add_item(utf8_path.c_str());' in cache_source
+assert 'folders.add_item(u8str.c_str());' not in cache_source
+for native_dialog, count in [('find_release_tree.cpp', 2), ('preview_leading_tag_dialog.cpp', 1)]:
+    source = (root / native_dialog).read_text(encoding='utf-8-sig')
+    assert source.count('scope.Open(core_api::get_main_window());') == count, native_dialog
+    assert 'scope.Open(core_api::get_main_window(), true);' not in source, native_dialog
+print('PASS: C++20 UTF-8 cache enumeration and libPPUI clipboard API contracts.')
