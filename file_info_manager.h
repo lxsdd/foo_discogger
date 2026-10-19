@@ -22,6 +22,14 @@ public:
 };
 
 
+// The SDK receives borrowed pointers: keep both the list arrays and independent
+// copies of the staged physical metadata alive through asynchronous completion.
+struct discogger_async_tag_payload {
+    pfc::array_t<metadb_handle_ptr> items_to_update;
+    pfc::array_t<file_info *> infos_to_write;
+    discogger_write_safety::stable_write_copies<file_info_impl> staged_infos;
+};
+
 class write_tags_completion : public completion_notify_dummy, public ErrorManager
 {
     discogger_write_safety::write_completion_gate m_gate;
@@ -29,12 +37,14 @@ class write_tags_completion : public completion_notify_dummy, public ErrorManage
     discogger_write_safety::async_write_gate::lease m_write_lease;
     // The SDK may retain file_info pointers until this callback runs.
     std::shared_ptr<file_info_manager> m_finfo_manager;
+    std::shared_ptr<discogger_async_tag_payload> m_write_payload;
 public:
     write_tags_completion(std::function<void()> after_success,
         discogger_write_safety::async_write_gate::lease write_lease,
-        std::shared_ptr<file_info_manager> finfo_manager)
+        std::shared_ptr<file_info_manager> finfo_manager,
+        std::shared_ptr<discogger_async_tag_payload> write_payload)
         : m_after_success(std::move(after_success)), m_write_lease(std::move(write_lease)),
-          m_finfo_manager(std::move(finfo_manager)) {}
+          m_finfo_manager(std::move(finfo_manager)), m_write_payload(std::move(write_payload)) {}
     void on_completion(unsigned p_code) override;
 };
 

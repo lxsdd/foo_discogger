@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <stdexcept>
+#include <string>
 
 int main() {
     // A successful SDK call is not sufficient if even one physical file_info
@@ -37,6 +38,32 @@ int main() {
     // Batch preflight is atomic and must never inspect out-of-range wrappers.
     using batch_decision = discogger_write_safety::snapshot_batch_decision;
     using discogger_write_safety::plan_snapshot_batch;
+    // Stable async payloads are independent of mutable preview wrappers.
+    // Multiple inserts must not invalidate pointers already given to the SDK.
+    struct synthetic_info {
+        int replaygain = 0;
+        std::string artist;
+    };
+    discogger_write_safety::stable_write_copies<synthetic_info> staged;
+    synthetic_info first{4, "Original"};
+    auto* held_first = staged.append_copy(first);
+    for (int i = 0; i < 128; ++i) {
+        synthetic_info extra{i, "Supplemental"};
+        staged.append_copy(extra);
+        extra.artist = "Modified after staging";
+    }
+    first.artist = "Edited in preview";
+    first.replaygain = 999;
+    assert(staged.size() == 129);
+    assert(held_first->artist == "Original" && held_first->replaygain == 4);
+    // A synthetic callback may outlive the producer of the working wrappers.
+    auto owned = std::make_shared<discogger_write_safety::stable_write_copies<synthetic_info>>();
+    auto* callback_value = owned->append_copy(first);
+    std::shared_ptr<discogger_write_safety::stable_write_copies<synthetic_info>> callback_owner = owned;
+    owned.reset();
+    first.artist = "Changed again";
+    assert(callback_owner->size() == 1 && callback_value->artist == "Edited in preview");
+
     // A subsequent failing read or write must revoke every old permission,
     // including an old selected item with an otherwise valid snapshot.
     std::array<bool, 3> old_snapshots = {true, false, true};

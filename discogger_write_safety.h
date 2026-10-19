@@ -1,6 +1,8 @@
 #pragma once
 #include <cstddef>
+#include <memory>
 #include <utility>
+#include <vector>
 
 // Pure, SDK-independent preflight used by both the task and the final writer.
 // A mixed selection is rejected atomically before any asynchronous tag writes.
@@ -14,6 +16,24 @@ bool contains_virtual_subsong(std::size_t count, SubsongIndexAt index_at) {
 }
 // Revoke stale per-file snapshots atomically when a fresh physical read begins,
 // and after a failed/cancelled commit. This is SDK-independent for regressions.
+// Snapshot each file_info into separate heap storage before asynchronous I/O.
+// Subsequent UI/preview edits may mutate their original wrappers, but cannot
+// mutate the payload handed to the host metadata writer. The outer callback
+// owns this store until the host reports completion.
+template <typename T>
+class stable_write_copies {
+    std::vector<std::unique_ptr<T>> copies_;
+public:
+    T* append_copy(const T& source) {
+        auto copy = std::make_unique<T>();
+        *copy = source;
+        T* stable = copy.get();
+        copies_.push_back(std::move(copy));
+        return stable;
+    }
+    std::size_t size() const noexcept { return copies_.size(); }
+};
+
 template <typename RevokeAt>
 void revoke_snapshot_batch(std::size_t count, RevokeAt revoke_at) {
     for (std::size_t i = 0; i < count; ++i) revoke_at(i);

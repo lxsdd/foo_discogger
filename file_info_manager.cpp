@@ -69,10 +69,11 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 	case discogger_write_safety::snapshot_batch_decision::reject_missing_snapshot:
 		throw foo_discogs_exception("Tagging stopped: original physical metadata snapshot is missing.");
 	}
-	pfc::array_t<metadb_handle_ptr> items_to_update;
-	pfc::array_t<file_info *> infos_to_write;
-	items_to_update.set_size(count);
-	infos_to_write.set_size(count);
+    // Borrowed SDK arrays and their file_info payloads must survive the entire
+    // async operation, even if a preview changes its working wrappers meanwhile.
+    auto payload = std::make_shared<discogger_async_tag_payload>();
+    payload->items_to_update.set_size(count);
+    payload->infos_to_write.set_size(count);
 
 	for (n = 0; n < count; n++) {
 		const auto& wrapper = info_wrappers[n];
@@ -96,9 +97,9 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 		const auto decision = discogger_write_safety::plan_metadata_write(
 			true, true, metadata_equal, replaygain_equal);
 		if (decision == discogger_write_safety::metadata_write_decision::skip) continue;
-		items_to_update[outptr] = items[n];
-		infos_to_write[outptr] = &wrapper->info;
-		++outptr;
+        payload->items_to_update[outptr] = items[n];
+        payload->infos_to_write[outptr] = payload->staged_infos.append_copy(wrapper->info);
+        ++outptr;
 	}
 
 	if (outptr != 0) {
@@ -108,10 +109,10 @@ void file_info_manager::write_infos(std::function<void()> after_success,
         try {
             service_ptr_t<write_tags_completion> callback =
                 new service_impl_t<write_tags_completion>(
-                    std::move(after_success), std::move(write_lease), std::move(keep_alive));
+                    std::move(after_success), std::move(write_lease), std::move(keep_alive), payload);
             api->update_info_async_simple(
-                pfc::list_const_array_t<metadb_handle_ptr, const pfc::array_t<metadb_handle_ptr>&>(items_to_update, outptr),
-                pfc::list_const_array_t<const file_info*, const pfc::array_t<const file_info*>&>(infos_to_write, outptr),
+                pfc::list_const_array_t<metadb_handle_ptr, const pfc::array_t<metadb_handle_ptr>&>(payload->items_to_update, outptr),
+                pfc::list_const_array_t<const file_info*, const pfc::array_t<const file_info*>&>(payload->infos_to_write, outptr),
                 core_api::get_main_window(), 0, callback);
         } catch (...) {
             // Scheduling failed synchronously: discard uncommitted in-memory tags.

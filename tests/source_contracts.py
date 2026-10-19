@@ -89,6 +89,14 @@ print("PASS: all four actual component configurations request SDK-required C++20
 header = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
 assert "write_infos(std::function<void()> after_success" in header
 assert "write_completion_gate m_gate" in header
+assert "stable_write_copies<file_info_impl> staged_infos" in header
+assert "std::shared_ptr<discogger_async_tag_payload> m_write_payload;" in header
+assert "m_write_payload(std::move(write_payload))" in header
+assert "payload->infos_to_write[outptr] = payload->staged_infos.append_copy(wrapper->info);" in manager
+assert "std::move(keep_alive), payload);" in manager
+assert ">(payload->items_to_update, outptr)" in manager
+assert ">(payload->infos_to_write, outptr)" in manager
+assert manager.index("payload->staged_infos.append_copy(wrapper->info)") < manager.index("api->update_info_async_simple(")
 assert "m_gate.finish(success" in manager
 assert "m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease, tag_deletions_approved)" in tasks
 assert "artwork_after_tags = [release_id, physical_items, bfile_match, artwork_lease]" in tasks
