@@ -45,19 +45,20 @@ public:
 	locked_task_exception(const char* msg) : foo_discogs_exception(msg) {}
 };
 
-class foo_discogs_locked_threaded_process_callback : public foo_discogs_threaded_process_callback
+class foo_discogs_threaded_locked_process_callback : public foo_discogs_threaded_process_callback
 {
 public:
-	foo_discogs_locked_threaded_process_callback() {
+	foo_discogs_threaded_locked_process_callback() {
+		std::lock_guard<std::mutex> guard(g_discogs->locked_operation_rw_mutex);
 		if (g_discogs->locked_operation) {
-			locked_task_exception e("Operation locked");
-			throw e;
+			throw locked_task_exception("Operation locked");
 		}
-		g_discogs->locked_operation++;
+		++g_discogs->locked_operation;
 	}
 
-	~foo_discogs_locked_threaded_process_callback() {
-		g_discogs->locked_operation--;
+	~foo_discogs_threaded_locked_process_callback() {
+		std::lock_guard<std::mutex> guard(g_discogs->locked_operation_rw_mutex);
+		--g_discogs->locked_operation;
 	}
 };
 

@@ -275,3 +275,13 @@ assert "void DiscogsInterface::parse_amt_page(" not in interface_header
 assert "void DiscogsInterface::process_amt_parsed_fake_artist(" in interface_impl
 assert "void DiscogsInterface::parse_amt_page(" in interface_impl
 print("PASS: composite-search parser declarations are visible and C++-qualified correctly.")
+
+# Restore the existing search/filter task base type and serialize its lock
+# counter transitions; do not confuse it with the separate async tag-write gate.
+task_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
+assert "class foo_discogs_threaded_locked_process_callback : public foo_discogs_threaded_process_callback" in task_header
+assert "foo_discogs_locked_threaded_process_callback()" not in task_header
+assert task_header.count("std::lock_guard<std::mutex> guard(g_discogs->locked_operation_rw_mutex);") == 2
+assert "throw locked_task_exception(\"Operation locked\");" in task_header
+assert "class write_tags_task : public foo_discogs_write_tag_locked_threaded_process_callback" in task_header
+print("PASS: search/filter lock base and mutex-guarded counter transitions are wired.")
