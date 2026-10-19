@@ -285,3 +285,13 @@ assert task_header.count("std::lock_guard<std::mutex> guard(g_discogs->locked_op
 assert "throw locked_task_exception(\"Operation locked\");" in task_header
 assert "class write_tags_task : public foo_discogs_write_tag_locked_threaded_process_callback" in task_header
 print("PASS: search/filter lock base and mutex-guarded counter transitions are wired.")
+
+# Preserve conditional Wine light-theme redraw with current libPPUI:
+# repaint on initialization and focus transitions, without a paint-loop hook.
+edit_header = (root / "my_editwithbuttons.h").read_text(encoding="utf-8-sig")
+assert "void SetConditionedInvalidation(std::function<bool()> predicate)" in edit_header
+assert "m_conditioned_invalidation = std::move(predicate);" in edit_header
+assert "m_conditioned_invalidation && m_conditioned_invalidation()" in edit_header
+assert "Invalidate(); // redraw the edit and its embedded libPPUI buttons" in edit_header
+assert edit_header.count("RefreshConditionedInvalidation();") >= 3
+print("PASS: conditional native edit/button repaint is implemented, not stubbed.")

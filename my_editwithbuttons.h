@@ -31,6 +31,7 @@ public:
 	void OnSetFocus(HWND hWnd)
 	{
 		DefWindowProc();
+		RefreshConditionedInvalidation();
 		if (IsKeyPressed(VK_TAB)) {
 			PostMessage(EM_SETSEL, 0, -1);
 		}
@@ -39,6 +40,19 @@ public:
 	void OnKillFocus(HWND hWnd)
 	{
 		DefWindowProc();
+		RefreshConditionedInvalidation();
+	}
+
+	// Current libPPUI no longer supplies this extension. Preserve Wine light
+	// theme redraws on initialization and focus transitions.
+	void SetConditionedInvalidation(std::function<bool()> predicate) {
+		m_conditioned_invalidation = std::move(predicate);
+		RefreshConditionedInvalidation();
+	}
+	void RefreshConditionedInvalidation() {
+		if (m_hWnd && m_conditioned_invalidation && m_conditioned_invalidation()) {
+			Invalidate(); // redraw the edit and its embedded libPPUI buttons
+		}
 	}
 
 	void SetHistoryHandler(std::function<bool(HWND, wchar_t* wchart)> stdf_call_history) {
@@ -109,6 +123,7 @@ public:
 protected:
 
 	std::function<bool(HWND, wchar_t* wstr)> m_stdf_call_history;
+	std::function<bool()> m_conditioned_invalidation;
 
 };
 
