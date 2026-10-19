@@ -24,6 +24,54 @@ $wtl = @(Get-ChildItem -LiteralPath $wtlRoot -Recurse -File -Filter 'atlapp.h')
 if ($wtl.Count -ne 1) { throw "Cannot locate unique previously verified WTL header." }
 $oauthInclude = Join-Path $oauthRoot 'include'
 $env:CL = '/I"' + $wtl[0].DirectoryName + '" /I"' + $oauthInclude + '" /I"' + $zlibRoot + '" ' + $env:CL
+# Source artwork resources stay untouched. RC.exe requires the legacy
+# BITMAPINFOHEADER (40-byte) form; modern DIB V4/V5 assets may render correctly
+# in Windows but fail RC2170. Re-encode only the runner-local staging copies.
+# Check every pixel, dimensions and alpha before accepting the converted asset.
+Add-Type -AssemblyName System.Drawing
+$resourceBitmaps = @('bitmap_tracer.bmp','bitmap_r.bmp',
+    'bitmap_tracer_ext.bmp','bitmap_tracer_ext_drk.bmp')
+foreach ($bitmapName in $resourceBitmaps) {
+    $bmpPath = Join-Path $component "ico/$bitmapName"
+    if (-not (Test-Path -LiteralPath $bmpPath -PathType Leaf)) {
+        throw "Required original bitmap resource missing: $bitmapName"
+    }
+    $header = [IO.File]::ReadAllBytes($bmpPath)
+    if ($header.Length -lt 54 -or $header[0] -ne 66 -or $header[1] -ne 77) {
+        throw "Invalid original bitmap resource: $bitmapName"
+    }
+    $dibSize = [BitConverter]::ToUInt32($header,14)
+    if ($dibSize -eq 40) { continue }
+    $original = [System.Drawing.Bitmap]::new($bmpPath)
+    $converted = $null
+    try {
+        $converted = [System.Drawing.Bitmap]::new($original.Width, $original.Height,
+            [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $graphics = [System.Drawing.Graphics]::FromImage($converted)
+        try {
+            $graphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+            $graphics.DrawImageUnscaled($original,0,0)
+        } finally { $graphics.Dispose() }
+        for ($y = 0; $y -lt $original.Height; ++$y) {
+            for ($x = 0; $x -lt $original.Width; ++$x) {
+                if ($original.GetPixel($x,$y).ToArgb() -ne $converted.GetPixel($x,$y).ToArgb()) {
+                    throw "Resource bitmap conversion altered pixels: $bitmapName at ($x,$y)"
+                }
+            }
+        }
+        $tempBitmap = Join-Path $env:RUNNER_TEMP ("discogger-rc-" + $bitmapName)
+        $converted.Save($tempBitmap,[System.Drawing.Imaging.ImageFormat]::Bmp)
+        $encoded = [IO.File]::ReadAllBytes($tempBitmap)
+        if ($encoded.Length -lt 54 -or [BitConverter]::ToUInt32($encoded,14) -ne 40) {
+            throw "Resource bitmap conversion did not produce legacy RC-compatible DIB: $bitmapName"
+        }
+        Copy-Item -LiteralPath $tempBitmap -Destination $bmpPath -Force
+        Write-Host "RC_RESOURCE_NORMALIZED=$bitmapName originalDib=$dibSize (runner staging only)"
+    } finally {
+        if ($null -ne $converted) { $converted.Dispose() }
+        $original.Dispose()
+    }
+}
 $msbuild = (Get-Command 'msbuild.exe' -ErrorAction Stop).Source
 $includes = @($staging,$foobar,$wtl[0].DirectoryName,$oauthInclude,$component,
     (Join-Path $component 'zlib'),(Join-Path $component 'jansson'),(Join-Path $component 'oauthcpp')) -join ';'

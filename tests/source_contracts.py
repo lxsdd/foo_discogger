@@ -477,3 +477,16 @@ assigned_ids = [
 assert [(name, val) for name, val in assigned_ids if val == 2530] == [("IDC_STATIC_CFG_HIST_SIZE2", 2530)]
 assert re.search(r"^\s*#define\s+_APS_NEXT_CONTROL_VALUE\s+2531\s*$", resource_header, re.M)
 print("PASS: all named native RC control IDs resolve; new history label ID is collision-free.")
+
+# Preserve historical artwork bitmaps; fix RC2170 in temporary runner staging only.
+resource_build = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
+for item in ("bitmap_tracer.bmp", "bitmap_r.bmp", "bitmap_tracer_ext.bmp", "bitmap_tracer_ext_drk.bmp"):
+    assert item in resource_build
+assert "Add-Type -AssemblyName System.Drawing" in resource_build
+assert "Original bitmap" not in resource_build or "runner-local" in resource_build
+assert "[System.Drawing.Drawing2D.CompositingMode]::SourceCopy" in resource_build
+assert ".GetPixel($x,$y).ToArgb()" in resource_build
+assert "[BitConverter]::ToUInt32($encoded,14) -ne 40" in resource_build
+assert "Copy-Item -LiteralPath $tempBitmap -Destination $bmpPath -Force" in resource_build
+assert "RC_RESOURCE_NORMALIZED=" in resource_build
+print("PASS: Win32 bitmap resources normalize only in runner staging with pixel-preservation gate.")
