@@ -189,6 +189,7 @@
 #define CFG_ON_INIT_QUERY_DEF                       2149
 //v213 (1.0.22 beta 15)
 #define CFG_QUERY_MAX                               2150
+#define CFG_ARTIST_RELEASE_CACHE_HOURS              2151
 
 // STRINGS -------------------------------------
 
@@ -473,6 +474,7 @@ public:
 		{ asi(cfgFilter::CONF), CFG_MULTIVALUE_FIELDS},
 		//v210
 		{ asi(cfgFilter::CONF), CFG_DISK_CACHE_EXP},
+        { asi(cfgFilter::CONF), CFG_ARTIST_RELEASE_CACHE_HOURS},
 		//v211
 		{ asi(cfgFilter::CONF), CFG_VA_PREFIXES},
 		//v212
@@ -742,6 +744,7 @@ public:
 	int alt_write_flags = 0;
 	//v210 (1.0.21)
 	int disk_cache_exp = 30; //hi flags, lo days
+    int artist_release_cache_hours = 24; // separate artist-release TTL
 	//v211
 	pfc::string8 various_prefixes = "Various, VA";
 	//v212

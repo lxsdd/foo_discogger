@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <filesystem>
+#include "discogger_cache_expiry.h"
 #include "jansson/jansson.h"
 #include "utils.h"
 #include "utils_path.h"
@@ -214,91 +215,6 @@ namespace Offline {
 		return req_check;
 	}
 
-#ifdef CACHE_EXPIRATION
-	inline bool check_expired(pfc::string8 &dst_buf, size_t src_length_checked) {
-
-		bool expired = false;
-		size_t cr_pos = dst_buf.find_first('\n');
-
-		if (CONF.expiration_enabled()) {
-
-			// first carriage return ?
-
-			if (cr_pos < src_length_checked) {
-				dst_buf = dst_buf.subString(cr_pos);
-				size_t sp_pos = dst_buf.find_first(" ");
-
-				// first space after first carriage return
-
-				if (sp_pos < dst_buf.get_length() - 1) {
-					//"2024-09-30T16:02:39+02000" -> len 24
-					dst_buf = dst_buf.subString(sp_pos + 1, 25 - 1);
-
-					struct tm* tmStruct = {};
-
-					char buffer[25];
-					strncpy(buffer, dst_buf.c_str(), 24);
-					buffer[24] = '\0';
-
-					std::tm tm_stored;
-					std::stringstream ss(buffer);
-
-					try {
-
-						// parse stored time
-						ss >> std::get_time(&tm_stored, "%Y-%m-%dT%H:%M:%S%z");
-
-						time_t t_stored;
-						t_stored = mktime(&tm_stored);
-
-						auto t_now = std::time(nullptr);
-
-						double difference = std::difftime(t_stored, t_now) / (60 * 60 * 24);
-						expired = (difference + (CONF.expiration_days())) <= 0;
-
-					}
-					catch (...) {
-						expired = false;
-					}
-				}
-			}
-		}
-
-		return expired;
-	}
-#endif
-#ifdef CACHE_EXPIRATION
-	inline void add_now_stamp(pfc::string8& out) {
-
-		//2004-05-22T12:35:02-07:00
-		auto t = std::time(nullptr);
-		auto tm = *std::localtime(&t);
-
-		std::ostringstream oss;
-		oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S%z");
-		pfc::string8 utf_created = oss.str().c_str();
-
-		oss.clear();
-		oss.str("");
-		pfc::string8 utf_expires;
-		if (CONF.expiration_enabled()) {
-
-			size_t def_expires = CONF.expiration_days() * 24 * 60 * 60;
-
-			t += def_expires;
-			tm = *std::localtime(&t);
-
-			oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S%z");
-			utf_expires = oss.str().c_str();
-		}
-
-		out = PFC_string_formatter() << out << "\n" << utf_created;
-
-		if (utf_expires.get_length()) {
-			out << " " << utf_expires;
-		}
-	}
-#endif
 
 	//sets folder job: 'loading.' or 'TaskReg.txt' (done param value)
 
@@ -342,13 +258,9 @@ namespace Offline {
 				auto jf = _wopen(os_file.wstring().c_str(), _O_CREAT | _O_TRUNC | _O_RDWR | _O_TEXT/*_O_U8TEXT*/, _S_IWRITE);
 
 				if (jf != -1) {
-#ifdef CACHE_EXPIRATION
-					if (CONF.expiration_enabled()) {
-						add_now_stamp(fcontent);
-					}
-#endif
 					int w = _write(jf, fcontent.get_ptr(), fcontent.get_length());
-					bok = ((w || !fcontent.get_length()) && !_close(jf));
+					const int closed = _close(jf);
+                    bok = w >= 0 && static_cast<size_t>(w) == fcontent.get_length() && closed == 0;
 					return bok;
 				}
 			}
@@ -379,64 +291,27 @@ namespace Offline {
 		return bok;
 	}
 
-	bool static check_download(pfc::string8 path, bool &out_expired) {
-
-		pfc::string8 path_loading;
-		pfc::string8 path_taskreg;
-
-		path_loading << path << "\\" << MARK_LOADING_NAME;
-		path_taskreg << path << "\\" << MARK_CHECK_NAME;
-
-		bool stat_result_loading = false;
-		int src_length_loading = -1;
-		int src_length_checked = -1;
-
-		fs::path p_loading = fs::u8path(path_loading.get_ptr());
-
-		if (fs::exists(p_loading)) {
-			stat_result_loading = true;
-			src_length_loading = fs::file_size(p_loading);
-		}
-
-		fs::path p_taskreg = fs::u8path(path_taskreg.get_ptr());
-
-		bool stat_result_checked = fs::exists(p_taskreg);
-
-		if (stat_result_checked) {
-
-			src_length_checked = fs::file_size(p_taskreg);
-
-#ifdef CACHE_EXPIRATION
-			if (CONF.expiration_enabled() && stat_result_checked && src_length_checked > 0) {
-
-				stat_result_checked = false;
-
-				errno = 0;
-				auto jf = _wopen(p_taskreg.wstring().c_str(), _O_RDONLY | _O_TEXT);
-
-				if (jf != -1) {
-
-					char buffer[MAX_PATH];
-					pfc::string8 dst_buf;
-					int res = _read(jf, buffer, src_length_checked);
-					stat_result_checked = res > 0;
-
-					dst_buf.add_string(buffer);
-					out_expired = check_expired(dst_buf, src_length_checked);
-					stat_result_checked &= !out_expired;
-
-					close(jf);
-				}
-
-				if (errno) {
-					log_msg(PFC_string_formatter() << "can't open " << path_taskreg);
-				}
-			}
-#endif
-		}
-
-		return !stat_result_loading &&(stat_result_checked && src_length_checked != -1);
-	}
+    // Check the completed marker's timestamp without reading unbounded content.
+    bool static check_download(pfc::string8 path, bool& out_expired, GetFrom kind) {
+        out_expired = false;
+        std::error_code ec;
+        const fs::path root = fs::u8path(path.c_str());
+        const fs::path loading = root / MARK_LOADING_NAME.c_str();
+        const fs::path complete = root / MARK_CHECK_NAME.c_str();
+        if (fs::exists(loading, ec) || ec) return false;
+        if (!fs::is_regular_file(complete, ec) || ec) return false;
+        const auto stamp = fs::last_write_time(complete, ec);
+        if (ec) { out_expired = true; return false; }
+        const auto age = std::chrono::duration_cast<std::chrono::seconds>(
+            fs::file_time_type::clock::now() - stamp);
+        const auto category = kind == GetFrom::ArtistReleases
+            ? discogger_cache::group::artist_releases : discogger_cache::group::other_entity;
+        const auto lifetime = discogger_cache::ttl(
+            category, CONF.artist_release_cache_hours,
+            CONF.expiration_enabled(), CONF.expiration_days());
+        out_expired = discogger_cache::expired(age, lifetime);
+        return !out_expired;
+    }
 
 	// checks precondition and stamp
 
@@ -453,7 +328,7 @@ namespace Offline {
 
 		out_relative_path = get_offline_path(id, gfFrom, secid, native);
 		bool bres = check_offline_entity_folder(id, gfFrom, secid);
-		bres &= check_download(out_relative_path, expired);
+		bres &= check_download(out_relative_path, expired, gfFrom);
 
 		return bres;
 	}

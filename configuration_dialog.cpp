@@ -8,6 +8,7 @@
 #include "yesno_dialog.h"
 
 #include "configuration_dialog.h"
+#include "discogger_cache_expiry.h"
 
 static HWND g_hWndTabDialog[NUM_TABS] = {nullptr};
 static HWND g_hWndCurrentTab = nullptr;
@@ -641,17 +642,6 @@ void CConfigurationDialog::init_caching_dialog(HWND wnd, bool subclass) {
 
 	}
 
-#ifdef CACHE_EXPIRATION
-#else
-	HWND hwndcustFont = ::uGetDlgItem(wnd, IDC_EDIT_CFG_CACHE_EXP_DAYS);
-	::EnableWindow(hwndcustFont, FALSE);
-	::ShowWindow(hwndcustFont, SW_HIDE);
-	hwndcustFont = ::uGetDlgItem(wnd, IDC_CHK_CFG_CACHE_EXP_ENABLED);
-	::EnableWindow(hwndcustFont, FALSE);
-	::ShowWindow(hwndcustFont, SW_HIDE);
-	hwndcustFont = ::uGetDlgItem(wnd, IDC_STATIC_CFG_CACHE_EXP_DAYS);
-	::ShowWindow(hwndcustFont, SW_HIDE);
-#endif
 
 	//hidden_postfix regular & skip videp
 
@@ -691,6 +681,9 @@ void CConfigurationDialog::init_caching_dialog(HWND wnd, bool subclass) {
 	num << conf.expiration_days();
 	uSetDlgItemText(wnd, IDC_EDIT_CFG_CACHE_EXP_DAYS, num);
 	uButton_SetCheck(wnd, IDC_CHK_CFG_CACHE_EXP_ENABLED, conf.expiration_enabled());
+    num = "";
+    num << discogger_cache::artist_hours(conf.artist_release_cache_hours);
+    uSetDlgItemText(wnd, IDC_EDIT_CFG_ARTIST_CACHE_HOURS, num);
 
 }
 
@@ -1131,7 +1124,10 @@ void CConfigurationDialog::save_caching_dialog(HWND wnd, bool dlgbind) {
 		conf_ptr->set_expiration_days(abs(atoi(buffer)));
 	}
 
-	uGetDlgItemText(wnd, IDC_EDIT_CACHED_OBJECTS, buffer);
+    uGetDlgItemText(wnd, IDC_EDIT_CFG_ARTIST_CACHE_HOURS, buffer);
+    if (is_number(buffer.c_str()))
+        conf_ptr->artist_release_cache_hours = discogger_cache::artist_hours(atoi(buffer));
+	 uGetDlgItemText(wnd, IDC_EDIT_CACHED_OBJECTS, buffer);
 
 	if (is_number(buffer.c_str())) {
 		conf_ptr->cache_max_objects = abs(atol(buffer));
@@ -1149,6 +1145,7 @@ bool CConfigurationDialog::cfg_caching_has_changed() {
 	bres |= conf.cache_max_objects != conf_edit.cache_max_objects;
 	bres |= conf.cache_offline_cache_flag != conf_edit.cache_offline_cache_flag;
 	bres |= conf.disk_cache_exp != conf_edit.disk_cache_exp;
+    bres |= conf.artist_release_cache_hours != conf_edit.artist_release_cache_hours;
 	return bres;
 }
 

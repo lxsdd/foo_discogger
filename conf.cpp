@@ -7,6 +7,7 @@
 #include "conf.h"
 #include "cfg_snapshot_ops.h"
 #include "ol_cache.h"
+#include "discogger_cache_expiry.h"
 #include "utils.h"
 #include "utils_path.h"
 #include "utils_db.h"
@@ -157,7 +158,10 @@ bool CConf::load() {
 	vspec v212{ &vec_specs, 27, 54, 18 }; // 1.0.22Beta6
 	vspec v213{ &vec_specs, 27, 54, 19 }; // 1.0.22Beta14
 	vspec v214{ &vec_specs, 27, 55, 19 }; // 1.0.22Beta14
-	vspec v215{ &vec_specs, 27, 55, 20 }; // 1.0.22RC3
+	// Historical save() omitted disk TTL and produced 54-int profiles.
+    vspec v215short{ &vec_specs, 27, 54, 20 };
+    vspec v215{ &vec_specs, 27, 55, 20 }; // 1.0.22RC3
+    vspec v216{ &vec_specs, 27, 56, 20 }; // Discogger TTL
 
 	vspec* vlast = &vec_specs.at(vec_specs.size() - 1);
 
@@ -289,6 +293,11 @@ bool CConf::load() {
 			make_conf_entry(CFG_DISK_CACHE_EXP, disk_cache_exp)
 		);
 	}
+
+    if (vLoad == v215short)
+        cfg_int_entries.add_item(make_conf_entry(CFG_DISK_CACHE_EXP, disk_cache_exp));
+    if (vLoad < v216)
+        cfg_int_entries.add_item(make_conf_entry(CFG_ARTIST_RELEASE_CACHE_HOURS, artist_release_cache_hours));
 
 	if (vLoad < v209) {
 		cfg_int_entries.add_item(
@@ -642,8 +651,11 @@ bool CConf::int_load(const conf_int_entry& item) {
 		break;
 	//v210 (1.0.21)
 	case CFG_DISK_CACHE_EXP:
-		disk_cache_exp = item.value;
-		break;
+        disk_cache_exp = item.value;
+        break;
+    case CFG_ARTIST_RELEASE_CACHE_HOURS:
+        artist_release_cache_hours = discogger_cache::artist_hours(item.value);
+        break;
 	//v212 (1.0.22Beta6)
 	case CFG_ON_INIT_QUERY_FLAGS:
 		on_init_query_flags = item.value;
@@ -1049,8 +1061,11 @@ bool CConf::id_to_val_int(int id, const CConf& in_conf, int& out, bool assert) {
 		break;
 	//v210 (1.0.21)
 	case CFG_DISK_CACHE_EXP:
-		out = in_conf.disk_cache_exp;
-		break;
+        out = in_conf.disk_cache_exp;
+        break;
+    case CFG_ARTIST_RELEASE_CACHE_HOURS:
+        out = discogger_cache::artist_hours(in_conf.artist_release_cache_hours);
+        break;
 	//v212 (1.0.22 beta 6)
 	case CFG_ON_INIT_QUERY_FLAGS:
 		out = in_conf.on_init_query_flags;
@@ -1419,11 +1434,14 @@ void CConf::save() {
 	int_snapshot.emplace_back(make_conf_entry(CFG_CUSTOM_FONT, custom_font));
 	//v209 (1.0.16.1)
 	int_snapshot.emplace_back(make_conf_entry(CFG_ALT_WRITE_FLAGS, alt_write_flags));
+    int_snapshot.emplace_back(make_conf_entry(CFG_DISK_CACHE_EXP, disk_cache_exp));
 	//v212 (1.0.22 beta 6)
 	int_snapshot.emplace_back(make_conf_entry(CFG_ON_INIT_QUERY_FLAGS, on_init_query_flags));
 	int_snapshot.emplace_back(make_conf_entry(CFG_ON_INIT_QUERY_DEF, on_init_query_def));
 	//v214 (1.0.22 beta 15)
 	int_snapshot.emplace_back(make_conf_entry(CFG_QUERY_MAX, query_max));
+    int_snapshot.emplace_back(make_conf_entry(CFG_ARTIST_RELEASE_CACHE_HOURS,
+        discogger_cache::artist_hours(artist_release_cache_hours)));
 	//..
 
 	cfg_int_entries.set(std::move(int_snapshot));

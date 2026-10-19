@@ -664,3 +664,26 @@ assert "m_finfo_manager->discard_pending_changes();" in manager
 assert "discard_pending_changes();\n            throw;" in manager
 assert "FailureAction&& failure_action" in safety_header
 print("PASS: callback-owned metadata lifetime, single-shot async failure reset and synchronous scheduling cleanup.")
+
+# Safe disk-marker TTL, independent artist freshness and legacy config migration.
+cache = (root / "ol_cache.h").read_text(encoding="utf-8-sig")
+config = (root / "configuration_dialog.cpp").read_text(encoding="utf-8-sig")
+conf_code = (root / "conf.cpp").read_text(encoding="utf-8-sig")
+assert "fs::last_write_time(complete, ec)" in cache
+assert "check_download(out_relative_path, expired, gfFrom)" in cache
+assert "discogger_cache::ttl(" in cache
+assert "CACHE_EXPIRATION" not in cache and "CACHE_EXPIRATION" not in config
+assert "_read(jf, buffer, src_length_checked)" not in cache
+assert "IDC_EDIT_CFG_ARTIST_CACHE_HOURS" in config
+assert "IDC_EDIT_CFG_ARTIST_CACHE_HOURS" in (root / "foo_discogger.rc").read_text(encoding="utf-8-sig")
+assert "v215short{ &vec_specs, 27, 54, 20 }" in conf_code
+assert "v216{ &vec_specs, 27, 56, 20 }" in conf_code
+assert "if (vLoad == v215short)" in conf_code
+save_ints = conf_code[conf_code.index("std::vector<conf_int_entry> int_snapshot"):conf_code.index("cfg_int_entries.set(std::move(int_snapshot))")]
+assert save_ints.count("int_snapshot.emplace_back(make_conf_entry(") == 56
+assert "CFG_DISK_CACHE_EXP, disk_cache_exp" in save_ints
+assert "CFG_ARTIST_RELEASE_CACHE_HOURS" in save_ints
+assert "discogger_cache::artist_hours(item.value)" in conf_code
+for name in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
+    assert "cache_expiry_test.cpp" in (root / name).read_text(encoding="utf-8-sig")
+print("PASS: safe cache-marker TTL, independent artist hours and configuration migration.")
