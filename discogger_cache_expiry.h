@@ -10,12 +10,12 @@ inline std::chrono::seconds ttl(group kind, int artist_release_hours,
     if (kind == group::artist_releases)
         return std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::hours(artist_hours(artist_release_hours)));
-    if (!general_enabled) return std::chrono::seconds::max();
+    if (!general_enabled) return (std::chrono::seconds::max)();
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::hours(24 * entity_days(general_days)));
 }
 inline bool expired(std::chrono::seconds age, std::chrono::seconds lifetime) noexcept {
-    if (lifetime == std::chrono::seconds::max()) return false;
+    if (lifetime == (std::chrono::seconds::max)()) return false;
     if (age < -std::chrono::minutes(5)) return true;
     return age >= lifetime;
 }

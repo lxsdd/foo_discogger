@@ -509,7 +509,11 @@ assigned_ids = [
     for name, value in re.findall(r"^\s*#define\s+(IDC_[A-Z0-9_]+)\s+([0-9]+)\s*$", resource_header, re.M)
 ]
 assert [(name, val) for name, val in assigned_ids if val == 2530] == [("IDC_STATIC_CFG_HIST_SIZE2", 2530)]
-assert re.search(r"^\s*#define\s+_APS_NEXT_CONTROL_VALUE\s+2531\s*$", resource_header, re.M)
+assert [(name, val) for name, val in assigned_ids if val in (2531, 2532)] == [
+    ("IDC_EDIT_CFG_ARTIST_CACHE_HOURS", 2531),
+    ("IDC_STATIC_CFG_ARTIST_CACHE_HOURS", 2532),
+]
+assert re.search(r"^\s*#define\s+_APS_NEXT_CONTROL_VALUE\s+2533\s*$", resource_header, re.M)
 print("PASS: all named native RC control IDs resolve; new history label ID is collision-free.")
 
 # RC resources: real PNG signatures may be stored in historical .bmp paths.
@@ -683,6 +687,10 @@ save_ints = conf_code[conf_code.index("std::vector<conf_int_entry> int_snapshot"
 assert save_ints.count("int_snapshot.emplace_back(make_conf_entry(") == 56
 assert "CFG_DISK_CACHE_EXP, disk_cache_exp" in save_ints
 assert "CFG_ARTIST_RELEASE_CACHE_HOURS" in save_ints
+cache_policy = (root / "discogger_cache_expiry.h").read_text(encoding="utf-8-sig")
+assert cache_policy.count("(std::chrono::seconds::max)()") == 2
+assert "std::chrono::seconds::max()" not in cache_policy
+assert "#define max(a, b) forbidden_legacy_windows_max_macro" in (root / "tests/cache_expiry_test.cpp").read_text(encoding="utf-8-sig")
 assert "discogger_cache::artist_hours(item.value)" in conf_code
 for name in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
     assert "cache_expiry_test.cpp" in (root / name).read_text(encoding="utf-8-sig")

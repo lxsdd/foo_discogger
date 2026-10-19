@@ -1,6 +1,10 @@
-#include "../discogger_cache_expiry.h"
+#include <algorithm>
 #include <cassert>
 #include <chrono>
+// Mimic Windows headers' function-like max macro while compiling our policy.
+#define max(a, b) forbidden_legacy_windows_max_macro
+#include "../discogger_cache_expiry.h"
+#undef max
 using namespace std::chrono;
 int main() {
     using discogger_cache::group;
