@@ -45,7 +45,8 @@ class initquit_discogs : public initquit
 			return;
 		}
 
-		for (auto & entry :  cfg_tag_mappings) {
+		auto tag_mappings = cfg_tag_mappings.get();
+		for (auto& entry : tag_mappings) {
 
 			bool release_id_mod = STR_EQUAL(TAG_RELEASE_ID, entry.tag_name.get_ptr());
 			if (release_id_mod) {
@@ -61,6 +62,7 @@ class initquit_discogs : public initquit
 			entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
 
 		}
+		cfg_tag_mappings.set(std::move(tag_mappings));
 		init_tag_mappings();
 		discogs_interface = new DiscogsInterface();
 

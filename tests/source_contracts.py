@@ -330,3 +330,19 @@ assert "std::string tab_text(m_tab_table[n].m_pszName);" in leading
 assert "item.pszText = tab_text.data();" in leading
 assert "item.pszText = m_tab_table[n].m_pszName;" not in leading
 print("PASS: native string, CWindow lifetime and writable Win32 tab labels.")
+
+# Modern cfg_objList snapshot/update contract: no range-for or writes to by-value operator[].
+tag_source = (root / "tags.cpp").read_text(encoding="utf-8-sig")
+foo_init = (root / "foo_discogs.cpp").read_text(encoding="utf-8-sig")
+assert "auto mappings = cfg_tag_mappings.get();" in tag_source
+assert "cfg_tag_mappings.set(std::move(mappings));" in tag_source
+assert "cfg_tag_mappings.set(std::move(defaults));" in tag_source
+assert "cfg_tag_mappings.set(std::move(snapshot));" in tag_source
+assert "std::unique_ptr<tag_mapping_entry>" in tag_source
+assert "std::string what(tagname.toLower().get_ptr());" in tag_source
+assert "for (auto& entry : cfg_tag_mappings)" not in tag_source
+assert "for (auto & tag_entry : cfg_tag_mappings)" not in tag_source
+assert "for (auto& tag_entry : cfg_tag_mappings)" not in tag_source
+assert "auto tag_mappings = cfg_tag_mappings.get();" in foo_init
+assert "cfg_tag_mappings.set(std::move(tag_mappings));" in foo_init
+print("PASS: modern cfg_objList snapshot, mutation and one-shot persistence contract.")
