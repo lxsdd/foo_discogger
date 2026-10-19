@@ -167,10 +167,10 @@ foo_discogs::~foo_discogs() {
 void foo_discogs::item_display_web_page(const metadb_handle_ptr item, discog_web_page web_page) {
 	file_info_impl finfo;
 
-	char *url_prefix;
-	char *url_postfix = "";
+	const char *url_prefix;
+	const char *url_postfix = "";
 	const char *tag;
-	char *backup_tag = nullptr;
+	const char *backup_tag = nullptr;
 	switch (web_page) {
 		case ARTIST_PAGE:
 			tag = TAG_ARTIST_ID;
@@ -443,7 +443,7 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 			if (voverwrite_it[i] || !foobar2000_io::filesystem::g_exists(path, p_abort)) {
 				buffer = done_fetches[release->images[i]->url];
 				if (!buffer.get_ptr()) {
-					auto& mbmi = done_fetches.emplace(release->images[i]->url, buffer);
+					auto mbmi = done_fetches.emplace(release->images[i]->url, buffer);
 					g_discogs->fetch_image(mbmi.first->second, release->images[i], p_abort);
 					buffer = mbmi.first->second;
 				}
@@ -475,7 +475,7 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 					buffer = done_fetches[release->images[i]->url];
 
 					if (!buffer.get_ptr()) {
-						auto &mbmi = done_fetches.emplace(release->images[i]->url, buffer);
+						auto mbmi = done_fetches.emplace(release->images[i]->url, buffer);
 						g_discogs->fetch_image(mbmi.first->second, release->images[i], p_abort);
 						buffer = mbmi.first->second;
 					}
@@ -766,7 +766,7 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 				
 				buffer = done_fetches[artist->images[artist_img_ndx]->url];
 				if (!buffer.get_ptr()) {
-					auto& mbmi = done_fetches.emplace(artist->images[artist_img_ndx]->url, buffer);
+					auto mbmi = done_fetches.emplace(artist->images[artist_img_ndx]->url, buffer);
 					g_discogs->fetch_image(mbmi.first->second, artist->images[artist_img_ndx], p_abort);
 					buffer = mbmi.first->second;
 				}
@@ -795,7 +795,7 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 
 				buffer = done_fetches[artist->images[artist_img_ndx]->url];
 				if (!buffer.get_ptr()) {					
-					auto& mbmi = done_fetches.emplace(artist->images[artist_img_ndx]->url, buffer);
+					auto mbmi = done_fetches.emplace(artist->images[artist_img_ndx]->url, buffer);
 					g_discogs->fetch_image(mbmi.first->second, artist->images[artist_img_ndx], p_abort);
 					buffer = mbmi.first->second;
 				}

@@ -35,7 +35,7 @@ struct cfg_preview_column_type {
 	int celltype = 1;
 	int custtype = 0;
 	bool factory = false;
-	bool default = false;
+	bool is_default = false;
 	bool enabled = true;
 	bool defuser = false;
 };
@@ -76,7 +76,7 @@ struct cfg_preview_listview_type {
 					column_configs[it].celltype,
 					column_configs[it].custtype,
 					column_configs[it].factory,
-					column_configs[it].default,
+					column_configs[it].is_default,
 					column_configs[it].enabled,
 					column_configs[it].defuser,
 				};
@@ -666,7 +666,7 @@ bool CPreviewTagsDialog::context_menu_switch(HWND wnd, POINT point, int cmd, bit
 			m_uilist.GetSubItemText(isel, 1, out);
 
 			ClipboardHelper::OpenScope scope;
-			scope.Open(core_api::get_main_window(), true);
+			scope.Open(core_api::get_main_window());
 			ClipboardHelper::SetString(out);
 			scope.Close();
 		}
@@ -1344,7 +1344,7 @@ void CPreviewTagsDialog::reset_default_columns(bool breset, bool bshowstats) {
 			}
 		}
 		else {
-			if (walk_cfg.default || (walk_cfg.enabled && bshowstats && walk_cfg.icol >= COL_STATS_FIRST_COL)) {
+			if (walk_cfg.is_default || (walk_cfg.enabled && bshowstats && walk_cfg.icol >= COL_STATS_FIRST_COL)) {
 				//insert column
 				m_uilist.AddColumnEx(walk_cfg.name, walk_cfg.width, LVCFMT_LEFT);
 			}
@@ -1359,7 +1359,7 @@ void CPreviewTagsDialog::fix_sorted_icol_map(bool reset, bool bshowstats) {
 	for (auto & walk_col : cfg_listview.colmap)	{
 
 		if (reset) {
-			if (walk_col.second.default || (walk_col.second.icol >= COL_STATS_FIRST_COL && bshowstats)) {
+			if (walk_col.second.is_default || (walk_col.second.icol >= COL_STATS_FIRST_COL && bshowstats)) {
 				walk_col.second.enabled = true;
 				m_vcol_data_subitems.push_back(std::make_pair(walk_col.first, walk_col.second.icol));
 			}
@@ -1369,7 +1369,7 @@ void CPreviewTagsDialog::fix_sorted_icol_map(bool reset, bool bshowstats) {
 		}
 		else {
 			//restore
-			if (walk_col.second.default || walk_col.second.enabled) {
+			if (walk_col.second.is_default || walk_col.second.enabled) {
 				m_vcol_data_subitems.push_back(std::make_pair(walk_col.first, walk_col.second.icol));
 			}
 			else {

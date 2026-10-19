@@ -874,7 +874,9 @@ pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages_offline_cache(ol::G
 					p_status.set_item(status_msg);
 					fs::path os_root = walk_dir;
 					os_root += "\\root.json";
-					json_t* json_obj = offline_cache.Read_JSON(os_root.u8string().c_str());
+					const auto os_root_u8 = os_root.u8string();
+				const std::string os_root_utf8(os_root_u8.begin(), os_root_u8.end());
+				json_t* json_obj = offline_cache.Read_JSON(os_root_utf8.c_str());
 
 					if (json_obj == nullptr) {
 						foo_discogs_exception ex(PFC_string_formatter() << "Invalid cache file:" << os_root.c_str());

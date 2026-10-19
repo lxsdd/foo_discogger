@@ -62,6 +62,23 @@ public:
 	}
 };
 
+// Tag writes have their own operation gate, independent of artist/search operations.
+// Acquire before launching the worker and release when its callback is destroyed.
+class foo_discogs_write_tag_locked_threaded_process_callback : public foo_discogs_threaded_process_callback {
+public:
+	foo_discogs_write_tag_locked_threaded_process_callback() {
+		std::lock_guard<std::mutex> guard(g_discogs->write_tag_locked_operation_rw_mutex);
+		if (g_discogs->write_tag_locked_operation != 0) {
+			throw locked_task_exception("Tag write operation locked");
+		}
+		++g_discogs->write_tag_locked_operation;
+	}
+	~foo_discogs_write_tag_locked_threaded_process_callback() {
+		std::lock_guard<std::mutex> guard(g_discogs->write_tag_locked_operation_rw_mutex);
+		--g_discogs->write_tag_locked_operation;
+	}
+};
+
 // Legacy read/filter task name uses the same mutex-protected operation gate.
 // Keep this separate from the asynchronous physical tag-write gate.
 using foo_discogs_locked_threaded_process_callback = foo_discogs_threaded_locked_process_callback;

@@ -1159,7 +1159,7 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
 				std::string const  s = exp_pair.first;
 				pfc::string8 scrc;
 				std::ostringstream os;
-				os << std::hex << std::setw(8) << std::setfill('0') << crc(s.begin(), s.end());
+				os << std::hex << std::setw(8) << std::setfill('0') << discogger_crc::crc32(s.begin(), s.end());
 				scrc = os.str().c_str();
 
 				find_dlg->add_history(oplog_type::query, kHistorySearchQuery, "", "",

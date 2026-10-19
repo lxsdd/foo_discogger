@@ -629,7 +629,7 @@ LRESULT CFindReleaseDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARA
 
 		if (bres) {
 
-			if (b_is_various && !test_no_artists_artist_in_title && !cfg_on_init_query_custom_tf_enabled) {
+			if (b_is_various && !cfg_on_init_query_custom_tf_enabled) {
 				if (m_qdm_search_query.at("artist=").first.size()) {
 
 					QueryDefMap qdm_temp;
@@ -1173,12 +1173,8 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 
 	//may spawn on list item selection
 
+	// The old debug_ok branch was permanently disabled and had no declaration.
 	updRelSrc updrelsrc = updRelSrc::ArtistSearch;
-	debug_ok = false;
-	if (debug_ok && m_query_mode & SearchMode::AT) {
-
-		updrelsrc = updRelSrc::ArtistSearchAT;
-	}
 
 	if (!append) {
 		m_alist.fill_artist_list(b_chk_exact_matches, m_tracer.has_amr(), updrelsrc/*updRelSrc::ArtistSearch*/);

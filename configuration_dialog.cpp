@@ -99,7 +99,9 @@ LRESULT CConfigurationDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPA
 	for (size_t n = 0; n < NUM_TABS; n++) {
 		PFC_ASSERT(tab_table[n].m_pszName != nullptr);
 
-		item.pszText = tab_table[n].m_pszName;
+		// uTCITEM requests a mutable pointer; keep a writable buffer alive for the synchronous insert.
+		std::string tab_name(tab_table[n].m_pszName);
+		item.pszText = tab_name.data();
 		uTabCtrl_InsertItem(hWndTab, n, &item);
 
 		g_hWndTabDialog[n] = tab_table[n].CreateTabDialog(m_hWnd, (LPARAM)this);
@@ -664,7 +666,7 @@ void CConfigurationDialog::init_caching_dialog(HWND wnd, bool subclass) {
 	bool bread = fv_offline_cache.GetFlag(ol::CacheFlags::OC_READ);
 	bool bwrite = fv_offline_cache.GetFlag(ol::CacheFlags::OC_WRITE);
 	bool bmerge_subtracks = fv_offline_cache.GetFlag(ol::CacheFlags::MERGE_SUBTRACKS);
-	bool bmerge_tracks_dotted_to_header = fv_offline_cache.GetFlag(ol::CacheFlags::MERGE_TRACKS_DOTTED_TO_HEADER);
+	bool bmerge_tracks_dotted_to_header = fv_offline_cache.GetFlag(ol::CacheFlags::MERGE_TRACKS_TO_HEADER);
 
 	uButton_SetCheck(wnd, IDC_CHK_CFG_CACHE_READ_DSK_CACHE, bread);
 	uButton_SetCheck(wnd, IDC_CHK_CFG_CACHE_WRITE_DSK_CACHE, bwrite);
@@ -673,12 +675,12 @@ void CConfigurationDialog::init_caching_dialog(HWND wnd, bool subclass) {
 
 	//memory cache
 
-	original_parsing_merge_titles = conf.parse_hidden_merge_titles;
-	original_parsing_merge_subtracks = conf.cache_offline_cache_flag & ol::CacheFlags::MERGE_SUBTRACKS;
-	original_parsing_tracks_dotted_to_header = conf.cache_offline_cache_flag & ol::CacheFlags::MERGE_TRACKS_DOTTED_TO_HEADER;
+	ori_parsing_merge_titles = conf.parse_hidden_merge_titles;
+	ori_parsing_merge_subtracks = conf.cache_offline_cache_flag & ol::CacheFlags::MERGE_SUBTRACKS;
+	ori_parsing_tracks_dotted_to_header = conf.cache_offline_cache_flag & ol::CacheFlags::MERGE_TRACKS_TO_HEADER;
 
-	original_parsing = conf.parse_hidden_as_regular;
-	original_skip_video = conf.skip_video_tracks;
+	ori_parsing = conf.parse_hidden_as_regular;
+	ori_skip_video = conf.skip_video_tracks;
 
 	pfc::string8 num;
 	num << conf.cache_max_objects;
@@ -1103,18 +1105,18 @@ void CConfigurationDialog::save_caching_dialog(HWND wnd, bool dlgbind) {
 		conf_ptr->cache_offline_cache_flag &= ~(ol::CacheFlags::MERGE_SUBTRACKS);
 
 	if (uButton_GetCheck(wnd, IDC_CHK_TRACKS_MERGE_DOTTED_TO_HEADER_CACHE))
-		conf_ptr->cache_offline_cache_flag |= ol::CacheFlags::MERGE_TRACKS_DOTTED_TO_HEADER;
+		conf_ptr->cache_offline_cache_flag |= ol::CacheFlags::MERGE_TRACKS_TO_HEADER;
 	else
-		conf_ptr->cache_offline_cache_flag &= ~(ol::CacheFlags::MERGE_TRACKS_DOTTED_TO_HEADER);
+		conf_ptr->cache_offline_cache_flag &= ~(ol::CacheFlags::MERGE_TRACKS_TO_HEADER);
 
 	auto expiration_enabled = uButton_GetCheck(wnd, IDC_CHK_CFG_CACHE_EXP_ENABLED);
 	conf_ptr->set_expiration_enabled(expiration_enabled);
 
-	if (original_parsing_merge_titles != conf_ptr->parse_hidden_merge_titles ||
-		original_parsing_merge_subtracks != (bool)(conf_ptr->cache_offline_cache_flag & ol::CacheFlags::MERGE_SUBTRACKS) ||
-		original_parsing_tracks_dotted_to_header != (bool)(conf_ptr->cache_offline_cache_flag & ol::CacheFlags::MERGE_TRACKS_DOTTED_TO_HEADER) ||
-		original_parsing != conf_ptr->parse_hidden_as_regular ||
-		original_skip_video != conf_ptr->skip_video_tracks) {
+	if (ori_parsing_merge_titles != conf_ptr->parse_hidden_merge_titles ||
+		ori_parsing_merge_subtracks != (bool)(conf_ptr->cache_offline_cache_flag & ol::CacheFlags::MERGE_SUBTRACKS) ||
+		ori_parsing_tracks_dotted_to_header != (bool)(conf_ptr->cache_offline_cache_flag & ol::CacheFlags::MERGE_TRACKS_TO_HEADER) ||
+		ori_parsing != conf_ptr->parse_hidden_as_regular ||
+		ori_skip_video != conf_ptr->skip_video_tracks) {
 		discogs_interface->reset_release_cache();
 		HWND wndCacheTab = g_hWndTabDialog[CONF_CACHING_TAB];
 		if (wndCacheTab) {

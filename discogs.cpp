@@ -1530,7 +1530,7 @@ bool parseAllTrackPositions(pfc::array_t<ReleaseTrack_ptr>& intermediate_tracks,
 	bool bfake_subtrack_header_changed = false;
 
 	bool bmerge_subtracks = CONF.cache_offline_cache_flag & ol::CacheFlags::MERGE_SUBTRACKS;
-	bool bmerge_tracks_to_header = CONF.cache_offline_cache_flag & ol::CacheFlags::MERGE_TRACKS_DOTTED_TO_HEADER;
+	bool bmerge_tracks_to_header = CONF.cache_offline_cache_flag & ol::CacheFlags::MERGE_TRACKS_TO_HEADER;
 	bool bmerge_hidden = !CONF.parse_hidden_as_regular;
 
 	bool last_hidden = false;

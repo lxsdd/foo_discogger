@@ -1409,7 +1409,7 @@ bool CTrackMatchingDialog::context_menu_track_switch(HWND wnd, POINT point, bool
 			//
 
 			ClipboardHelper::OpenScope scope;
-			scope.Open(core_api::get_main_window(), true);
+			scope.Open(core_api::get_main_window());
 			ClipboardHelper::SetString(out);
 			scope.Close();
 		}

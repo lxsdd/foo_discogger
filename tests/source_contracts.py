@@ -380,3 +380,27 @@ assert "cfg_string_entries.set(std::move(string_snapshot))" in conf
 for file in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
     assert "cfg_snapshot_ops_test.cpp" in (root / file).read_text(encoding="utf-8-sig")
 print("PASS: snapshot config persistence, ID migration and MSVC/portable test wiring.")
+
+# Native C++20 compile-cluster regression contracts (not DLL acceptance).
+native_tasks = (root / "tasks.h").read_text(encoding="utf-8-sig")
+assert "class foo_discogs_write_tag_locked_threaded_process_callback : public foo_discogs_threaded_process_callback" in native_tasks
+assert "write_tag_locked_operation_rw_mutex" in native_tasks
+assert "discogger_crc::crc32(s.begin(), s.end())" in tasks
+assert "crc32_test.cpp" in workflow
+assert "crc32_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+assert "const char *url_prefix;" in (root / "foo_discogs.cpp").read_text(encoding="utf-8-sig")
+assert "const char *name;" in (root / "tags.h").read_text(encoding="utf-8-sig")
+assert "auto& mbmi = done_fetches.emplace" not in (root / "foo_discogs.cpp").read_text(encoding="utf-8-sig")
+cfg_cpp = (root / "configuration_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "ori_parsing_merge_titles" in cfg_cpp and "original_parsing_merge_titles" not in cfg_cpp
+assert "MERGE_TRACKS_DOTTED_TO_HEADER" not in cfg_cpp
+assert "ol::CacheFlags::MERGE_TRACKS_TO_HEADER" in cfg_cpp
+assert "ol::CacheFlags::MERGE_TRACKS_TO_HEADER" in (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+preview_cpp = (root / "preview_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "bool is_default = false;" in preview_cpp and ".default" not in preview_cpp
+assert "scope.Open(core_api::get_main_window(), true);" not in preview_cpp
+assert "scope.Open(core_api::get_main_window(), true);" not in (root / "track_matching_dialog.cpp").read_text(encoding="utf-8-sig")
+find_cpp = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "test_no_artists_artist_in_title" not in find_cpp and "debug_ok" not in find_cpp
+assert "const std::string os_root_utf8(" in (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+print("PASS: native compile-cluster source regressions (tag write lock, C++20, UI and CRC32).")

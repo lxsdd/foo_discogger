@@ -25,6 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Source contract regression checks
         run: python3 tests/source_contracts.py
+      - name: Compile and run portable query-history CRC32 regression
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/crc32_test.cpp -o /tmp/discogger-crc32-test && /tmp/discogger-crc32-test
       - name: Compile HTTP status parser in C++17
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/http_status_parser_test.cpp -o /tmp/discogger-http-test
       - name: Run HTTP status regression tests

@@ -15,8 +15,8 @@ inline bool discogger_is_multivalue_meta(const pfc::string8& field) {
 
 typedef struct
 {
-	char *name;
-	char *description;
+	const char *name;
+	const char *description;
 } data_mapping_entry;
 
 // {FF683FD9-6B6B-43F4-927D-872EAF92A1CF}
