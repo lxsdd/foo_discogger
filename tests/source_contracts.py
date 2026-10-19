@@ -545,3 +545,18 @@ assert "artwork_lease" in tasks
 for path in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "async_write_lease_test.cpp" in (root / path).read_text(encoding="utf-8-sig")
 print("PASS: async write/physical artwork operation lease contracts.")
+
+# Real artwork idempotence and atomic sidecar overwrite contracts.
+artwork_source = (root / "foo_discogs.cpp").read_text(encoding="utf-8-sig")
+sidecar = artwork_source[artwork_source.index("void foo_discogs::write_image("):artwork_source.index("void foo_discogs::embed_image(")]
+embedded = artwork_source[artwork_source.index("void foo_discogs::embed_image("):artwork_source.index("void foo_discogs::ui_v2_config_callback")]
+assert "artwork_stream_matches(" in sidecar
+assert "rewrite_file(full_path.get_ptr()" in sidecar
+assert "g_open_write_new" not in sidecar and "g_remove(" not in sidecar
+assert "editor->query(embed_guid, p_abort)" in embedded
+assert "artwork_bytes_equal(" in embedded
+assert embedded.index("artwork_bytes_equal(") < embedded.index("editor->remove(embed_guid)")
+assert embedded.index("artwork_bytes_equal(") < embedded.index("editor->commit(p_abort)")
+for workflow_file in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
+    assert "artwork_noop_test.cpp" in (root / workflow_file).read_text(encoding="utf-8-sig")
+print("PASS: embedded/external artwork exact-byte no-op and staged atomic overwrite contracts.")
