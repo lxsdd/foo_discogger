@@ -617,3 +617,17 @@ workflow_content = (root / ".github/workflows/validation.yml").read_text(encodin
 assert "  pull_request:" in workflow_content and "  push:" in workflow_content
 assert "      - master" in workflow_content and "      - 'work/**'" not in workflow_content
 print("PASS: user staging approvals and one validation run per draft PR SHA.")
+
+# Async callback lifetime and failure cleanup: source-level guard, not host acceptance.
+manager_header = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
+manager = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
+safety_header = (root / "discogger_write_safety.h").read_text(encoding="utf-8-sig")
+assert "std::enable_shared_from_this<file_info_manager>" in manager_header
+assert "std::shared_ptr<file_info_manager> m_finfo_manager" in manager_header
+assert "auto keep_alive = shared_from_this();" in manager
+assert "std::move(keep_alive)" in manager
+assert "if (m_gate.completed()) return;" in manager
+assert "m_finfo_manager->discard_pending_changes();" in manager
+assert "discard_pending_changes();\n            throw;" in manager
+assert "FailureAction&& failure_action" in safety_header
+print("PASS: callback-owned metadata lifetime, single-shot async failure reset and synchronous scheduling cleanup.")

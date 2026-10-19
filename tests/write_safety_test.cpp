@@ -79,6 +79,21 @@ int main() {
     assert(caught);
     assert(!throwing.finish(true, [&] { ++artwork_starts; }));
     assert(artwork_starts == 1);
+    int resets = 0;
+    discogger_write_safety::write_completion_gate failed_with_reset;
+    assert(!failed_with_reset.finish(false, [&] { ++artwork_starts; }, [&] { ++resets; }));
+    assert(failed_with_reset.completed());
+    assert(!failed_with_reset.finish(false, [&] { ++artwork_starts; }, [&] { ++resets; }));
+    assert(!failed_with_reset.finish(true, [&] { ++artwork_starts; }, [&] { ++resets; }));
+    assert(resets == 1 && artwork_starts == 1);
+    discogger_write_safety::write_completion_gate succeeded_with_reset;
+    assert(succeeded_with_reset.finish(true, [&] { ++artwork_starts; }, [&] { ++resets; }));
+    assert(resets == 1 && artwork_starts == 2);
+    discogger_write_safety::write_completion_gate throwing_reset;
+    try { throwing_reset.finish(false, [] { assert(false); }, [] { throw std::runtime_error("synthetic reset failure"); }); }
+    catch (const std::runtime_error&) { caught = true; }
+    assert(throwing_reset.completed());
+    assert(!throwing_reset.finish(false, [] { assert(false); }, [] { assert(false); }));
     assert(!discogger_write_safety::contains_virtual_subsong(0,
         [&](std::size_t) -> unsigned { assert(false); return 0; }));
 }

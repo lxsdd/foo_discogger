@@ -57,13 +57,21 @@ inline artwork_write_decision plan_artwork_write(bool requested,
 class write_completion_gate {
     bool completed_ = false;
 public:
+    bool completed() const noexcept { return completed_; }
+    template <typename SuccessAction, typename FailureAction>
+    bool finish(bool successful, SuccessAction&& success_action, FailureAction&& failure_action) {
+        if (completed_) return false;
+        completed_ = true; // Single-shot even if either action throws.
+        if (!successful) {
+            std::forward<FailureAction>(failure_action)();
+            return false;
+        }
+        std::forward<SuccessAction>(success_action)();
+        return true;
+    }
     template <typename SuccessAction>
     bool finish(bool successful, SuccessAction&& action) {
-        if (completed_) return false;
-        completed_ = true;
-        if (!successful) return false;
-        std::forward<SuccessAction>(action)();
-        return true;
+        return finish(successful, std::forward<SuccessAction>(action), [] {});
     }
 };
 } // namespace discogger_write_safety

@@ -94,14 +94,22 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 
 	if (outptr != 0) {
 		static_api_ptr_t<metadb_io_v2> api;
-		service_ptr_t<write_tags_completion> callback = new service_impl_t<write_tags_completion>(std::move(after_success), std::move(write_lease));
-		api->update_info_async_simple(
-			pfc::list_const_array_t<metadb_handle_ptr, const pfc::array_t<metadb_handle_ptr>&>(items_to_update, outptr),
-			pfc::list_const_array_t<const file_info*, const pfc::array_t<const file_info*>&>(infos_to_write, outptr),
-			core_api::get_main_window(),
-			0,
-			callback);
-	}
+        // Callback ownership keeps all staged file_info wrappers alive through I/O.
+        auto keep_alive = shared_from_this();
+        try {
+            service_ptr_t<write_tags_completion> callback =
+                new service_impl_t<write_tags_completion>(
+                    std::move(after_success), std::move(write_lease), std::move(keep_alive));
+            api->update_info_async_simple(
+                pfc::list_const_array_t<metadb_handle_ptr, const pfc::array_t<metadb_handle_ptr>&>(items_to_update, outptr),
+                pfc::list_const_array_t<const file_info*, const pfc::array_t<const file_info*>&>(infos_to_write, outptr),
+                core_api::get_main_window(), 0, callback);
+        } catch (...) {
+            // Scheduling failed synchronously: discard uncommitted in-memory tags.
+            discard_pending_changes();
+            throw;
+        }
+    }
     else if (after_success) {
         // No tag writer was scheduled; an explicitly requested artwork action
         // may still proceed. Artwork no-op detection remains a separate gate.
@@ -110,6 +118,7 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 }
 
 void write_tags_completion::on_completion(unsigned p_code) {
+    if (m_gate.completed()) return; // Ignore duplicate SDK notifications.
     const bool success = p_code == metadb_io::update_info_success;
     try {
         m_gate.finish(success, [this]() {
@@ -117,6 +126,9 @@ void write_tags_completion::on_completion(unsigned p_code) {
                 auto action = std::move(m_after_success);
                 action();
             }
+        }, [this]() {
+            // In-memory reset only; partial physical writes require host verification.
+            if (m_finfo_manager) m_finfo_manager->discard_pending_changes();
         });
     }
     catch (const std::exception& e) {
@@ -125,7 +137,7 @@ void write_tags_completion::on_completion(unsigned p_code) {
         return;
     }
     catch (...) {
-        add_error("Tag write completed, but starting dependent artwork failed.", true);
+        add_error("Tag write completed, but callback cleanup or dependent artwork failed.", true);
         display_errors();
         return;
     }

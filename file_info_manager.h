@@ -5,6 +5,7 @@
 #include "tag_deletion_preflight.h"
 #include "discogger_async_write_lease.h"
 #include <functional>
+#include <memory>
 #include <utility>
 
 class file_info_manager;
@@ -26,10 +27,14 @@ class write_tags_completion : public completion_notify_dummy, public ErrorManage
     discogger_write_safety::write_completion_gate m_gate;
     std::function<void()> m_after_success;
     discogger_write_safety::async_write_gate::lease m_write_lease;
+    // The SDK may retain file_info pointers until this callback runs.
+    std::shared_ptr<file_info_manager> m_finfo_manager;
 public:
     write_tags_completion(std::function<void()> after_success,
-        discogger_write_safety::async_write_gate::lease write_lease)
-        : m_after_success(std::move(after_success)), m_write_lease(std::move(write_lease)) {}
+        discogger_write_safety::async_write_gate::lease write_lease,
+        std::shared_ptr<file_info_manager> finfo_manager)
+        : m_after_success(std::move(after_success)), m_write_lease(std::move(write_lease)),
+          m_finfo_manager(std::move(finfo_manager)) {}
     void on_completion(unsigned p_code) override;
 };
 
@@ -47,7 +52,7 @@ public:
 typedef std::shared_ptr<file_info_impl_wrapper> file_info_impl_wrapper_ptr;
 
 
-class file_info_manager
+class file_info_manager : public std::enable_shared_from_this<file_info_manager>
 {
 public:
 	metadb_handle_list items;
