@@ -6,6 +6,8 @@
 #include <utility>
 
 bool file_info_manager::read_infos() {
+    // Invalidate the previous read before invoking an SDK operation that may fail.
+    m_initial_read.begin();
 	static_api_ptr_t<metadb_io> api;
 	if (api->load_info_multi(items, metadb_io::load_info_default, core_api::get_main_window(), 0) != metadb_io::load_info_success) {
 		return false;
@@ -19,10 +21,12 @@ bool file_info_manager::read_infos() {
 		}
 		info_wrappers[n]->mask = val;
 	}
-	return loaded_count == m;
+	return m_initial_read.finish(true, m, loaded_count);
 }
 
 void file_info_manager::read_infos_new() {
+    // This async read has no validated complete-snapshot callback yet: fail closed.
+    m_initial_read.begin();
 	static_api_ptr_t<metadb_io_v2> api;
 	service_ptr_t<read_tags_completion> callback = new service_impl_t<read_tags_completion>(*this);
 	api->load_info_async(items,

@@ -54,6 +54,7 @@ typedef std::shared_ptr<file_info_impl_wrapper> file_info_impl_wrapper_ptr;
 
 class file_info_manager : public std::enable_shared_from_this<file_info_manager>
 {
+    discogger_write_safety::initial_metadata_read m_initial_read;
 public:
 	metadb_handle_list items;
 	pfc::array_t<file_info_impl_wrapper_ptr> info_wrappers;
@@ -114,6 +115,11 @@ public:
     }
 
 	inline void invalidate_all() {
+        // Never capture empty/stale projected tags as the original physical file.
+        if (!m_initial_read.ready())
+            throw foo_discogs_exception("Tagging stopped: complete physical metadata could not be read. No tags were submitted.");
+        if (items.get_count() != info_wrappers.get_count())
+            throw foo_discogs_exception("Tagging stopped: physical metadata count changed after the read.");
 		const size_t count = info_wrappers.get_count();
 		for (size_t p_index = 0; p_index < count; p_index++) {
 			auto& wrapper = info_wrappers[p_index];

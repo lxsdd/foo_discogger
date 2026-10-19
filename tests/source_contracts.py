@@ -101,6 +101,12 @@ print("PASS: dependent artwork is gated by asynchronous physical tag completion;
 manager_header = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
 writer = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
 assert "m_finfo_manager->invalidate_all();" in writer
+assert "initial_metadata_read m_initial_read" in manager_header
+assert "m_initial_read.begin();" in manager
+assert "m_initial_read.finish(true, m, loaded_count)" in manager
+assert manager.index("m_initial_read.begin();") < manager.index("api->load_info_multi(")
+assert manager_header.index("if (!m_initial_read.ready())") < manager_header.index("wrapper->original_info = wrapper->info;")
+assert "if (items.get_count() != info_wrappers.get_count())" in manager_header
 assert "wrapper->original_info = wrapper->info;" in manager_header
 assert "wrapper->original_captured = true;" in manager_header
 assert "original_captured" in manager

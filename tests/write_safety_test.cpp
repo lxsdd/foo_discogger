@@ -5,6 +5,22 @@
 #include <stdexcept>
 
 int main() {
+    // A successful SDK call is not sufficient if even one physical file_info
+    // failed to load. Re-reading must revoke any previously valid snapshot.
+    discogger_write_safety::initial_metadata_read initial_read;
+    assert(!initial_read.ready());
+    assert(!initial_read.finish(false, 2, 2));
+    assert(!initial_read.ready());
+    initial_read.begin();
+    assert(!initial_read.finish(true, 2, 1));
+    assert(!initial_read.ready());
+    initial_read.begin();
+    assert(initial_read.finish(true, 2, 2));
+    assert(initial_read.ready());
+    initial_read.begin();
+    assert(!initial_read.ready());
+    assert(!initial_read.finish(false, 0, 0));
+    assert(initial_read.finish(true, 0, 0));
     const std::array<unsigned, 3> physical = {0, 0, 0};
     const std::array<unsigned, 3> mixed = {0, 7, 0};
     const std::array<unsigned, 2> virtual_only = {1, 2};

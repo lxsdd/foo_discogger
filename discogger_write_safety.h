@@ -52,6 +52,19 @@ inline artwork_write_decision plan_artwork_write(bool requested,
     return artwork_equal ? artwork_write_decision::skip : artwork_write_decision::write;
 }
 
+// A failed/partial SDK read must never be treated as a complete physical
+// snapshot when the tag writer prepares potentially destructive changes.
+class initial_metadata_read {
+    bool complete_ = false;
+public:
+    void begin() noexcept { complete_ = false; }
+    bool finish(bool sdk_success, std::size_t expected, std::size_t loaded) noexcept {
+        complete_ = sdk_success && expected == loaded;
+        return complete_;
+    }
+    bool ready() const noexcept { return complete_; }
+};
+
 // Single-shot completion gate: never start dependent artwork after a failed
 // physical tag commit, and never dispatch twice on duplicate notifications.
 class write_completion_gate {
