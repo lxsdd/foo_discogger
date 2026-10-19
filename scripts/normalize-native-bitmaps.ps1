@@ -20,12 +20,38 @@ function Convert-DiscoggerResourceBitmap([string]$Path, [string]$TemporaryRoot) 
         throw ("Required historical resource missing: {0}" -f $Path)
     }
     $originalBytes = [IO.File]::ReadAllBytes($Path)
+    # Exact historic source forensic finding: bitmap_tracer_ext_drk.bmp
+    # has TWO UTF-8 BOMs prepended to an otherwise valid 1,144-byte BMP.
+    # Strip only these transport/editor bytes; never re-encode its pixels.
+    $bomBytes = 0
+    while (($originalBytes.Length - $bomBytes) -ge 3 -and
+        $originalBytes[$bomBytes] -eq 239 -and
+        $originalBytes[$bomBytes+1] -eq 187 -and
+        $originalBytes[$bomBytes+2] -eq 191) {
+        $bomBytes += 3
+        if ($bomBytes -gt 48) { throw ("Excessive resource BOM prefix: {0}" -f $Path) }
+    }
+    if ($bomBytes -gt 0) {
+        $cleanBytes = [byte[]]::new($originalBytes.Length - $bomBytes)
+        [Array]::Copy($originalBytes,$bomBytes,$cleanBytes,0,$cleanBytes.Length)
+        $originalBytes = $cleanBytes
+    }
     $format = Get-DiscoggerBitmapFormat $originalBytes
     if ($format -eq 'UNSUPPORTED') {
-        throw ("Resource is neither BMP nor PNG; refusing to alter: {0}" -f $Path)
+        throw ("Resource is neither BMP nor PNG after validated BOM stripping: {0}" -f $Path)
     }
     if ($format -eq 'BMP' -and [BitConverter]::ToUInt32($originalBytes,14) -eq 40) {
-        return 'unchanged'
+        if ($bomBytes -eq 0) { return 'unchanged' }
+        # The byte-for-byte original BITMAPFILEHEADER is still valid once the
+        # BOM is removed; verify its own length before replacing staged data.
+        if ([BitConverter]::ToUInt32($originalBytes,2) -ne $originalBytes.Length) {
+            throw ("Original BMP length mismatch after BOM stripping: {0}" -f $Path)
+        }
+        $stagedFile = Join-Path $TemporaryRoot ("discogger-rc-" + [IO.Path]::GetFileName($Path))
+        [IO.File]::WriteAllBytes($stagedFile,$originalBytes)
+        Copy-Item -LiteralPath $stagedFile -Destination $Path -Force
+        Write-Host ("RC_RESOURCE_BOM_CLEANED={0} bytes={1} pixels=unchanged" -f [IO.Path]::GetFileName($Path),$bomBytes)
+        return 'normalized'
     }
     Add-Type -AssemblyName System.Drawing
     $inputStream = [IO.MemoryStream]::new($originalBytes, $false)

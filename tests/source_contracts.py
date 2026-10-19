@@ -492,3 +492,14 @@ assert "tests/native-bitmap-resource-test.ps1" in windows_workflow
 assert "scripts/normalize-native-bitmaps.ps1" in windows_workflow
 print("PASS: strict signature-based RC normalization and Windows positive/negative fixtures.")
 
+
+# Historical bitmap has exactly two erroneous UTF-8 BOM prefixes; do not
+# substitute pixel re-encoding for a lossless six-byte prefix cleanup.
+normalizer = (root / "scripts/normalize-native-bitmaps.ps1").read_text(encoding="utf-8-sig")
+resource_test = (root / "tests/native-bitmap-resource-test.ps1").read_text(encoding="utf-8-sig")
+assert "RC_RESOURCE_BOM_CLEANED=" in normalizer
+assert "Original BMP length mismatch after BOM stripping" in normalizer
+assert "EF-BB-BF-EF-BB-BF-42-4D" in resource_test
+assert "Removing the BOM modified historic BMP pixel/palette bytes" in resource_test
+assert "BOM-prefixed invalid content was accepted" in resource_test
+print("PASS: historic double UTF-8 BOM artifact cleaned losslessly, negative BOM fixtures guarded.")

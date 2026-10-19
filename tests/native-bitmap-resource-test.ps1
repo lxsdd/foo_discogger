@@ -61,6 +61,48 @@ try {
     if ((Get-FileHash -LiteralPath $badPng -Algorithm SHA256).Hash -ne $badHash) {
         throw 'Corrupt PNG source modified before rejection'
     }
+    # Regression against the actual historical resource, not just synthetic
+    # PNG fixtures: two accidental UTF-8 BOM markers precede a valid BMP.
+    $historicalResource = Join-Path (Split-Path -Parent $PSScriptRoot) 'ico/bitmap_tracer_ext_drk.bmp'
+    $historicHash = (Get-FileHash -LiteralPath $historicalResource -Algorithm SHA256).Hash
+    $historicBytes = [IO.File]::ReadAllBytes($historicalResource)
+    if ($historicBytes.Length -ne 1150) { throw 'Historic BMP byte count changed unexpectedly' }
+    if (([BitConverter]::ToString($historicBytes,0,8)) -ne 'EF-BB-BF-EF-BB-BF-42-4D') {
+        throw 'Historic double-BOM signature changed'
+    }
+    $expectedClean = [byte[]]::new($historicBytes.Length - 6)
+    [Array]::Copy($historicBytes,6,$expectedClean,0,$expectedClean.Length)
+    if ([BitConverter]::ToUInt32($expectedClean,2) -ne $expectedClean.Length) {
+        throw 'Historic BMP header length mismatch'
+    }
+    $tempHistorical = Join-Path $folder 'real-source-bom.bmp'
+    Copy-Item -LiteralPath $historicalResource -Destination $tempHistorical
+    if ((Convert-DiscoggerResourceBitmap -Path $tempHistorical -TemporaryRoot $folder) -ne 'normalized') {
+        throw 'Real historic BOM-prefixed BMP not normalized'
+    }
+    $actualClean = [IO.File]::ReadAllBytes($tempHistorical)
+    if ([Convert]::ToHexString($expectedClean) -ne [Convert]::ToHexString($actualClean)) {
+        throw 'Removing the BOM modified historic BMP pixel/palette bytes'
+    }
+    if ((Get-FileHash -LiteralPath $historicalResource -Algorithm SHA256).Hash -ne $historicHash) {
+        throw 'Historical Git working-tree source modified'
+    }
+    if ((Convert-DiscoggerResourceBitmap -Path $tempHistorical -TemporaryRoot $folder) -ne 'unchanged') {
+        throw 'Cleaned resource is not idempotent'
+    }
+
+    # Negative: a BOM prefix must not legitimize arbitrary or broken data.
+    $badBom = Join-Path $folder 'bom-invalid.bmp'
+    [IO.File]::WriteAllBytes($badBom,[byte[]]@(239,187,191,239,187,191,1,2,3,4))
+    $badBomHash = (Get-FileHash -LiteralPath $badBom -Algorithm SHA256).Hash
+    $rejected = $false
+    try { $null = Convert-DiscoggerResourceBitmap -Path $badBom -TemporaryRoot $folder }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw 'BOM-prefixed invalid content was accepted' }
+    if ((Get-FileHash -LiteralPath $badBom -Algorithm SHA256).Hash -ne $badBomHash) {
+        throw 'Invalid BOM-prefixed file changed before rejection'
+    }
+    Write-Host 'PASS: exact historical double-BOM bitmap normalized without changing source or pixel bytes.'
     Write-Host 'PASS: PNG disguised as BMP, alpha-preserving RC format, idempotency and negative inputs.'
 }
 finally { Remove-Item -LiteralPath $folder -Recurse -Force }
