@@ -1,6 +1,5 @@
 #pragma once
 // SDK-independent exact-byte artwork preflight. No physical file is modified here.
-#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <stdexcept>
@@ -27,7 +26,8 @@ bool artwork_stream_matches(
     unsigned char chunk[16384];
     std::size_t offset = 0;
     while (offset < desired_len) {
-        const auto n = std::min(sizeof(chunk), desired_len - offset);
+        const auto remaining = desired_len - offset;
+        const auto n = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
         if (std::forward<ReadChunk>(reader)(chunk, n) != n) {
             throw std::runtime_error("Short read while validating existing artwork");
         }

@@ -1,10 +1,15 @@
-#include "../discogger_artwork_noop.h"
 #include <cassert>
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 #include <stdexcept>
+#include <utility>
 #include <string>
 #include <vector>
+// Simulate Windows.h's min() macro during SDK header compilation.
+#define min(a,b) forbidden_windows_min_macro
+#include "../discogger_artwork_noop.h"
+#undef min
 
 using discogger_write_safety::artwork_bytes_equal;
 using discogger_write_safety::artwork_stream_matches;
