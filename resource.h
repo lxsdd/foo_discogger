@@ -338,6 +338,7 @@
 #define IDC_EDIT1                       2528
 #define IDC_EDIT_STATUS_BAR_FORMATTING  2528
 #define IDC_BTN_CONF_LOAD_MATCH_FORMATTING 2529
+#define IDC_STATIC_CFG_HIST_SIZE2       2530
 
 // Next default values for new objects
 // 
@@ -345,7 +346,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        402
 #define _APS_NEXT_COMMAND_VALUE         2000
-#define _APS_NEXT_CONTROL_VALUE         2530
+#define _APS_NEXT_CONTROL_VALUE         2531
 #define _APS_NEXT_SYMED_VALUE           140
 #endif
 #endif

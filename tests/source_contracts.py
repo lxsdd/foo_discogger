@@ -453,3 +453,27 @@ assert "$savedCompilerFlags = $env:CL" in native_build
 assert "finally {\n            $env:CL = $savedCompilerFlags" in native_build
 assert 'Invoke-Required "Discogger native full build and LINK $platform"' in native_build
 print("PASS: native Win32/x64 zlib CMake generated headers use isolated MSVC CL search path.")
+
+# Native Windows resource compiler gate: every named control in .rc must have
+# an assigned ID. Missing IDs compile silently in ClCompile but fail in RC.exe.
+import re
+
+resource_file = (root / "foo_discogger.rc").read_text(encoding="utf-8-sig")
+resource_header = (root / "resource.h").read_text(encoding="utf-8-sig")
+
+def missing_resource_ids(resource_text: str, declarations_text: str) -> set[str]:
+    used = set(re.findall(r"\b(?:IDC|IDD|IDI|IDB|IDR|IDS|IDM|IDP|ID)_[A-Z0-9_]+\b", resource_text))
+    declared = set(re.findall(r"^\s*#define\s+([A-Z_][A-Z_0-9]*)\b", declarations_text, re.M))
+    return used - declared - {"IDC_STATIC"}
+
+assert not missing_resource_ids(resource_file, resource_header), missing_resource_ids(resource_file, resource_header)
+assert "IDC_STATIC_CFG_HIST_SIZE2" in resource_file
+assert not missing_resource_ids("LTEXT IDC_STATIC_CFG_HIST_SIZE2", resource_header)
+assert missing_resource_ids("LTEXT IDC_STATIC_CFG_HIST_SIZE2", resource_header.replace("#define IDC_STATIC_CFG_HIST_SIZE2       2530", "")) == {"IDC_STATIC_CFG_HIST_SIZE2"}
+assigned_ids = [
+    (name, int(value))
+    for name, value in re.findall(r"^\s*#define\s+(IDC_[A-Z0-9_]+)\s+([0-9]+)\s*$", resource_header, re.M)
+]
+assert [(name, val) for name, val in assigned_ids if val == 2530] == [("IDC_STATIC_CFG_HIST_SIZE2", 2530)]
+assert re.search(r"^\s*#define\s+_APS_NEXT_CONTROL_VALUE\s+2531\s*$", resource_header, re.M)
+print("PASS: all named native RC control IDs resolve; new history label ID is collision-free.")
