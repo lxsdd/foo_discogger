@@ -478,15 +478,17 @@ assert [(name, val) for name, val in assigned_ids if val == 2530] == [("IDC_STAT
 assert re.search(r"^\s*#define\s+_APS_NEXT_CONTROL_VALUE\s+2531\s*$", resource_header, re.M)
 print("PASS: all named native RC control IDs resolve; new history label ID is collision-free.")
 
-# Preserve historical artwork bitmaps; fix RC2170 in temporary runner staging only.
-resource_build = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
-for item in ("bitmap_tracer.bmp", "bitmap_r.bmp", "bitmap_tracer_ext.bmp", "bitmap_tracer_ext_drk.bmp"):
-    assert item in resource_build
-assert "Add-Type -AssemblyName System.Drawing" in resource_build
-assert "Original bitmap" not in resource_build or "runner-local" in resource_build
-assert "[System.Drawing.Drawing2D.CompositingMode]::SourceCopy" in resource_build
-assert ".GetPixel($x,$y).ToArgb()" in resource_build
-assert "[BitConverter]::ToUInt32($encoded,14) -ne 40" in resource_build
-assert "Copy-Item -LiteralPath $tempBitmap -Destination $bmpPath -Force" in resource_build
-assert "RC_RESOURCE_NORMALIZED=" in resource_build
-print("PASS: Win32 bitmap resources normalize only in runner staging with pixel-preservation gate.")
+# RC resources: real PNG signatures may be stored in historical .bmp paths.
+resource_script = (root / "scripts/normalize-native-bitmaps.ps1").read_text(encoding="utf-8-sig")
+native_script = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
+windows_workflow = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "Get-DiscoggerBitmapFormat" in resource_script
+assert "resourceNames" in resource_script and "bitmap_tracer_ext_drk.bmp" in resource_script
+assert "BITMAPINFOHEADER" not in resource_script or "[UInt32]40" in resource_script
+assert "[UInt32]40" in resource_script and "[UInt32]54" in resource_script
+assert "Copy-Item -LiteralPath $stagedFile -Destination $Path -Force" in resource_script
+assert ". (Join-Path $PSScriptRoot 'normalize-native-bitmaps.ps1')" in native_script
+assert "tests/native-bitmap-resource-test.ps1" in windows_workflow
+assert "scripts/normalize-native-bitmaps.ps1" in windows_workflow
+print("PASS: strict signature-based RC normalization and Windows positive/negative fixtures.")
+
