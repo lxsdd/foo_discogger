@@ -115,9 +115,19 @@ foreach ($platform in $Platforms) {
         $sharedLib = Join-Path $foobar "shared/shared-$platform.lib"
         if (-not (Test-Path -LiteralPath $sharedLib)) { throw "Official SDK shared import library missing: $sharedLib" }
 
-        # Do not suppress a nonzero exit: a successful compilation alone is not DLL link PASS.
-        Invoke-Required "Discogger native full build and LINK $platform" {
-            & $msbuild $project /t:Build /p:Configuration=Release "/p:Platform=$platform" "/p:SolutionDir=$component\" "/p:AdditionalIncludeDirectories=$($nativeIncludes.Replace(';','%3B'))" /m:1 /v:minimal /nologo
+        # AdditionalIncludeDirectories is ClCompile item metadata, not a reliable
+        # global MSBuild property. zlib.h includes zconf.h after CMake moves the
+        # source-tree copy aside, so pass the generated header via cl.exe's
+        # documented CL environment variable. Never leak Win32's header to x64.
+        $savedCompilerFlags = $env:CL
+        try {
+            $env:CL = '/I"' + $zlibBuild + '" ' + $savedCompilerFlags
+            Invoke-Required "Discogger native full build and LINK $platform" {
+                & $msbuild $project /t:Build /p:Configuration=Release "/p:Platform=$platform" "/p:SolutionDir=$component\" "/p:AdditionalIncludeDirectories=$($nativeIncludes.Replace(';','%3B'))" /m:1 /v:minimal /nologo
+            }
+        }
+        finally {
+            $env:CL = $savedCompilerFlags
         }
         $dll = Join-Path $libDir 'foo_discogger.dll'
         [UInt16] $arch = if ($platform -eq 'Win32') { 0x14C } else { 0x8664 }

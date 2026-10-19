@@ -444,3 +444,12 @@ assert "$nativeIncludes = @($zlibBuild, $includes) -join ';'" in native
 assert 'AdditionalIncludeDirectories=$($nativeIncludes.Replace' in native
 assert 'Copy-Item -LiteralPath $zconf' not in native
 print("PASS: per-architecture CMake zconf.h passed to strict native DLL compiler.")
+
+# CMake zlib deliberately relocates the source-tree zconf.h on out-of-source
+# builds; global MSBuild AdditionalIncludeDirectories is insufficient.
+native_build = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
+assert "$env:CL = '/I\"' + $zlibBuild + '\" ' + $savedCompilerFlags" in native_build
+assert "$savedCompilerFlags = $env:CL" in native_build
+assert "finally {\n            $env:CL = $savedCompilerFlags" in native_build
+assert 'Invoke-Required "Discogger native full build and LINK $platform"' in native_build
+print("PASS: native Win32/x64 zlib CMake generated headers use isolated MSVC CL search path.")
