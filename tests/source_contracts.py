@@ -283,7 +283,8 @@ assert "class foo_discogs_threaded_locked_process_callback : public foo_discogs_
 assert "foo_discogs_locked_threaded_process_callback()" not in task_header
 assert task_header.count("std::lock_guard<std::mutex> guard(g_discogs->locked_operation_rw_mutex);") == 2
 assert "throw locked_task_exception(\"Operation locked\");" in task_header
-assert "class write_tags_task : public foo_discogs_write_tag_locked_threaded_process_callback" in task_header
+assert "class write_tags_task : public foo_discogs_threaded_process_callback" in task_header
+assert "acquire_physical_write_lease()" in task_header
 print("PASS: search/filter lock base and mutex-guarded counter transitions are wired.")
 
 # Preserve conditional Wine light-theme redraw with current libPPUI:
