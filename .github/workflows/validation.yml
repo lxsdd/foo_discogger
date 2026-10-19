@@ -1,10 +1,11 @@
 name: Discogger modernization validation
 
+# Open work branches are always checked through draft PRs; their push events
+# would otherwise run the same expensive Win32/x64 link CI a second time.
 on:
   push:
     branches:
-      - 'work/**'
-      - 'fix/tags-conf-declaration-20261018'
+      - master
   pull_request:
     branches:
       - master

@@ -22,7 +22,22 @@ struct Meta {
     std::size_t meta_enum_value_count(std::size_t i) const{return data[i].second.size();}
     const char* meta_enum_value(std::size_t i,std::size_t j) const{return data[i].second[j].c_str();}
 };
+struct ApprovalMask {
+    std::vector<bool> data;
+    std::size_t size() const { return data.size(); }
+    std::size_t find_first(bool desired, std::size_t start, std::size_t n) const {
+        for (std::size_t i = start; i < n; ++i)
+            if (data[i] == desired) return i;
+        return n;
+    }
+};
 int main() {
+    using discogger_write_safety::has_any_user_approval;
+    assert(!has_any_user_approval(ApprovalMask{{}}));
+    assert(!has_any_user_approval(ApprovalMask{{false,false,false}}));
+    assert(has_any_user_approval(ApprovalMask{{true,false,false}}));
+    assert(has_any_user_approval(ApprovalMask{{false,false,true}}));
+
     using discogger_write_safety::inspect_tag_deletions;
     const Meta old{{{"ARTIST",{"A"}},{"GENRE",{"Trance","Progressive"}},{"CUESHEET",{"FILE x.mp3 MP3\nTRACK 01 AUDIO"}},{"CUSTOM",{"keep"}}}};
     std::vector<std::string> names;

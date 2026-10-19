@@ -606,3 +606,14 @@ assert tasks.index("inspect_tag_deletions(") < tasks.index("write_infos(std::mov
 for cfg in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
     assert "tag_deletion_preflight_test.cpp" in (root / cfg).read_text(encoding="utf-8-sig")
 print("PASS: explicit physical-tag removal approval, protected embedded CUE and restore-on-cancel.")
+
+# Prevent accidental zero-length approval scans; avoid duplicate expensive CI.
+approval_writer = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+approval_helper = (root / "tag_deletion_preflight.h").read_text(encoding="utf-8-sig")
+assert "has_any_user_approval(wr->r_usr_approved)" in approval_writer
+assert "r_usr_approved.size() < wr->r_usr_approved.size()" not in approval_writer
+assert "approvals.find_first(true, 0, count) < count" in approval_helper
+workflow_content = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "  pull_request:" in workflow_content and "  push:" in workflow_content
+assert "      - master" in workflow_content and "      - 'work/**'" not in workflow_content
+print("PASS: user staging approvals and one validation run per draft PR SHA.")

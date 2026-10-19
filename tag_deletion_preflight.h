@@ -55,4 +55,10 @@ tag_deletion_report inspect_tag_deletions(const Before& original,
     }
     return result;
 }
+// Approval masks use a bounded search, not an accidental boolean count.
+template<class Mask>
+bool has_any_user_approval(const Mask& approvals) {
+    const auto count = approvals.size();
+    return count > 0 && approvals.find_first(true, 0, count) < count;
+}
 } // namespace discogger_write_safety

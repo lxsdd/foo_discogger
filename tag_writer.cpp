@@ -4,6 +4,7 @@
 #include "multiformat.h"
 
 #include "tag_writer.h"
+#include "tag_deletion_preflight.h"
 
 TagWriter::TagWriter(file_info_manager_ptr finfo_manager, Release_ptr release) : m_finfo_manager(finfo_manager), release(release), tag_results_mask_mode(PreView::Undef) {
 
@@ -51,11 +52,10 @@ bool TagWriter::Staging_Results() {
 		}
 	}
 	for (const tag_result_ptr wr : tag_results) {
-		bool usr_app = wr->r_usr_approved.find_first(true, 0, wr->r_usr_approved.size() < wr->r_usr_approved.size());
-		if (usr_app) {
-			return true;
-		}
-	}
+        if (discogger_write_safety::has_any_user_approval(wr->r_usr_approved)) {
+            return true;
+        }
+    }
 
 	return false;
 }
