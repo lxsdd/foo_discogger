@@ -59,6 +59,14 @@ jobs:
       - name: Check source contracts on Windows
         shell: pwsh
         run: python tests/source_contracts.py
+      - name: Parse strict PowerShell DLL build script before costly native compilation
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $scriptFile = Join-Path (Get-Location) 'scripts/build-component-dll.ps1'
+          $null = [System.Management.Automation.Language.Parser]::ParseFile($scriptFile, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
       - name: Record Visual Studio availability
         shell: pwsh
         run: |
@@ -81,7 +89,7 @@ jobs:
 
   official-sdk-probe:
     runs-on: windows-2022
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
@@ -94,3 +102,6 @@ jobs:
       - name: Diagnose first-party Discogger compilation (no DLL link or deploy)
         shell: pwsh
         run: ./scripts/diagnose-component-compile.ps1
+      - name: HARD GATE - full Win32 x64 Discogger DLL build and link
+        shell: pwsh
+        run: ./scripts/build-component-dll.ps1

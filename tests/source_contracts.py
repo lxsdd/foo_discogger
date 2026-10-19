@@ -421,3 +421,17 @@ assert "operator==(const multi_uartwork& rhs) const" in (root / "track_matching_
 for name in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "mapping_snapshot_test.cpp" in (root / name).read_text(encoding="utf-8-sig")
 print("PASS: stable tag mapping ownership and native string/const compatibility contracts.")
+
+# Native component acceptance is an enforced (red on failure) full-link gate.
+native_workflow = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+native_script = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
+assert "HARD GATE - full Win32 x64 Discogger DLL build and link" in native_workflow
+assert "./scripts/build-component-dll.ps1" in native_workflow
+assert "/t:Build" in native_script and "Assert-DllMachine" in native_script
+assert "Get-FileHash" in native_script and "Strict native component build gate failed" in native_script
+assert "Copy-UniqueLib" in native_script and "sqlite3.lib" in native_script
+assert "oauthcpp.lib" in native_script and "jansson.lib" in native_script
+assert "zlibstatic.lib" in native_script and "libPPUI.lib" in native_script
+assert "shared.vcxproj" in (root / "scripts/build-official-sdk-libs.ps1").read_text(encoding="utf-8-sig")
+assert "const auto url_utf8 = pfc::stringcvt::string_utf8_from_os(wurl);" in (root / "utils.cpp").read_text(encoding="utf-8-sig")
+print("PASS: native MSVC x86/x64 strict DLL link gate, pinned libraries, PE SHA and UTF-8 exception safety.")

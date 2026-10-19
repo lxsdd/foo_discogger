@@ -13,7 +13,8 @@ $projects = @(
     'foobar2000\\SDK\\foobar2000_SDK.vcxproj',
     'foobar2000\\helpers\\foobar2000_sdk_helpers.vcxproj',
     'foobar2000\\foobar2000_component_client\\foobar2000_component_client.vcxproj',
-    'libPPUI\\libPPUI.vcxproj'
+    'libPPUI\\libPPUI.vcxproj',
+    'foobar2000\\shared\\shared.vcxproj'
 )
 # libPPUI depends on WTL's atlapp.h, which is not shipped in the SDK.
 # Use the exact historical WTL version referenced by Discogger's VS project.

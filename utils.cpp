@@ -710,7 +710,9 @@ void display_url(const pfc::string8 &url) {
 				nullptr, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, nullptr);
 
 			foo_discogs_exception ex;
-			ex << "Error opening browser page: " << wurl << messageBuffer;
+            const auto url_utf8 = pfc::stringcvt::string_utf8_from_os(wurl);
+            ex << "Error opening browser page: " << url_utf8.get_ptr()
+               << (messageBuffer ? messageBuffer : "");
 
 			LocalFree(messageBuffer);
 

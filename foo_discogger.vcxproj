@@ -115,7 +115,7 @@
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-3401\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-3401\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;$(SolutionDir)$(Platform)\$(Configuration)\libPPUI.lib;$(SolutionDir)$(Platform)\$(Configuration)\zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
@@ -157,7 +157,7 @@
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-3401\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-3401\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;$(SolutionDir)$(Platform)\$(Configuration)\libPPUI.lib;$(SolutionDir)$(Platform)\$(Configuration)\zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
       <IgnoreSpecificDefaultLibraries>LIBCMT;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
@@ -189,7 +189,7 @@
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <DataExecutionPrevention>
       </DataExecutionPrevention>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-3401\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-3401\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;$(SolutionDir)$(Platform)\$(Configuration)\libPPUI.lib;$(SolutionDir)$(Platform)\$(Configuration)\zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
@@ -227,7 +227,7 @@
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <DataExecutionPrevention>
       </DataExecutionPrevention>
-      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-3401\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../shared/shared-$(Platform).lib;kernel32.lib;user32.lib;gdi32.lib;comctl32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;$(SolutionDir)$(Platform)\$(Configuration)\jansson.lib;..\discogger libs\sqlite-amal-3401\$(Platform)\$(Configuration)\sqlite3.lib;$(SolutionDir)$(Platform)\$(Configuration)\oauthcpp.lib;$(SolutionDir)$(Platform)\$(Configuration)\libPPUI.lib;$(SolutionDir)$(Platform)\$(Configuration)\zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
       <IgnoreSpecificDefaultLibraries>LIBCMT;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
