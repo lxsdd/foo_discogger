@@ -18,6 +18,33 @@ int main() {
     assert(discogger_write_safety::contains_virtual_subsong(mixed.size(),
         [&](std::size_t i) { ++calls; return mixed[i]; }));
     assert(calls == 2); // stop before considering later physical members
+    // Batch preflight is atomic and must never inspect out-of-range wrappers.
+    using batch_decision = discogger_write_safety::snapshot_batch_decision;
+    using discogger_write_safety::plan_snapshot_batch;
+    std::array<bool, 3> wrappers = {true, true, true};
+    std::array<bool, 3> selected = {false, true, false};
+    std::array<bool, 3> captured = {false, true, false};
+    const auto plan_batch = [&](std::size_t items, std::size_t wrappers_count) {
+        return plan_snapshot_batch(items, wrappers_count,
+            [&](std::size_t i) { return wrappers[i]; },
+            [&](std::size_t i) { return selected[i]; },
+            [&](std::size_t i) { return captured[i]; });
+    };
+    assert(plan_batch(3, 3) == batch_decision::ready);
+    assert(plan_batch(3, 2) == batch_decision::reject_count_mismatch);
+    wrappers[2] = false;
+    assert(plan_batch(3, 3) == batch_decision::reject_missing_wrapper);
+    wrappers[2] = true;
+    captured[1] = false;
+    assert(plan_batch(3, 3) == batch_decision::reject_missing_snapshot);
+    selected[1] = false;
+    assert(plan_batch(3, 3) == batch_decision::ready);
+    int touched = 0;
+    assert(plan_snapshot_batch(2, 3,
+        [&](std::size_t) { ++touched; return true; },
+        [&](std::size_t) { ++touched; return true; },
+        [&](std::size_t) { ++touched; return true; }) == batch_decision::reject_count_mismatch);
+    assert(touched == 0);
     // Snapshot/no-op planning: unchanged metadata and ReplayGain never schedule I/O.
     using decision = discogger_write_safety::metadata_write_decision;
     using discogger_write_safety::plan_metadata_write;

@@ -42,6 +42,21 @@ void file_info_manager::write_infos(std::function<void()> after_success) {
 		[&](size_t index) { return items[index]->get_subsong_index(); })) {
 		throw foo_discogs_exception("Tagging stopped: virtual CUE/subsong handles cannot be written through the physical metadata writer.");
 	}
+	// Validate the complete batch before dereferencing wrappers or scheduling I/O.
+	const auto batch = discogger_write_safety::plan_snapshot_batch(
+		count, info_wrappers.get_count(),
+		[&](size_t i) { return static_cast<bool>(info_wrappers[i]); },
+		[&](size_t i) { return info_wrappers[i]->mask; },
+		[&](size_t i) { return info_wrappers[i]->original_captured; });
+	switch (batch) {
+	case discogger_write_safety::snapshot_batch_decision::ready: break;
+	case discogger_write_safety::snapshot_batch_decision::reject_count_mismatch:
+		throw foo_discogs_exception("Tagging stopped: physical file and metadata wrapper counts differ.");
+	case discogger_write_safety::snapshot_batch_decision::reject_missing_wrapper:
+		throw foo_discogs_exception("Tagging stopped: a physical metadata wrapper is missing.");
+	case discogger_write_safety::snapshot_batch_decision::reject_missing_snapshot:
+		throw foo_discogs_exception("Tagging stopped: original physical metadata snapshot is missing.");
+	}
 	pfc::array_t<metadb_handle_ptr> items_to_update;
 	pfc::array_t<file_info *> infos_to_write;
 	items_to_update.set_size(count);

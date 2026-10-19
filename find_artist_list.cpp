@@ -560,7 +560,7 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 				pfc::string8 out;
 				GetSubItemText(isel, 1, out);
 				ClipboardHelper::OpenScope scope;
-				scope.Open(core_api::get_main_window(), true);
+				scope.Open(core_api::get_main_window());
 				ClipboardHelper::SetString(out);
 				scope.Close();
 			}

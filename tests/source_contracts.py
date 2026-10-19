@@ -248,3 +248,17 @@ for name in ('tasks.h', 'tasks.cpp'):
     assert 'bload_releases |=' not in source.replace('m_bload_releases |=', '')
 assert 'get_artist(m_artist_id, m_bload_releases,' in (root / 'tasks.cpp').read_text(encoding='utf-8-sig')
 print('PASS: matching-mode keyword, Win32 menu buffers and artist load-state references.')
+
+# Entire physical batch must be preflighted before dereferencing wrappers or queuing I/O.
+assert "discogger_write_safety::plan_snapshot_batch(" in manager
+assert "count, info_wrappers.get_count()" in manager
+assert manager.index("discogger_write_safety::plan_snapshot_batch(") < manager.index("items_to_update.set_size(count)")
+assert manager.index("discogger_write_safety::plan_snapshot_batch(") < manager.index("api->update_info_async_simple(")
+for outcome in ("reject_count_mismatch", "reject_missing_wrapper", "reject_missing_snapshot"):
+    assert "snapshot_batch_decision::" + outcome in manager
+assert "scope.Open(core_api::get_main_window());" in artist
+assert "scope.Open(core_api::get_main_window(), true);" not in artist
+dialog_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+assert "NOTIFY_HANDLER(IDC_RELEASE_TREE, TVN_DELETEITEM, OnDeleteTreeItem)" not in dialog_header
+assert "NOTIFY_HANDLER(IDC_RELEASE_TREE, NM_DBLCLK, OnReleaseTreeDoubleClickRelease)" in (root / "find_release_tree.h").read_text(encoding="utf-8-sig")
+print("PASS: batch snapshot preflight and native clipboard/tree callback API contracts.")
