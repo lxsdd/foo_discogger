@@ -346,3 +346,13 @@ assert "for (auto& tag_entry : cfg_tag_mappings)" not in tag_source
 assert "auto tag_mappings = cfg_tag_mappings.get();" in foo_init
 assert "cfg_tag_mappings.set(std::move(tag_mappings));" in foo_init
 print("PASS: modern cfg_objList snapshot, mutation and one-shot persistence contract.")
+
+# Native tag-mapping menu constness and cfg_objList read API.
+mapping_ui = (root / "tag_mappings_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "cfg_tag_mappings.get_item(i)" not in mapping_ui
+assert "auto saved_mapping = cfg_tag_mappings[i];" in mapping_ui
+assert 'wchar_t menu_more_text[] = L"Other defaults...";' in mapping_ui
+assert "menu_more_info.dwTypeData = menu_more_text;" in mapping_ui
+assert "LPWSTR submenus_data" not in mapping_ui
+assert mapping_ui.count("wchar_t submenus_data") == 3
+print("PASS: native mapping menu immutable labels and mutable Win32 item buffer.")
