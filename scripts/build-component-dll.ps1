@@ -53,6 +53,24 @@ function Assert-DllMachine([string]$Path,[UInt16]$Expected) {
     $actual = [BitConverter]::ToUInt16($bytes,$pe+4)
     if ($actual -ne $Expected) { throw "PE architecture mismatch: expected $Expected actual $actual ($Path)" }
 }
+# Discogger includes sqlite3ren.h from its wrapper sqlite3.h. The amalgamation
+# library MUST be compiled with the exact same renames; vanilla sqlite3.lib
+# exposes sqlite3_* and cannot satisfy discogger_sqlite3_* references.
+$sqliteRenameHeader = Join-Path $component 'sqlite3ren.h'
+if (-not (Test-Path -LiteralPath $sqliteRenameHeader -PathType Leaf)) {
+    throw 'Original Discogger SQLite namespace header missing.'
+}
+$namespacedSqliteApi = @('sqlite3_close','sqlite3_exec','sqlite3_prepare_v2',
+    'sqlite3_bind_parameter_index','sqlite3_bind_int','sqlite3_bind_text',
+    'sqlite3_step','sqlite3_reset','sqlite3_column_text','sqlite3_finalize',
+    'sqlite3_config','sqlite3_initialize','sqlite3_open_v2',
+    'sqlite3_errmsg','sqlite3_busy_timeout')
+foreach ($api in $namespacedSqliteApi) {
+    if (-not (Select-String -LiteralPath $sqliteRenameHeader -Pattern ("^#define\s+" + $api + "\s+discogger_" + $api + "\s*$") -Quiet)) {
+        throw ("Required namespace mapping absent: {0}" -f $api)
+    }
+}
+$sqliteRenameCmake = $sqliteRenameHeader.Replace('\','/')
 $sqliteSources = @(Get-ChildItem -LiteralPath $sqliteExtract -Recurse -File -Filter sqlite3.c)
 if ($sqliteSources.Count -ne 1) { throw 'Pinned SQLite 3.40.1 amalgamation sqlite3.c missing or ambiguous.' }
 # CMake project is generated only in RUNNER_TEMP, never committed to repository.
@@ -63,7 +81,8 @@ $sqliteSourceCmake = $sqliteSources[0].FullName.Replace('\','/')
     'cmake_minimum_required(VERSION 3.20)',
     'project(discogger_sqlite LANGUAGES C)',
     "add_library(sqlite3 STATIC `"$sqliteSourceCmake`")",
-    'set_property(TARGET sqlite3 PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")'
+    'set_property(TARGET sqlite3 PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")',
+    "target_compile_options(sqlite3 PRIVATE `"/FI$sqliteRenameCmake`")"
 ) | Set-Content -LiteralPath (Join-Path $sqliteCmake 'CMakeLists.txt') -Encoding UTF8
 
 $failures = [System.Collections.Generic.List[string]]::new()

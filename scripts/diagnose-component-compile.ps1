@@ -1,6 +1,7 @@
 param(
     [ValidateSet('Win32','x64')]
-    [string[]] $Platforms = @('Win32','x64')
+    [string[]] $Platforms = @('Win32','x64'),
+    [switch] $StageOnly
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -103,6 +104,7 @@ foreach ($platform in $Platforms) {
     if (-not (Test-Path -LiteralPath $janssonConfig)) { throw "Jansson $platform generated public config missing." }
     Copy-Item -LiteralPath $janssonConfig -Destination (Join-Path $janssonInclude 'jansson_config.h') -Force
     Write-Host "Jansson $platform generated header ready; SQLite source header verified."
+    if ($StageOnly) { continue }
     $output = Join-Path $env:RUNNER_TEMP "discogger-first-party-$platform.log"
     # ClCompile is intentionally not Build: missing link libraries must not mask
     # the first actual component compiler diagnostics.
@@ -113,6 +115,10 @@ foreach ($platform in $Platforms) {
     } else {
         Write-Host "PASS: $platform first-party compilation (link not attempted)."
     }
+}
+if ($StageOnly) {
+    Write-Host 'PASS: pinned source, SQLite, OAuth, zlib, WTL and architecture-specific Jansson headers staged for the strict DLL gate.'
+    return
 }
 Write-Host 'Diagnostic only. No DLL was linked or published.'
 exit 0

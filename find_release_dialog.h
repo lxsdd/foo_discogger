@@ -45,7 +45,8 @@ public:
 		MSG_WM_TIMER(OnTypeFilterTimer)
 
 		MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
-		MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)
+		// Release-tree WM_CONTEXTMENU is handled by chained m_dctree below.
+		// No dialog-level handler should intercept its keyboard/right-click menu.
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 
 		COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
@@ -113,7 +114,6 @@ public:
 
 	LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 
-	LRESULT OnContextMenu(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 
 	LRESULT OnButtonNext(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);

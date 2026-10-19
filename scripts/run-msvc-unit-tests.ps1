@@ -29,6 +29,7 @@ $Sources = @(
     'multivalue_fields_test.cpp',
     'cache_lru_test.cpp',
     'cfg_snapshot_ops_test.cpp',
+    'sqlite_symbol_namespace_test.cpp',
     'interruptible_wait_test.cpp'
 )
 $Commands = [System.Collections.Generic.List[string]]::new()

@@ -503,3 +503,34 @@ assert "EF-BB-BF-EF-BB-BF-42-4D" in resource_test
 assert "Removing the BOM modified historic BMP pixel/palette bytes" in resource_test
 assert "BOM-prefixed invalid content was accepted" in resource_test
 print("PASS: historic double UTF-8 BOM artifact cleaned losslessly, negative BOM fixtures guarded.")
+
+# Actual dual-architecture LNK1120 regressions: use the repo's existing
+# sqlite3ren.h namespace for the C amalgamation, not the vanilla sqlite3.lib.
+native = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
+staging = (root / "scripts/diagnose-component-compile.ps1").read_text(encoding="utf-8-sig")
+workflow = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+renamer = (root / "sqlite3ren.h").read_text(encoding="utf-8-sig")
+for name in ("sqlite3_close", "sqlite3_exec", "sqlite3_prepare_v2", "sqlite3_bind_text",
+             "sqlite3_initialize", "sqlite3_open_v2", "sqlite3_busy_timeout"):
+    assert f"#define {name} discogger_{name}" in renamer
+assert 'target_compile_options(sqlite3 PRIVATE' in native
+assert "/FI$sqliteRenameCmake" in native
+assert "$sqliteRenameHeader = Join-Path $component 'sqlite3ren.h'" in native
+assert "'sqlite_symbol_namespace_test.cpp'" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+assert "tests/sqlite_symbol_namespace_test.cpp" in workflow
+assert "[switch] $StageOnly" in staging and "if ($StageOnly) { continue }" in staging
+assert "./scripts/diagnose-component-compile.ps1 -StageOnly" in workflow
+assert "HARD GATE - full Win32 x64 Discogger DLL build and link" in workflow
+
+# Missing method and WM_CONTEXTMENU linker regressions: preserve native tree
+# context menu and the full-cache policy without providing dummy UI callbacks.
+conf = (root / "conf.cpp").read_text(encoding="utf-8-sig")
+dialog = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+tree = (root / "find_release_tree.h").read_text(encoding="utf-8-sig")
+assert "bool CConf::auto_load_releases_on_select_ready() const" in conf
+assert "Offline::OC_READ | Offline::OC_WRITE" in conf
+assert "return auto_rel_load_on_select &&" in conf
+assert "MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)" not in dialog
+assert "CHAIN_MSG_MAP_MEMBER(m_dctree)" in dialog
+assert "MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)" in tree
+print("PASS: namespace-correct SQLite link, native cache policy and chained tree context menu.")

@@ -6,6 +6,7 @@
 
 #include "conf.h"
 #include "cfg_snapshot_ops.h"
+#include "ol_cache.h"
 #include "utils.h"
 #include "utils_path.h"
 #include "utils_db.h"
@@ -1473,6 +1474,13 @@ void CConf::save_preview_modal_tab_widths(int newwidths) {
 		make_conf_entry(CFG_PREVIEW_LEADING_TAGS_DLG_COLS_WIDTH, newwidths))) {
 		preview_leading_tags_dlg_cols_width = newwidths;
 	}
+}
+
+// Preserve the original full-cache precondition for automatic artist release
+// expansion. Check this configuration snapshot, not a different global copy.
+bool CConf::auto_load_releases_on_select_ready() const {
+    const int required = Offline::OC_READ | Offline::OC_WRITE;
+    return auto_rel_load_on_select && (cache_offline_cache_flag & required) == required;
 }
 
 bool CConf::history_enabled() {

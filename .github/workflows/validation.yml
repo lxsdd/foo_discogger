@@ -45,6 +45,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/cache_lru_test.cpp -o /tmp/discogger-cache-test && /tmp/discogger-cache-test
       - name: Compile and run configuration snapshot migrations
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cfg_snapshot_ops_test.cpp -o /tmp/discogger-cfg-test && /tmp/discogger-cfg-test
+      - name: Verify private SQLite namespace mapping across all linker imports
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/sqlite_symbol_namespace_test.cpp -o /tmp/discogger-sqlite-namespace-test && /tmp/discogger-sqlite-namespace-test
       - name: Compile physical/subsong write-safety preflight tests
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/write_safety_test.cpp -o /tmp/discogger-write-safety-test
       - name: Run physical/subsong write-safety regression tests
@@ -103,9 +105,9 @@ jobs:
       - name: Compile official SDK core libraries for Win32 and x64 (not Discogger DLL)
         shell: pwsh
         run: ./scripts/build-official-sdk-libs.ps1
-      - name: Diagnose first-party Discogger compilation (no DLL link or deploy)
+      - name: Stage pinned first-party and third-party dependencies for hard DLL build
         shell: pwsh
-        run: ./scripts/diagnose-component-compile.ps1
+        run: ./scripts/diagnose-component-compile.ps1 -StageOnly
       - name: HARD GATE - full Win32 x64 Discogger DLL build and link
         shell: pwsh
         run: ./scripts/build-component-dll.ps1
