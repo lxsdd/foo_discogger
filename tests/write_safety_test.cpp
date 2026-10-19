@@ -37,6 +37,21 @@ int main() {
     // Batch preflight is atomic and must never inspect out-of-range wrappers.
     using batch_decision = discogger_write_safety::snapshot_batch_decision;
     using discogger_write_safety::plan_snapshot_batch;
+    // A subsequent failing read or write must revoke every old permission,
+    // including an old selected item with an otherwise valid snapshot.
+    std::array<bool, 3> old_snapshots = {true, false, true};
+    std::array<bool, 3> old_selections = {true, true, false};
+    std::size_t revoked = 0;
+    discogger_write_safety::revoke_snapshot_batch(old_snapshots.size(),
+        [&](std::size_t i) {
+            old_snapshots[i] = false;
+            old_selections[i] = false;
+            ++revoked;
+        });
+    assert(revoked == old_snapshots.size());
+    for (std::size_t i = 0; i < old_snapshots.size(); ++i)
+        assert(!old_snapshots[i] && !old_selections[i]);
+    discogger_write_safety::revoke_snapshot_batch(0, [](std::size_t) { assert(false); });
     std::array<bool, 3> wrappers = {true, true, true};
     std::array<bool, 3> selected = {false, true, false};
     std::array<bool, 3> captured = {false, true, false};

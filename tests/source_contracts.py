@@ -102,9 +102,16 @@ manager_header = (root / "file_info_manager.h").read_text(encoding="utf-8-sig")
 writer = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
 assert "m_finfo_manager->invalidate_all();" in writer
 assert "initial_metadata_read m_initial_read" in manager_header
-assert "m_initial_read.begin();" in manager
+assert "m_initial_read.begin();" in manager_header
+assert "begin_physical_read();" in manager
 assert "m_initial_read.finish(true, m, loaded_count)" in manager
-assert manager.index("m_initial_read.begin();") < manager.index("api->load_info_multi(")
+assert manager.index("begin_physical_read();") < manager.index("api->load_info_multi(")
+assert "revoke_snapshot_batch(info_wrappers.get_count()" in manager_header
+assert "wrapper->original_captured = false;" in manager_header
+assert "if (!complete) begin_physical_read();" in manager
+assert manager_header.index("begin_physical_read();", manager_header.index("void discard_pending_changes()")) < manager_header.index("inline void invalidate_all()")
+assert "if (!info_wrappers[p_index] || !info_wrappers[p_index]->mask)" in manager_header
+assert manager_header.index("if (!info_wrappers[p_index] || !info_wrappers[p_index]->mask)") < manager_header.index("wrapper->original_info = wrapper->info;")
 assert manager_header.index("if (!m_initial_read.ready())") < manager_header.index("wrapper->original_info = wrapper->info;")
 assert "if (items.get_count() != info_wrappers.get_count())" in manager_header
 assert "wrapper->original_info = wrapper->info;" in manager_header

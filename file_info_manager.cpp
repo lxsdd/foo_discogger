@@ -6,8 +6,11 @@
 #include <utility>
 
 bool file_info_manager::read_infos() {
-    // Invalidate the previous read before invoking an SDK operation that may fail.
-    m_initial_read.begin();
+    // Clear previous snapshot permissions before any operation that may fail.
+    begin_physical_read();
+    if (items.get_count() != info_wrappers.get_count()) return false;
+    for (size_t i = 0; i < info_wrappers.get_count(); ++i)
+        if (!info_wrappers[i]) return false;
 	static_api_ptr_t<metadb_io> api;
 	if (api->load_info_multi(items, metadb_io::load_info_default, core_api::get_main_window(), 0) != metadb_io::load_info_success) {
 		return false;
@@ -21,12 +24,14 @@ bool file_info_manager::read_infos() {
 		}
 		info_wrappers[n]->mask = val;
 	}
-	return m_initial_read.finish(true, m, loaded_count);
+    const bool complete = m_initial_read.finish(true, m, loaded_count);
+    if (!complete) begin_physical_read(); // no partially loaded batch stays selected
+    return complete;
 }
 
 void file_info_manager::read_infos_new() {
     // This async read has no validated complete-snapshot callback yet: fail closed.
-    m_initial_read.begin();
+    begin_physical_read();
 	static_api_ptr_t<metadb_io_v2> api;
 	service_ptr_t<read_tags_completion> callback = new service_impl_t<read_tags_completion>(*this);
 	api->load_info_async(items,

@@ -69,6 +69,20 @@ public:
 		}
 	};
 
+    // A new read or a failed commit invalidates all captured physical snapshots.
+    // The next writer must obtain a complete new read before staging any tags.
+    void begin_physical_read() {
+        m_initial_read.begin();
+        discogger_write_safety::revoke_snapshot_batch(info_wrappers.get_count(),
+            [&](size_t i) {
+                auto& wrapper = info_wrappers[i];
+                if (wrapper) {
+                    wrapper->original_captured = false;
+                    wrapper->mask = false;
+                }
+            });
+    }
+
 	// TODO: replace with async version
 	bool read_infos();
 	void read_infos_new();
@@ -112,6 +126,9 @@ public:
             if (wrapper->original_captured) wrapper->info = wrapper->original_info;
             wrapper->mask = false;
         }
+        // A cancelled/failed write may have partially changed physical files.
+        // Never offer the pre-write snapshot as current without a fresh read.
+        begin_physical_read();
     }
 
 	inline void invalidate_all() {
@@ -121,6 +138,11 @@ public:
         if (items.get_count() != info_wrappers.get_count())
             throw foo_discogs_exception("Tagging stopped: physical metadata count changed after the read.");
 		const size_t count = info_wrappers.get_count();
+        // Validate the entire batch before changing any original snapshot.
+        for (size_t p_index = 0; p_index < count; ++p_index) {
+            if (!info_wrappers[p_index] || !info_wrappers[p_index]->mask)
+                throw foo_discogs_exception("Tagging stopped: incomplete physical metadata snapshot.");
+        }
 		for (size_t p_index = 0; p_index < count; p_index++) {
 			auto& wrapper = info_wrappers[p_index];
 			wrapper->original_info = wrapper->info;

@@ -12,6 +12,12 @@ bool contains_virtual_subsong(std::size_t count, SubsongIndexAt index_at) {
     }
     return false;
 }
+// Revoke stale per-file snapshots atomically when a fresh physical read begins,
+// and after a failed/cancelled commit. This is SDK-independent for regressions.
+template <typename RevokeAt>
+void revoke_snapshot_batch(std::size_t count, RevokeAt revoke_at) {
+    for (std::size_t i = 0; i < count; ++i) revoke_at(i);
+}
 // Fail closed before scheduling any asynchronous write if the item/wrapper
 // vectors are out of sync, a wrapper is absent, or an edited item has no
 // original physical metadata snapshot. This is intentionally SDK-independent.
