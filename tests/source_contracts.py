@@ -367,3 +367,16 @@ for native_dialog, count in [('find_release_tree.cpp', 2), ('preview_leading_tag
     assert source.count('scope.Open(core_api::get_main_window());') == count, native_dialog
     assert 'scope.Open(core_api::get_main_window(), true);' not in source, native_dialog
 print('PASS: C++20 UTF-8 cache enumeration and libPPUI clipboard API contracts.')
+
+# Modern foobar SDK cfg_objList migration regression gates.
+conf = (root / "conf.cpp").read_text(encoding="utf-8-sig")
+for obsolete in (".truncate(", ".remove_by_idx(", ".sort_t(", ".bsearch_t(", ".get_item(", ".replace_item(", ".swap_item_with("):
+    assert obsolete not in conf, obsolete
+for ident in ("DEPRI_CFG_SKIP_RELEASE_DLG_IF_MATCHED", "DEPRI_CFG_SKIP_FIND_RELEASE_DLG_IF_IDED", "DEPRI_CFG_SKIP_PREVIEW_DIALOG"):
+    assert "discogger_cfg::take_by_id(cfg_bool_entries, " + ident in conf
+assert "cfg_bool_entries.set(std::move(bool_snapshot))" in conf
+assert "cfg_int_entries.set(std::move(int_snapshot))" in conf
+assert "cfg_string_entries.set(std::move(string_snapshot))" in conf
+for file in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
+    assert "cfg_snapshot_ops_test.cpp" in (root / file).read_text(encoding="utf-8-sig")
+print("PASS: snapshot config persistence, ID migration and MSVC/portable test wiring.")

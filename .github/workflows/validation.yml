@@ -39,6 +39,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/multivalue_fields_test.cpp -o /tmp/discogger-multivalue-test && /tmp/discogger-multivalue-test
       - name: Compile and run LRU cache exception regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/cache_lru_test.cpp -o /tmp/discogger-cache-test && /tmp/discogger-cache-test
+      - name: Compile and run configuration snapshot migrations
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cfg_snapshot_ops_test.cpp -o /tmp/discogger-cfg-test && /tmp/discogger-cfg-test
       - name: Compile physical/subsong write-safety preflight tests
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/write_safety_test.cpp -o /tmp/discogger-write-safety-test
       - name: Run physical/subsong write-safety regression tests

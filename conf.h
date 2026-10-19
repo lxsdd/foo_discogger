@@ -309,7 +309,7 @@ const struct vspec {
 		}
 	}
 
-	inline bool operator==(const vspec& rhs) {
+	inline bool operator==(const vspec& rhs) const {
 		return (this->boolvals == rhs.boolvals &&
 			this->intvals == rhs.intvals &&
 			this->stringvals == rhs.stringvals);
