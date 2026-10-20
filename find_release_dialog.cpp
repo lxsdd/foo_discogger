@@ -8,6 +8,7 @@
 
 #include "tag_mappings_dialog.h"
 #include "find_release_dialog.h"
+#include "discogger_release_id.h"
 #include "discogger_artist_activation.h"
 #include "discogger_search_visibility.h"
 
@@ -1426,7 +1427,7 @@ LRESULT CFindReleaseDialog::OnButtonConfigure(WORD /*wNotifyCode*/, WORD wID, HW
 
 //todo: rev
 void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
-	if (!std::atoi(release_id)) {
+	if (!discogger_search::valid_release_id(release_id.c_str())) {
 		uMessageBox(m_hWnd, "Empty or invalid Release ID.", "foo_discogger: Error", MB_APPLMODAL | MB_ICONASTERISK);
 		return;
 

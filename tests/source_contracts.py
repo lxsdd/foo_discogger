@@ -839,3 +839,15 @@ assert "pos == ~0 || pos >= m_find_release_artists.get_count()" in artist_list
 assert "artist_activation_test.cpp" in test_script
 assert "artist_activation_test.cpp" in validate
 print("PASS: row-only artist double-click wired to guarded Enter/default action.")
+
+
+# Every direct-ID path enters trigger_release; that boundary must reject
+# partial, zero, negative and signed-int-overflow numbers before any callback.
+ui = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+trigger = ui[ui.index("void CFindReleaseDialog::trigger_release("):
+             ui.index("void CFindReleaseDialog::", ui.index("void CFindReleaseDialog::trigger_release(") + 1)]
+assert "discogger_search::valid_release_id(release_id.c_str())" in trigger
+assert "std::atoi(release_id)" not in trigger
+assert "release_id_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+assert "release_id_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+print("PASS: direct release IDs validated before preview/load callbacks.")

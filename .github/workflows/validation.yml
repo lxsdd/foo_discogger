@@ -44,6 +44,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_visibility_test.cpp -o /tmp/discogger-search-visibility && /tmp/discogger-search-visibility
       - name: Compile and run artist double-click selection regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_activation_test.cpp -o /tmp/discogger-artist-activate && /tmp/discogger-artist-activate
+      - name: Compile and run strict direct release ID validation
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/release_id_test.cpp -o /tmp/discogger-release-id && /tmp/discogger-release-id
       - name: Compile and run multi-value field token regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/multivalue_fields_test.cpp -o /tmp/discogger-multivalue-test && /tmp/discogger-multivalue-test
       - name: Compile and run LRU cache exception regressions
