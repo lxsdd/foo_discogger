@@ -40,6 +40,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
       - name: Run collaboration search fallback tests
         run: /tmp/discogger-search-test
+      - name: Compile and run exact-filter fallback visibility tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_visibility_test.cpp -o /tmp/discogger-search-visibility && /tmp/discogger-search-visibility
       - name: Compile and run multi-value field token regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/multivalue_fields_test.cpp -o /tmp/discogger-multivalue-test && /tmp/discogger-multivalue-test
       - name: Compile and run LRU cache exception regressions

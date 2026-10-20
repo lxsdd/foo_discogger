@@ -803,3 +803,20 @@ assert "ol::stamp_download(" not in core
 assert "fs::remove_all(os_file)" not in offline_cache_source
 assert "discogger_cache::recover_cache_directory(" in offline_cache_source
 print("PASS: full cache directory transaction, rollback and recovery contracts.")
+
+
+# The dialog must not compute the list filter before unchecking a stale
+# exact-only preference when it has only alternative candidates.
+visibility = (root / "discogger_search_visibility.h").read_text(encoding="utf-8-sig")
+searchdlg = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+frag = searchdlg[searchdlg.index("void CFindReleaseDialog::on_search_artist_done("):
+                 searchdlg.index("void CFindReleaseDialog::OnTypeFilterTimer(")]
+assert "resolve_result_filter(" in visibility
+assert "discogger_search::resolve_result_filter(" in frag
+assert "const bool b_chk_exact_matches = decision.exact_only;" in frag
+assert "CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);" in frag
+assert "alternative releases require review" in frag
+assert "m_alist.fill_artist_list(b_chk_exact_matches" in frag
+assert "search_visibility_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+assert "search_visibility_test.cpp" in wf_gate
+print("PASS: alternative search candidates remain visible with matched checkbox state.")

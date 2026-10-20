@@ -8,6 +8,7 @@
 
 #include "tag_mappings_dialog.h"
 #include "find_release_dialog.h"
+#include "discogger_search_visibility.h"
 
 namespace ol = Offline;
 
@@ -1143,17 +1144,24 @@ pfc::string8 search_query_run_message(const QueryDefMap qdm_search_query, const 
 
 void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap) {
 
-	bool b_chk_exact_matches = IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) == BST_CHECKED;
-	
-	bool no_matches = !(p_artist_exact_matches.get_count() || p_artist_other_matches.get_count());
-	pfc::string8 msg = search_query_run_message(m_qdm_search_query, m_query_mode, out_va_cap, no_matches);
+    const bool exact_only_requested =
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) == BST_CHECKED;
+    const auto decision = discogger_search::resolve_result_filter(
+        exact_only_requested, p_artist_exact_matches.get_count(),
+        p_artist_other_matches.get_count());
+    const bool b_chk_exact_matches = decision.exact_only;
+    if (decision.show_alternatives && exact_only_requested) {
+        // The effective list filter must match the visible checkbox.
+        CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);
+    }
 
-	SetSearchModeText(msg);
-
-	if (!p_artist_exact_matches.get_count() && p_artist_other_matches.get_count()) {
-		//todo
-		CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, false);
-	}
+    const bool no_matches = !(p_artist_exact_matches.get_count() ||
+        p_artist_other_matches.get_count());
+    pfc::string8 msg = search_query_run_message(
+        m_qdm_search_query, m_query_mode, out_va_cap, no_matches);
+    if (decision.show_alternatives)
+        msg << " No exact artist match; alternative releases require review.";
+    SetSearchModeText(msg);
 
 	{
 		std::lock_guard<std::mutex> guard(g_discogs->tree_locked_mutex);
