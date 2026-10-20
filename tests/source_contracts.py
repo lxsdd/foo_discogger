@@ -22,6 +22,21 @@ assert "if (tmp_artist.equals(vsplit_title[0])) {" not in dialog_header
 print("PASS: empty web/utility selections are disabled; unsplit track titles never read a second token.")
 
 artist = (root / "find_artist_list.cpp").read_text(encoding="utf-8-sig")
+# Artist list drawing is a hot path: never leak GDI bitmaps or dereference
+# a stale owner-data row from an asynchronous artist-list replacement.
+artist_display = artist[artist.index("bool CArtistList::OnDisplayCellImage("):
+                        artist.index("size_t CArtistList::get_artist_id(")]
+assert artist_display.count("discogger_ui::valid_artist_list_row(") >= 2
+assert artist_display.count("!m_find_release_artists[item]") >= 2
+paint = artist[artist.index("void CArtistList::RenderCellImage("):
+               artist.index("// open artist profile panel")]
+assert "auto res = GetIconInfo(" not in paint
+assert "ICONINFO ii;" not in paint and "GetObject(" not in paint
+assert "SM_CXSMICON" in paint and "SM_CYSMICON" in paint
+assert "if (!g_hIcon_quian || item >=" in paint
+assert "std::numeric_limits<int>::max" in artist
+print("PASS: artist list rendering bounds checks and no allocating GDI bitmap probes.")
+
 dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")
 

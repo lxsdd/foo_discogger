@@ -5,6 +5,8 @@
 #include "discogs_interface.h"
 #include "find_release_dialog.h"
 #include "find_artist_list.h"
+#include "discogger_artist_activation.h"
+#include <limits>
 
 const size_t TRACER_IMG_NDX = 3;
 const size_t LOADED_RELEASES_IMG_NDX = 6;
@@ -293,6 +295,11 @@ void CArtistList::set_image_list() {
 
 bool CArtistList::OnDisplayCellImage(int item, int subitem, int& result) const {
 
+	result = I_IMAGENONE;
+	if (subitem != 0 || !m_idtracer_p ||
+        !discogger_ui::valid_artist_list_row(item, m_find_release_artists.get_count()) ||
+        !m_find_release_artists[item]) return false;
+
 	int img_ndx = I_IMAGENONE;
 	bool is_traced;
 
@@ -324,6 +331,10 @@ bool CArtistList::OnDisplayCellImage(int item, int subitem, int& result) const {
 
 bool CArtistList::OnDisplayCellString(int item, int subitem, pfc::string8& result) {
 
+	result = "";
+    if (subitem != 0 ||
+        !discogger_ui::valid_artist_list_row(item, m_find_release_artists.get_count()) ||
+        !m_find_release_artists[item]) return false;
 	result = m_find_release_artists[item]->name;
 	return true;
 }
@@ -445,18 +456,22 @@ void CArtistList::Default_Action() {
 // CListControlOwnerData overrides
 
 bool CArtistList::RenderCellImageTest(size_t item, size_t subItem) const {
-	int dummy;
-	OnDisplayCellImage(item, subItem, dummy);
+	if (item > static_cast<size_t>((std::numeric_limits<int>::max)())) return false;
+	int dummy = I_IMAGENONE;
+	OnDisplayCellImage(static_cast<int>(item), static_cast<int>(subItem), dummy);
 	return dummy == TRACER_IMG_NDX;
 }
 
 void CArtistList::RenderCellImage(size_t item, size_t subItem, CDCHandle dc, const CRect& rc) const  {
 
-	ICONINFO ii;
-	auto res = GetIconInfo(g_hIcon_quian, &ii);
-	BITMAP bm;
-	res = GetObject(ii.hbmMask, sizeof(bm), &bm) == sizeof(bm);
-		dc.DrawIconEx(CPoint(rc.TopLeft().x, rc.TopLeft().y), g_hIcon_quian, CSize(bm.bmWidth, bm.bmWidth));
+	// A paint callback must not call GetIconInfo: that allocates GDI bitmaps
+    // whose ownership previously leaked on every list repaint. Use the
+    // system's small-icon metrics, avoiding temporary bitmap handles entirely.
+    if (!g_hIcon_quian || item >= m_find_release_artists.get_count()) return;
+    const int cx = ::GetSystemMetrics(SM_CXSMICON);
+    const int cy = ::GetSystemMetrics(SM_CYSMICON);
+    if (cx <= 0 || cy <= 0) return;
+    dc.DrawIconEx(rc.TopLeft(), g_hIcon_quian, CSize(cx, cy));
 }
 
 // open artist profile panel
