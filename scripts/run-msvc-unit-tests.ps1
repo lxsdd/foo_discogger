@@ -28,6 +28,7 @@ $Sources = @(
     'search_visibility_test.cpp',
     'artist_activation_test.cpp',
     'release_id_test.cpp',
+    'release_tree_snapshot_test.cpp',
     'write_safety_test.cpp',
     'tag_deletion_preflight_test.cpp',
     'multivalue_fields_test.cpp',

@@ -278,7 +278,7 @@ private:
 	int get_param_id_master(mounted_param myparam);
 
 	size_t test_getselected(TVITEM& out);
-	size_t test_getatcursor(CPoint screen_pos, TVITEM& out);
+	size_t test_getatcursor(CPoint screen_pos, TVITEM& out, bool require_item_body = false);
 
 	size_t get_autofill_release_id(mounted_param myparam, size_t master_id);
 

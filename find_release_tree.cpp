@@ -9,6 +9,7 @@
 #include "find_release_utils.h"
 #include "find_release_dialog.h"
 #include "find_release_tree.h"
+#include "discogger_tree_snapshot.h"
 const size_t WINE_CHILDREN = 99999;
 
 const size_t TRACER_IMG_NDX = 3;
@@ -1969,9 +1970,8 @@ LRESULT CFindReleaseTree::OnReleaseTreeExpanding(int, LPNMHDR hdr, BOOL&) {
 
 LRESULT CFindReleaseTree::OnReleaseTreeGetInfo(WORD /*wNotifyCode*/, LPNMHDR hdr, BOOL& /*bHandled*/) {
 
-	if (!m_rt_cache.vec_Size() || !m_dispinfo_enabled) {
-		return FALSE;
-	}
+	if (hdr == nullptr || hdr->hwndFrom != m_hwndTreeView || !g_discogs ||
+		!m_rt_cache.vec_Size() || !m_dispinfo_enabled) return FALSE;
 
 	std::lock_guard<std::mutex> guard(g_discogs->tree_locked_mutex);
 
@@ -1983,6 +1983,19 @@ LRESULT CFindReleaseTree::OnReleaseTreeGetInfo(WORD /*wNotifyCode*/, LPNMHDR hdr
 
 	int lparam = pItem->lParam;
 	mounted_param myparam(lparam);
+
+	// Async refresh can evict rows before pending TEXT/IMAGE/CHILDREN callbacks.
+	const auto cit = cache_ptr->cache.find(lparam);
+	if (cit == cache_ptr->cache.end() || cit->second.first.col_data_list.empty()) {
+		if ((pItem->mask & TVIF_TEXT) && pItem->pszText && pItem->cchTextMax > 0)
+			pItem->pszText[0] = 0;
+		if (pItem->mask & TVIF_IMAGE) {
+			pItem->iImage = 0;
+			pItem->iSelectedImage = 0;
+		}
+		if (pItem->mask & TVIF_CHILDREN) pItem->cChildren = 0;
+		return FALSE;
+	}
 
 	std::pair<size_t, size_t>pdiscs_tracks;
 	size_t ctracks = 0;
@@ -2040,16 +2053,8 @@ LRESULT CFindReleaseTree::OnReleaseTreeGetInfo(WORD /*wNotifyCode*/, LPNMHDR hdr
 
 	if (pItem->mask & TVIF_TEXT)
 	{
-		//fetch cache - masters and releases
+		// The cache row and its first display column were validated above.
     TCHAR outBuffer[MAX_PATH + 1] = {};
-    auto cit = cache_ptr->cache.find(lparam);
-		if (cit == cache_ptr->cache.end())
-		{
-			pfc::stringcvt::convert_utf8_to_wide(outBuffer, MAX_PATH,
-				pfc::string8("Error"), 5);
-			_tcscpy_s(pItem->pszText, pItem->cchTextMax, const_cast<TCHAR*>(outBuffer));
-			return FALSE;
-		}
 		auto row_data = cit->second.first.col_data_list.begin();
 
 		//node literal...
@@ -2078,8 +2083,6 @@ LRESULT CFindReleaseTree::OnReleaseTreeGetInfo(WORD /*wNotifyCode*/, LPNMHDR hdr
 
 		int img_ndx;
 
-		auto cit = cache_ptr->cache.find(lparam);
-
 		if (on_tree_display_cell_image(myparam.master_ndx, myparam.release_ndx, cit->second.first.id, cit, img_ndx)) {
 
 			pItem->iImage = img_ndx;
@@ -2096,58 +2099,22 @@ LRESULT CFindReleaseTree::OnReleaseTreeGetInfo(WORD /*wNotifyCode*/, LPNMHDR hdr
 // ..
 
 std::pair<t_size, t_size> release_tree_cache::get_level_one_vec_track_count(LPARAM lParam) {
-	std::pair<t_size, t_size> pres(0,0);
-	pfc::string8 release_id;
-	size_t ctracks = 0;
-
-	vec_iterator_t find_it;
-	find_vec_by_lparam(*m_vec_ptr, lParam, find_it);
-
-	if (find_it != m_vec_ptr->end()) {
-
-		cache_iterator_t cache_it = find_it->first;
-		row_col_data rcdata = cache_it->second.first;
-
-		release_id << std::to_string(rcdata.id).c_str();
-		Artist_ptr artist = m_rt_manager->get_find_release_artist();
-
-		size_t lkey = encode_mr(0, release_id);
-
-		Release_ptr release = discogs_interface->get_release(lkey, false);
-		size_t cdiscs = release->discs.get_count();
-		for (size_t walk = 0; walk < cdiscs; walk++) {
-			ctracks += release->discs[walk]->tracks.size();
-		}
-		pres = { cdiscs, ctracks };
-	}
-	return pres;
+    vec_iterator_t find_it;
+    find_vec_by_lparam(*m_vec_ptr, lParam, find_it);
+    if (find_it == m_vec_ptr->end() || !discogs_interface) return {0, 0};
+    pfc::string8 release_id;
+    release_id << std::to_string(find_it->first->second.first.id).c_str();
+    const auto release = discogs_interface->get_release(encode_mr(0, release_id), false);
+    return discogger_tree::count_cached_tracks(release);
 }
 
 std::pair<t_size, t_size> release_tree_cache::get_level_two_cache_track_count(LPARAM lparam) {
-	std::pair<t_size, t_size> pres(0, 0);
-	pfc::string8 release_id;
-	size_t ctracks = 0;
-
-	cache_iterator_t cache_it = m_cache_ptr->cache.find(lparam);
-
-	if (cache_it != m_cache_ptr->cache.end()) {
-
-		row_col_data rcdata = cache_it->second.first;
-
-		release_id << std::to_string(rcdata.id).c_str();
-		Artist_ptr artist = m_rt_manager->get_find_release_artist();
-
-		size_t lkey = encode_mr(0, release_id);
-
-		Release_ptr release = discogs_interface->get_release(lkey, false);
-
-		size_t cdiscs = release->discs.get_count();
-		for (size_t walk = 0; walk < cdiscs; walk++) {
-			ctracks += release->discs[walk]->tracks.size();
-		}
-		pres = { cdiscs, ctracks };
-	}
-	return pres;
+    const auto cache_it = m_cache_ptr->cache.find(lparam);
+    if (cache_it == m_cache_ptr->cache.end() || !discogs_interface) return {0, 0};
+    pfc::string8 release_id;
+    release_id << std::to_string(cache_it->second.first.id).c_str();
+    const auto release = discogs_interface->get_release(encode_mr(0, release_id), false);
+    return discogger_tree::count_cached_tracks(release);
 }
 
 // release tree selection changed
@@ -2187,6 +2154,10 @@ size_t CFindReleaseTree::get_autofill_release_id(mounted_param myparam, size_t s
 	size_t autofill_id = ~0;
 
 	if (myparam.is_master()) {
+		// A refreshed artist must not be indexed by a stale master row.
+		if (!m_find_release_artist ||
+			myparam.master_ndx >= m_find_release_artist->master_releases.get_count() ||
+			!m_find_release_artist->master_releases[myparam.master_ndx]) return ~0;
 
 		// autofill release id textbox
 
@@ -2238,7 +2209,7 @@ size_t CFindReleaseTree::test_getselected(TVITEM& out) {
 
 	if (HTREEITEM hsel = TreeView_GetSelection(m_hwndTreeView)) {
 
-		out.mask = TVIF_PARAM | TVIS_EXPANDED;
+		out.mask = TVIF_PARAM;
 		out.hItem = hsel;
 
 		TreeView_GetItem(m_hwndTreeView, &out);
@@ -2249,16 +2220,16 @@ size_t CFindReleaseTree::test_getselected(TVITEM& out) {
 	return ~0;
 }
 
-size_t CFindReleaseTree::test_getatcursor(CPoint screen_pos, TVITEM& out) {
+size_t CFindReleaseTree::test_getatcursor(CPoint screen_pos, TVITEM& out, bool require_item_body) {
 
 	TVHITTESTINFO tvhitinfo = { 0 };
 	tvhitinfo.pt = screen_pos;
 	::ScreenToClient(m_hwndTreeView, &tvhitinfo.pt);
 
-	bool bres = TreeView_HitTest(m_hwndTreeView, &tvhitinfo);
+	HTREEITEM hit = TreeView_HitTest(m_hwndTreeView, &tvhitinfo);
 
-	if (bres) {
-		out.mask = TVIF_PARAM | TVIS_EXPANDED;
+	if (hit && (!require_item_body || (tvhitinfo.flags & TVHT_ONITEM))) {
+		out.mask = TVIF_PARAM;
 		out.hItem = tvhitinfo.hItem;
 
 		TreeView_GetItem(m_hwndTreeView, &out);
@@ -2279,7 +2250,7 @@ void CFindReleaseTree::hit_test_release_proceed() {
 	POINT p;
 	GetCursorPos(&p);
 
-	if ((lparam = test_getatcursor(p, tvi)) != ~0) {
+	if ((lparam = test_getatcursor(p, tvi, true)) != ~0) {
 
 		mounted_param myparam(lparam);
 
@@ -2331,6 +2302,7 @@ void CFindReleaseTree::vkreturn_test_master_expand_release() {
 // double click on release proceeds to match tracks
 
 LRESULT CFindReleaseTree::OnReleaseTreeDoubleClickRelease(int, LPNMHDR hdr, BOOL& bHandled) {
+	if (!hdr || hdr->hwndFrom != m_hwndTreeView || !m_dispinfo_enabled) return 0;
 
 	hit_test_release_proceed();
 	return 0;
@@ -2359,7 +2331,7 @@ LRESULT CFindReleaseTree::OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lParam,
 	TVITEM tviSelection = { 0 };
 	TVITEM tviCursor = { 0 };
 
-	size_t param_selection = param_selection = test_getselected(tviSelection);
+	size_t param_selection = test_getselected(tviSelection);
 	size_t param_cursor = test_getatcursor(screen_position, tviCursor);
 	if (param_selection  == ~0) {
 		//second bug: no prev selection (right click as first tree event)

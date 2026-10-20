@@ -884,3 +884,23 @@ assert "foo_discogger/Win32/Release/foo_discogger.dll" in host_wf
 assert "foo_discogger/x64/Release/foo_discogger.dll" in host_wf
 assert "actions/upload-artifact" not in host_wf
 print("PASS: exact-SHA shared foobar Win32/x64 component host smoke is fail-closed after native linking.")
+
+# Stale Windows tree display callbacks must fail closed for evicted/empty
+# rows; partial cached releases must not dereference absent disc pointers.
+tree_source = (root / "find_release_tree.cpp").read_text(encoding="utf-8-sig")
+tree_header = (root / "find_release_tree.h").read_text(encoding="utf-8-sig")
+tree_frag = tree_source[tree_source.index("LRESULT CFindReleaseTree::OnReleaseTreeGetInfo("):
+                        tree_source.index("// ..", tree_source.index("LRESULT CFindReleaseTree::OnReleaseTreeGetInfo("))]
+assert '#include "discogger_tree_snapshot.h"' in tree_source
+assert "hdr == nullptr || hdr->hwndFrom != m_hwndTreeView" in tree_frag
+assert "cit == cache_ptr->cache.end() || cit->second.first.col_data_list.empty()" in tree_frag
+assert tree_frag.index("cit == cache_ptr->cache.end()") < tree_frag.index("if (pItem->mask & TVIF_TEXT)")
+assert tree_frag.count("cache_ptr->cache.find(lparam)") == 1
+assert tree_source.count("discogger_tree::count_cached_tracks(release)") == 2
+assert "myparam.master_ndx >= m_find_release_artist->master_releases.get_count()" in tree_source
+assert "test_getatcursor(p, tvi, true)" in tree_source
+assert "(tvhitinfo.flags & TVHT_ONITEM)" in tree_source
+assert "bool require_item_body = false" in tree_header
+assert "release_tree_snapshot_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+assert "release_tree_snapshot_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+print("PASS: stale release-tree callback, partial cached release and row hit-test guards.")

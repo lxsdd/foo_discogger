@@ -46,6 +46,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_activation_test.cpp -o /tmp/discogger-artist-activate && /tmp/discogger-artist-activate
       - name: Compile and run bounded cached thumbnail regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/thumbnail_bounds_test.cpp -o /tmp/discogger-thumbnail-test && /tmp/discogger-thumbnail-test
+      - name: Compile and run stale release-tree snapshot regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/release_tree_snapshot_test.cpp -o /tmp/discogger-release-tree && /tmp/discogger-release-tree
       - name: Compile and run strict direct release ID validation
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/release_id_test.cpp -o /tmp/discogger-release-id && /tmp/discogger-release-id
       - name: Compile and run multi-value field token regressions
