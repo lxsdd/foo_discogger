@@ -446,7 +446,10 @@ find_cpp = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 assert "test_no_artists_artist_in_title" not in find_cpp
 # Ignore historical identifiers in explanatory comments; ban executable debug paths.
 assert "debug_ok =" not in find_cpp and "if (debug_ok" not in find_cpp
-assert "const std::string os_root_utf8(" in (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+cache_reader = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+assert "fs::u8path(path_container.c_str())" in cache_reader
+assert "const auto utf8 = entry.path().filename().u8string();" in cache_reader
+assert "const std::string name(utf8.begin(), utf8.end());" in cache_reader
 print("PASS: native compile-cluster source regressions (tag write lock, C++20, UI and CRC32).")
 
 # C++20 / SDK cfg_objList mapping ownership and pointer lifetime contracts.
