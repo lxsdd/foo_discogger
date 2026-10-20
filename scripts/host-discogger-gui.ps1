@@ -144,6 +144,27 @@ public static class DiscoggerWindowTest {
       return "Release filter field is misaligned with list/tree region";
     return "";
   }
+  [DllImport("user32.dll")] static extern bool MoveWindow(IntPtr hwnd,int x,int y,int width,int height,bool repaint);
+  [DllImport("user32.dll")] static extern int GetSystemMetrics(int id);
+  public static int[] Bounds(IntPtr hwnd) {
+    Rect r;
+    if(!GetWindowRect(hwnd,out r)) throw new InvalidOperationException("GetWindowRect failed");
+    return new int[] {r.Left,r.Top,r.Right-r.Left,r.Bottom-r.Top};
+  }
+  public static string ResizeForLayoutTest(IntPtr dialog) {
+    int[] old=Bounds(dialog);
+    int screenW=GetSystemMetrics(0),screenH=GetSystemMetrics(1);
+    int width=old[2]+120,height=old[3]+64;
+    if(width>screenW-16 || height>screenH-16)
+      return "Insufficient disposable desktop work area for native resize";
+    int x=Math.Max(8,Math.Min(old[0],screenW-width-8));
+    int y=Math.Max(8,Math.Min(old[1],screenH-height-8));
+    if(!MoveWindow(dialog,x,y,width,height,true)) return "MoveWindow failed";
+    int[] resized=Bounds(dialog);
+    if(resized[2]<width-8 || resized[3]<height-8)
+      return "Find Releases did not honor resize request";
+    return CheckFindReleasesGeometry(dialog);
+  }
   public static bool Responsive(IntPtr h) {
     IntPtr result;
     return SendMessageTimeoutW(h,0,IntPtr.Zero,IntPtr.Zero,2,3000,out result)!=IntPtr.Zero;
@@ -284,6 +305,7 @@ try {
     Write-Host "DISCOGGER_INITIALIZATION_$Architecture=PASS"
     Write-Host ('DISCOGGER_INITIAL_WINDOWS='+([DiscoggerWindowTest]::List([uint32]$proc.Id) -join '|'))
     $window=[IntPtr]::Zero
+    $chosenContextRoute=''
     foreach($name in @('Tagging/Discogger/Write tags...','Discogger/Write tags...','Write tags...')){
         $args='/context_command:"'+$name+'" "'+$wav+'"'
         $launcher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $args -PassThru
@@ -302,7 +324,7 @@ try {
             }
             $matches=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
             if($matches.Length -gt 1){throw 'Multiple native Find Releases dialogs with the expected control IDs.'}
-            if($matches.Length -eq 1){$window=$matches[0];break}
+            if($matches.Length -eq 1){$window=$matches[0];$chosenContextRoute=$name;break}
         }
         if($window -ne [IntPtr]::Zero){break}
     }
@@ -328,6 +350,56 @@ try {
         throw ('Discogger GUI layout/controls failed: '+$layoutFailure)
     }
     Write-Host "DISCOGGER_GUI_LAYOUT_$Architecture=PASS"
+    # Only manipulate a disposable modeless HWND. No Search, Next,
+    # tagging, artwork, ReplayGain or CUE-write button is ever activated.
+    $resizeError=[DiscoggerWindowTest]::ResizeForLayoutTest($window)
+    if($resizeError){throw ('Native Find Releases resize failed: '+$resizeError)}
+    Start-Sleep -Milliseconds 450
+    $resizedGeometry=[DiscoggerWindowTest]::Bounds($window)
+    Write-Host "DISCOGGER_GUI_RESIZE_$Architecture=PASS"
+
+    # Normal WM_CLOSE runs cfgDialogPosition's OnDestroy handler in the
+    # temporary foobar profile, so size and position should be restored.
+    if(-not [DiscoggerWindowTest]::PostMessageW($window,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+        throw 'Cannot close disposable Find Releases dialog.'
+    }
+    $closed=$false
+    for($n=0;$n -lt 35;$n++){
+        Start-Sleep -Milliseconds 200
+        $proc.Refresh()
+        if($proc.HasExited){throw 'foobar2000 terminated while closing the Find Releases dialog.'}
+        if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){
+            $closed=$true;break
+        }
+    }
+    if(-not $closed){throw 'Find Releases did not close after WM_CLOSE.'}
+    Start-Sleep -Milliseconds 500
+    if(-not $chosenContextRoute){throw 'Missing previously qualified context route.'}
+    $reopenArgs='/context_command:"'+$chosenContextRoute+'" "'+$wav+'"'
+    $launcherAgain=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $reopenArgs -PassThru
+    if(-not $launcherAgain.WaitForExit(15000) -or $launcherAgain.ExitCode -ne 0){
+        throw 'Context command failed when reopening Find Releases.'
+    }
+    $reopened=[IntPtr]::Zero
+    for($n=0;$n -lt 30;$n++){
+        Start-Sleep -Milliseconds 300
+        $proc.Refresh()
+        if($proc.HasExited){throw 'foobar2000 terminated during second native dialog opening.'}
+        $windows=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+        if($windows.Length -gt 1){throw 'Duplicate Find Releases windows after reopening.'}
+        if($windows.Length -eq 1){$reopened=$windows[0];break}
+    }
+    if($reopened -eq [IntPtr]::Zero){throw 'Find Releases did not reopen after closing.'}
+    if(-not [DiscoggerWindowTest]::Responsive($reopened)){throw 'Reopened Find Releases is unresponsive.'}
+    $reopenGeometry=[DiscoggerWindowTest]::Bounds($reopened)
+    for($axis=0;$axis -lt 4;$axis++){
+        if([Math]::Abs($resizedGeometry[$axis]-$reopenGeometry[$axis]) -gt 24){
+            throw "Dialog size/position persistence failed (axis $axis)."
+        }
+    }
+    $reopenedLayoutError=[DiscoggerWindowTest]::CheckFindReleasesGeometry($reopened)
+    if($reopenedLayoutError){throw ('Reopened Find Releases layout failed: '+$reopenedLayoutError)}
+    Write-Host "DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS"
     $after=Get-Item -LiteralPath $wav
     if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash -or
        $after.Length -ne $wavSize -or $after.LastWriteTimeUtc.Ticks -ne $wavTicks){

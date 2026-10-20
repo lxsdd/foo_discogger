@@ -1001,3 +1001,22 @@ assert "DISCOGGER_GUI_LAYOUT_$Architecture=PASS" in gui_source
 assert gui_source.index("CheckFindReleasesGeometry($window)") < gui_source.index("$after=Get-Item -LiteralPath $wav")
 assert gui_source.index("CheckFindReleasesGeometry($window)") > gui_source.index("if(-not [DiscoggerWindowTest]::Responsive($window))")
 print("PASS: read-only native dialog layout, clipping and search alignment geometry wired for both hosts.")
+
+
+# Exercise the actual modeless foobar Win32/x64 dialog's resize, normal
+# close/reopen and temporary profile position/size persistence without
+# touching any synthetic WAV bytes or invoking tagging/CUE writer commands.
+gui_source = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+dialog_src = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "ResizeForLayoutTest(IntPtr dialog)" in gui_source
+assert "MoveWindow(dialog,x,y,width,height,true)" in gui_source
+assert "DISCOGGER_GUI_RESIZE_$Architecture=PASS" in gui_source
+assert "PostMessageW($window,0x0010" in gui_source
+assert "DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS" in gui_source
+assert "Dialog size/position persistence failed" in gui_source
+assert "CheckFindReleasesGeometry($reopened)" in gui_source
+assert gui_source.index("DISCOGGER_GUI_RESIZE_$Architecture=PASS") < gui_source.index("DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS")
+assert gui_source.index("DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS") < gui_source.index("$after=Get-Item -LiteralPath $wav")
+assert "cfg_dialog_position_find_release_dlg.AddWindow(m_hWnd);" in dialog_src
+assert "cfg_dialog_position_find_release_dlg.RemoveWindow(m_hWnd);" in dialog_src
+print("PASS: disposable host resize, close/reopen and GUI position persistence gates.")
