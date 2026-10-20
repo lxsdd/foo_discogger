@@ -1,5 +1,7 @@
 #pragma once
 
+#include "discogger_thumbnail_bounds.h"
+
 #include <map>
 
 #include "querydefmap.h"
@@ -187,20 +189,20 @@ public:
 	}
 
 	bool img_artists_ndx_to_artist(Release_ptr p_release, size_t img_ndx, Artist_ptr& artist, size_t& ndx) {
-
+		artist.reset();
 		ndx = img_ndx;
-		Artist_ptr this_artist;
-		size_t accimg = 0;
+		if (!p_release) return false;
 
-		for (ReleaseArtist_ptr wra : p_release->artists) {
-			this_artist = wra->full_artist;
-			if (accimg + this_artist->images.get_count() > img_ndx) break;
-			accimg += this_artist->images.get_count();
+		for (const ReleaseArtist_ptr& wra : p_release->artists) {
+			if (!wra || !wra->full_artist) continue;
+			const size_t count = wra->full_artist->images.get_count();
+			if (discogger_thumbnail::consume_artist_images(count, ndx)) {
+				artist = wra->full_artist;
+				return true;
+			}
 		}
-
-		/*local_*/ndx -= accimg;
-		artist = std::move(this_artist);
-		return artist.get() && /*local_*/ndx < artist->images.get_count();
+		ndx = 0;
+		return false;
 	}
 
 	bool artists_vid(Release_ptr p_release, std::vector<std::pair<std::string, std::string>> &out) {

@@ -851,3 +851,20 @@ assert "std::atoi(release_id)" not in trigger
 assert "release_id_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "release_id_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
 print("PASS: direct release IDs validated before preview/load callbacks.")
+
+# Thumbnail cache reads are untrusted: no unchecked artist index, no signed
+# CRT read conversion, no partial/oversized buffers handed to the preview UI.
+thumbnail = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+thumbnail_header = (root / "discogs_interface.h").read_text(encoding="utf-8-sig")
+thumbnail_func = thumbnail[thumbnail.index("bool DiscogsInterface::get_thumbnail_from_cache("):
+                           thumbnail.index("bool DiscogsInterface::delete_artist_cache(")]
+assert "discogger_thumbnail::consume_artist_images(count, ndx)" in thumbnail_header
+assert "if (!wra || !wra->full_artist) continue;" in thumbnail_header
+assert "if (!img_artists_ndx_to_artist(release, img_ndx, artist, local_ndx)" in thumbnail_func
+assert "discogger_thumbnail::valid_cache_size(bytes)" in thumbnail_func
+assert "discogger_thumbnail::complete_read(input.gcount(), size)" in thumbnail_func
+assert "small_art.set_size(0);" in thumbnail_func
+assert "_read(" not in thumbnail_func
+assert "thumbnail_bounds_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+assert "thumbnail_bounds_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+print("PASS: cached artwork preview rejects invalid indices, oversized and partial files.")

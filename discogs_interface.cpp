@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "discogger_search_fallback.h"
+#include <fstream>
 #include "discogger_cache_pages.h"
 #include <cstdlib>
 
@@ -1077,113 +1078,64 @@ pfc::array_t<pfc::string8> DiscogsInterface::get_collection(threaded_process_sta
 bool DiscogsInterface::get_thumbnail_from_cache(Release_ptr release, bool isArtist, size_t img_ndx, MemoryBlock& small_art,
 	threaded_process_status& p_status, abort_callback& p_abort) {
 
-	bool bres = false;
+	// Never expose a previous preview after a failed cache read.
+	small_art.set_size(0);
+	if (!release) return false;
 
 	pfc::string8 id;
-	pfc::string8 url;
-	pfc::array_t<Image_ptr>* images;
 	size_t local_ndx = img_ndx;
-
 	if (!isArtist) {
-
+		if (img_ndx >= release->images.get_count() ||
+			!release->images[img_ndx] ||
+			!release->images[img_ndx]->url150.get_length()) {
+			log_msg(PFC_string_formatter() << "Unavailable album thumbnail, index: " << img_ndx);
+			return false;
+		}
 		id = release->id;
-		if (!release->images.get_size() || release->images.get_size() < (img_ndx + 1) || (!release->images[img_ndx]->url150.get_length())) {
-
-			pfc::string8 msg = "Unable to read album thumbnail from cache, index: ";
-			msg << img_ndx;
-			log_msg(msg);
-
+	} else {
+		Artist_ptr artist;
+		if (!img_artists_ndx_to_artist(release, img_ndx, artist, local_ndx) ||
+			!artist || local_ndx >= artist->images.get_count() ||
+			!artist->images[local_ndx] ||
+			!artist->images[local_ndx]->url150.get_length()) {
+			log_msg(PFC_string_formatter() << "Unavailable artist thumbnail, index: " << img_ndx);
 			return false;
 		}
-		else {
-			images = &release->images;
-		}
-	}
-	else {
-
-		Artist_ptr this_artist;
-
-		img_artists_ndx_to_artist(release, img_ndx, this_artist, local_ndx);
-
-		id = this_artist->id;
-
-		if (!release->artists.get_size() || !this_artist.get() ||
-			!this_artist->images.get_size() || this_artist->images.get_count() < (local_ndx + 1) ||
-			!this_artist->images[local_ndx]->url150.get_length()) {
-
-			pfc::string8 msg = "Unable to read artist thumbnail from cache, index: ";
-			msg << local_ndx;
-			log_msg(msg);
-
-			return false;
-		}
-		else {
-			images = &this_artist->images;
-		}
+		id = artist->id;
 	}
 
-	size_t artist_offset = isArtist ? release->images.get_count() : 0;
+	const auto cache_paths = ol::get_thumbnail_cache_path_filenames(
+		id, isArtist ? art_src::art : art_src::alb, LVSIL_NORMAL, true, local_ndx);
+	if (!cache_paths.get_count()) return false;
 
-	pfc::array_t<pfc::string8> n8_cache_thumbs;
-	n8_cache_thumbs = ol::get_thumbnail_cache_path_filenames(id, isArtist ? art_src::art : art_src::alb, LVSIL_NORMAL, true, local_ndx);
-
-	if (n8_cache_thumbs.get_count()) {
-
-		p_status.set_item("fetching artwork preview small album art from cache ...");
-
-		bool bexists = true;
-		pfc::string8 n8_file_name = n8_cache_thumbs[0];
-
-		int jf = -1;
-
-		try {
-
-			std::filesystem::path os_file = std::filesystem::u8path(n8_file_name.get_ptr());
-
-			if (std::filesystem::exists(os_file)) {
-
-				int filesize = std::filesystem::file_size(os_file);
-				errno = 0;
-				jf = _wopen(os_file.wstring().c_str(), _O_RDONLY | _O_BINARY);
-
-				if (jf == -1) {
-					foobar2000_io::exception_io e("Open failed on input file");
-					throw e;
-				}
-				else {
-					small_art.set_size(filesize);
-					size_t done = _read(jf, small_art.get_ptr(), filesize);
-					bres = done;
-					_close(jf);
-				}
-
-				if (errno || !bres) {
-					log_msg(PFC_string_formatter() << "can't open " << n8_file_name);
-					return false;
-				}
-			}
-			else {
-				return false;
-			}
-		}
-		catch (foo_discogs_exception& e) {
-			if (jf != -1) {
-				_close(jf);
-			}
-			throw(e);
+	p_abort.check();
+	p_status.set_item("Reading artwork thumbnail from cache...");
+	const pfc::string8& cache_path = cache_paths[0];
+	try {
+		const auto file_path = std::filesystem::u8path(cache_path.get_ptr());
+		if (!std::filesystem::is_regular_file(file_path)) return false;
+		const auto bytes = std::filesystem::file_size(file_path);
+		if (!discogger_thumbnail::valid_cache_size(bytes)) {
+			log_msg("Ignoring empty or oversized cached artwork thumbnail.");
 			return false;
 		}
-		catch (...) {
-			if (jf != -1) {
-				_close(jf);
-			}
-			foo_discogs_exception e;
-			e << "Unknown exception";
-			throw(e);
+		std::ifstream input(file_path, std::ios::binary);
+		if (!input) return false;
+		const auto size = static_cast<size_t>(bytes);
+		small_art.set_size(size);
+		input.read(reinterpret_cast<char*>(small_art.get_ptr()),
+			static_cast<std::streamsize>(size));
+		const bool complete = discogger_thumbnail::complete_read(input.gcount(), size);
+		if (!complete || input.peek() != std::char_traits<char>::eof()) {
+			small_art.set_size(0);
+			log_msg("Ignoring incomplete or changed cached artwork thumbnail.");
 			return false;
 		}
+		return true;
+	} catch (const std::filesystem::filesystem_error&) {
+		small_art.set_size(0);
+		return false;
 	}
-	return bres;
 }
 
 bool DiscogsInterface::delete_artist_cache(const pfc::string8& artist_id, const pfc::string8& release_id) {

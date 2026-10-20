@@ -39,6 +39,7 @@ $Sources = @(
     'cfg_snapshot_ops_test.cpp',
     'async_write_lease_test.cpp',
     'artwork_noop_test.cpp',
+    'thumbnail_bounds_test.cpp',
     'sqlite_symbol_namespace_test.cpp',
     'interruptible_wait_test.cpp'
 )
