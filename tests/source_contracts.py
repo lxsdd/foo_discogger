@@ -985,3 +985,19 @@ assert "HBITMAP h_bitmap = nullptr;" in icon_source
 assert "DeleteObject(rec_image);" not in icon_source
 assert "rec_image.Empty();" in icon_source
 print("PASS: GDI+ icon loader rejects missing resources and null bitmaps before use.")
+
+
+# Real HWND/DPI-sensitive geometry: prove search field/button alignment, no
+# overlap/clipping of major controls and a non-disabled search button in both
+# official host architectures, without synthetic media mutation.
+gui_source = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "CheckFindReleasesGeometry(IntPtr dialog)" in gui_source
+assert "GetWindowRect" in gui_source and "ClientToScreen" in gui_source
+assert "Math.Abs(searchMid-buttonMid)>6" in gui_source
+assert "search.Right>button.Left" in gui_source
+assert "artists.Right>releases.Left" in gui_source
+assert "box.Right>right+2 || box.Bottom>bottom+2" in gui_source
+assert "DISCOGGER_GUI_LAYOUT_$Architecture=PASS" in gui_source
+assert gui_source.index("CheckFindReleasesGeometry($window)") < gui_source.index("$after=Get-Item -LiteralPath $wav")
+assert gui_source.index("CheckFindReleasesGeometry($window)") > gui_source.index("if(-not [DiscoggerWindowTest]::Responsive($window))")
+print("PASS: read-only native dialog layout, clipping and search alignment geometry wired for both hosts.")

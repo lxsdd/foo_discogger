@@ -97,6 +97,53 @@ public static class DiscoggerWindowTest {
     },IntPtr.Zero);
     return matches.ToArray();
   }
+  // Purely observational HWND geometry: never set focus, click a button,
+  // post an input event or alter any selected media file.
+  [StructLayout(LayoutKind.Sequential)]
+  public struct Rect { public int Left,Top,Right,Bottom; }
+  [StructLayout(LayoutKind.Sequential)]
+  public struct Point { public int X,Y; }
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out Rect r);
+  [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr h,out Rect r);
+  [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h,ref Point p);
+  [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr h);
+  public static string CheckFindReleasesGeometry(IntPtr dialog) {
+    Rect client;
+    if (!GetClientRect(dialog,out client)) return "GetClientRect failed";
+    Point origin=new Point { X=0,Y=0 };
+    if (!ClientToScreen(dialog,ref origin)) return "ClientToScreen failed";
+    int left=origin.X+client.Left, top=origin.Y+client.Top;
+    int right=origin.X+client.Right, bottom=origin.Y+client.Bottom;
+    if(right-left<200 || bottom-top<100) return "Find Releases client area too small";
+    int[] required={1083,1086,1080,1018,1099,1092,1198};
+    var rects=new Dictionary<int,Rect>();
+    foreach(int id in required) {
+      IntPtr control=GetDlgItem(dialog,id);
+      if(control==IntPtr.Zero) return "Missing control ID "+id;
+      Rect box;
+      if(!GetWindowRect(control,out box)) return "GetWindowRect failed for ID "+id;
+      if(box.Left>=box.Right || box.Top>=box.Bottom) return "Zero-size control ID "+id;
+      // Client-relative containment also catches actual cut-offs caused by
+      // DPI and resizable-window layout regressions.
+      if(box.Left<left-2 || box.Top<top-2 ||
+         box.Right>right+2 || box.Bottom>bottom+2)
+        return "Clipped outside client area ID "+id;
+      rects[id]=box;
+    }
+    Rect search=rects[1083], button=rects[1086], filter=rects[1099];
+    int searchMid=search.Top+(search.Bottom-search.Top)/2;
+    int buttonMid=button.Top+(button.Bottom-button.Top)/2;
+    // Use a small pixel tolerance for DLU rounding across Win32 and x64.
+    if(Math.Abs(searchMid-buttonMid)>6)
+      return "Search text and Search button vertical centers differ";
+    if(search.Right>button.Left || button.Left-search.Right>32)
+      return "Search edit overlaps or is too far from Search button";
+    Rect artists=rects[1080], releases=rects[1018];
+    if(artists.Right>releases.Left) return "Artist list overlaps release tree";
+    if(filter.Top>artists.Top || filter.Bottom>artists.Bottom)
+      return "Release filter field is misaligned with list/tree region";
+    return "";
+  }
   public static bool Responsive(IntPtr h) {
     IntPtr result;
     return SendMessageTimeoutW(h,0,IntPtr.Zero,IntPtr.Zero,2,3000,out result)!=IntPtr.Zero;
@@ -276,6 +323,11 @@ try {
     foreach($id in @(1083,1086,1080,1018,1099,1107,1092,1198)){
         if([DiscoggerWindowTest]::GetDlgItem($window,$id) -eq [IntPtr]::Zero){throw "Missing control ID $id"}
     }
+    $layoutFailure=[DiscoggerWindowTest]::CheckFindReleasesGeometry($window)
+    if($layoutFailure) {
+        throw ('Discogger GUI layout/controls failed: '+$layoutFailure)
+    }
+    Write-Host "DISCOGGER_GUI_LAYOUT_$Architecture=PASS"
     $after=Get-Item -LiteralPath $wav
     if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash -or
        $after.Length -ne $wavSize -or $after.LastWriteTimeUtc.Ticks -ne $wavTicks){
