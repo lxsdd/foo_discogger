@@ -722,7 +722,7 @@ assert "json_decref(ptr)" in offline_entity
 assert "json_is_object(js_obj.get())" in offline_entity
 assert "json_object_size(js_obj.get()) == 0" in offline_entity
 assert "std::unique_ptr<char, decltype(text_cleanup)> serialized(" in offline_entity
-assert "json_free(ptr)" in offline_entity
+assert "std::free(ptr)" in offline_entity
 assert "if (serialized) html = serialized.get();" in offline_entity
 assert "pfc::string8(json_dumps(" not in offline_entity
 print("PASS: offline cache JSON references and serialized buffers are released; invalid results clear stale output.")
@@ -746,3 +746,11 @@ assert "json_free(ptr)" not in online
 assert "#include <cstdlib>" in online
 assert "valid_online_page(" in (root / "discogger_cache_pages.h").read_text(encoding="utf-8-sig")
 print("PASS: online cursor bounds, moved-parser lifetime, abort safety and Jansson free contract.")
+
+# Expensive SDK/whole-DLL builds must not run after a known cheap regression
+# failure, avoiding wasted GitHub Actions time on non-release PRs.
+wf_gate = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "  official-sdk-probe:\n    # Fail cheap/static and native unit gates before launching the costly SDK" in wf_gate
+assert "    needs: [portable-core, windows-baseline, windows-native-unit]" in wf_gate
+assert "    runs-on: windows-2022" in wf_gate
+print("PASS: strict DLL gate depends on portable, Windows source and x86/x64 unit test successes.")

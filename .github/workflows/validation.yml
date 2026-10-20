@@ -105,6 +105,9 @@ jobs:
         run: ./scripts/run-msvc-unit-tests.ps1 -Architecture '${{ matrix.architecture }}'
 
   official-sdk-probe:
+    # Fail cheap/static and native unit gates before launching the costly SDK
+    # download and two complete Win32/x64 component link operations.
+    needs: [portable-core, windows-baseline, windows-native-unit]
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
