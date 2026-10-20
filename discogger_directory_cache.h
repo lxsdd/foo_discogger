@@ -27,12 +27,15 @@ inline bool cache_has_marker(const fs::path& root) {
 inline bool recover_cache_unlocked(const fs::path& active) {
     const fs::path backup = cache_backup_path(active);
     std::error_code ec;
-    if (fs::is_symlink(active, ec) || ec) return false;
-    if (fs::is_symlink(backup, ec) || ec) return false;
-    const bool backup_exists = fs::exists(backup, ec);
-    if (ec || !backup_exists) return !ec;
+    // On POSIX, is_symlink(missing, ec) can report ENOENT. First
+    // distinguish a new cache from an existing potentially unsafe link.
     const bool active_exists = fs::exists(active, ec);
     if (ec) return false;
+    const bool backup_exists = fs::exists(backup, ec);
+    if (ec) return false;
+    if (active_exists && (fs::is_symlink(active, ec) || ec)) return false;
+    if (backup_exists && (fs::is_symlink(backup, ec) || ec)) return false;
+    if (!backup_exists) return true;
     if (active_exists && cache_has_marker(active)) {
         fs::remove_all(backup, ec);
         return !ec;
