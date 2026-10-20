@@ -914,6 +914,7 @@ void find_releases_not_in_collection_task::finish() {
 
 
 void get_artist_process_callback::start(HWND parent) {
+    m_owner_window = parent;
 	pfc::string8 msg;
 	msg << "Loading artist id " << m_artist_id << ": " << m_artist_name;
 
@@ -992,6 +993,12 @@ void get_artist_process_callback::on_success(HWND p_wnd) {
         // Honor a request made while an earlier artist load was running.
         const bool retry_refresh = m_bload_releases && m_artist->release_refresh.pending();
 
+        // A finished network task must not target a closed/replaced dialog.
+        if (!m_owner_window || !::IsWindow(m_owner_window) ||
+            !g_discogs || !g_discogs->find_release_dialog ||
+            g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+            return;
+
 		//artist history
 		//todo: only using search button
 		if (m_cupdsrc != updRelSrc::ArtistProfile) {
@@ -1035,7 +1042,7 @@ void get_artist_process_callback::on_error(HWND p_wnd) {
 
 
 void get_multi_artists_process_callback::start(HWND parent) {
-
+    m_owner_window = parent;
 	pfc::string8 msg;
 	std::string msg_ids;
 	for (const auto& artist_id : m_artist_ids) msg_ids += (std::to_string(artist_id) + " ");
@@ -1118,6 +1125,10 @@ void get_multi_artists_process_callback::on_success(HWND p_wnd) {
 	if (m_bload_releases) {
 		check_out();
 	}
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        return;
 
 	if (m_artists.get_count()) {
 		m_cupdsrc.oninit = true;
@@ -1129,7 +1140,11 @@ void get_multi_artists_process_callback::on_success(HWND p_wnd) {
 				ti.swap(m_artists[c++]);
 			}
 			m_artists.force_reset();
-			g_discogs->find_release_dialog->on_search_artist_done(tail, pfc::array_t<Artist_ptr>(), true);
+            // The first callback may have closed the modeless window.
+            if (::IsWindow(m_owner_window) && g_discogs &&
+                g_discogs->find_release_dialog &&
+                g_discogs->find_release_dialog->m_hWnd == m_owner_window)
+                g_discogs->find_release_dialog->on_search_artist_done(tail, pfc::array_t<Artist_ptr>(), true);
 		}
 	}
 }
@@ -1143,6 +1158,10 @@ void get_multi_artists_process_callback::on_error(HWND p_wnd) {
 	pfc::array_t<Artist_ptr>tail;
 
 	m_artists.force_reset();
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        return;
 	g_discogs->find_release_dialog->on_search_artist_done(pfc::array_t<Artist_ptr>(), pfc::array_t<Artist_ptr>(), true);
 
 }

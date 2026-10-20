@@ -48,6 +48,20 @@ assert "::IsWindow(status_window)" in dialog_redraw
 assert "IDC_STATIC_FIND_REL_SEARCH_STATS" in dialog_redraw
 assert dialog_redraw.count("::IsWindow(tree_window)") >= 2
 print("PASS: asynchronous search/tree/artist redraw work does not capture destroyed UI objects.")
+# The modal/async artist worker must own any data sourced from the Find
+# Releases dialog and reject completions from closed or replacement windows.
+native_tasks_h = (root / "tasks.h").read_text(encoding="utf-8-sig")
+native_tasks_cpp = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+assert "std::vector<size_t> m_artist_ids;" in native_tasks_h
+assert "const std::vector<size_t> & m_artist_ids;" not in native_tasks_h
+assert "pfc::string8 m_artist_name;" in native_tasks_h
+assert "const char* m_artist_name;" not in native_tasks_h
+assert native_tasks_h.count("HWND m_owner_window = nullptr;") >= 2
+assert native_tasks_cpp.count("m_owner_window = parent;") >= 2
+assert native_tasks_cpp.count("g_discogs->find_release_dialog->m_hWnd != m_owner_window") >= 3
+assert "if (::IsWindow(m_owner_window) && g_discogs" in native_tasks_cpp
+print("PASS: artist async task owns ID/name data and rejects stale-dialog callbacks.")
+
 
 
 dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")

@@ -202,7 +202,7 @@ class get_artist_process_callback : public foo_discogs_threaded_process_callback
 {
 public:
 	get_artist_process_callback(cupdRelSrc cupdsrc, const char *artist_id, const char* artist_name)
-			: m_cupdsrc(cupdsrc), m_artist_id(artist_id), m_artist_name(artist_name) {
+			: m_artist_id(artist_id), m_artist_name(artist_name), m_cupdsrc(cupdsrc) {
 		m_bload_releases = m_cupdsrc != updRelSrc::ArtistProfile && m_cupdsrc != updRelSrc::UndefFast;
         		m_bload_releases |= m_cupdsrc.extended;
 	}
@@ -210,7 +210,8 @@ public:
 
 private:
 	pfc::string8 m_artist_id;
-	const char* m_artist_name;
+	pfc::string8 m_artist_name;
+    HWND m_owner_window = nullptr;
 	Artist_ptr m_artist;
 	cupdRelSrc m_cupdsrc;
 	bool m_bload_releases = false;
@@ -230,7 +231,7 @@ class get_multi_artists_process_callback : public foo_discogs_threaded_process_c
 {
 public:
 	get_multi_artists_process_callback(cupdRelSrc cupdsrc, const int va, const std::vector<size_t> & artist_ids)
-		: m_cupdsrc(cupdsrc), m_va(va), m_artist_ids(artist_ids) {
+		: m_artist_ids(artist_ids), m_cupdsrc(cupdsrc), m_va(va) {
 		
 		m_bload_releases = m_cupdsrc != updRelSrc::ArtistProfile && m_cupdsrc != updRelSrc::UndefFast;
 		m_bload_releases |= m_cupdsrc.extended;	
@@ -238,7 +239,8 @@ public:
 	void start(HWND parent);
 
 private:
-	const std::vector<size_t> & m_artist_ids;
+	std::vector<size_t> m_artist_ids; // Owned across modeless dialog destruction.
+    HWND m_owner_window = nullptr;
 	std::vector<pfc::string8> m_checked_in_artist_ids;
 	pfc::array_t<Artist_ptr> m_artists;
 	Release_ptr m_release;
