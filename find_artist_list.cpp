@@ -511,15 +511,7 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 	CFindReleaseDialog* dlg = static_cast<CFindReleaseDialog*>(m_host);
 
 	Artist_ptr artist;
-	bool isArtistOffline = false;
-
-	if (!empty_sel) {
-
-		if (artist = get_selected_artist()) {
-			isArtistOffline = artist->loaded_releases_offline;
-		}
-
-	}
+	if (!empty_sel) artist = get_selected_artist();
 
 	pfc::string8 sourcepage = "Web &artist page";
 	pfc::string8 copyrow = "&Copy";
@@ -540,10 +532,8 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 			uAppendMenu(menu, MF_STRING | (bexact_matches? MF_CHECKED : MF_UNCHECKED), ID_ARTIST_EXACT_MATCHES, "&exact matches");
 			uAppendMenu(menu, MF_STRING, ID_ARTIST_PROFILE, "&profile panel");
 			uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-			if (isArtistOffline) {
-				uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_ARTIST_DEL_CACHE, "&Refresh artist releases");
-				uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-			}
+			uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_ARTIST_DEL_CACHE, "&Refresh artist releases (online)");
+            uAppendMenu(menu, MF_SEPARATOR, 0, 0);
 			uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_VIEW_PAGE, sourcepage);
 		}
 
@@ -571,7 +561,7 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 			auto isel = GetSingleSel();
 			if (isel != ~0) {
 				pfc::string8 out;
-				GetSubItemText(isel, 1, out);
+				GetSubItemText(isel, 0, out);
 				ClipboardHelper::OpenScope scope;
 				scope.Open(core_api::get_main_window());
 				ClipboardHelper::SetString(out);
@@ -581,16 +571,15 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 		}
 		case ID_ARTIST_DEL_CACHE:
 		{
-			if (discogs_interface->delete_artist_cache(artist->id)) {
-				// Refresh the selected artist immediately. Clearing the cache alone
-				// used to require another artist selection before the release tree
-				// was populated with newly published releases.
-				artist->loaded_releases_offline = false;
-				artist->loaded_releases = false;
-				cupdRelSrc refresh(updRelSrc::ArtistList);
-				refresh.extended = true;
-				dlg->convey_artist_list_selection(refresh);
-			}
+			if (!artist || !discogs_interface) break;
+            // Artist search rows can differ from the canonical cached object.
+            // Keep original profile, cached thumbnails, and last good releases.
+            auto cached_artist = discogs_interface->get_artist(artist->id);
+            if (!cached_artist) break;
+            cached_artist->release_refresh.request();
+            cupdRelSrc refresh(updRelSrc::ArtistList);
+            refresh.extended = true;
+            dlg->convey_artist_list_selection(refresh);
 			break;
 		}
 		case ID_ARTIST_EXACT_MATCHES: {

@@ -54,6 +54,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/multivalue_fields_test.cpp -o /tmp/discogger-multivalue-test && /tmp/discogger-multivalue-test
       - name: Compile and run LRU cache exception regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/cache_lru_test.cpp -o /tmp/discogger-cache-test && /tmp/discogger-cache-test
+      - name: Compile and run online artist-refresh concurrency and retry tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/artist_refresh_test.cpp -o /tmp/discogger-artist-refresh && /tmp/discogger-artist-refresh
       - name: Compile and run disk-cache TTL boundary regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cache_expiry_test.cpp -o /tmp/discogger-cache-expiry && /tmp/discogger-cache-expiry
       - name: Compile and run disk-cache page integrity regressions

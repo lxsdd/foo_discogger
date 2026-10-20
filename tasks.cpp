@@ -989,6 +989,9 @@ void get_artist_process_callback::on_success(HWND p_wnd) {
 			check_out();
 		}
 
+        // Honor a request made while an earlier artist load was running.
+        const bool retry_refresh = m_bload_releases && m_artist->release_refresh.pending();
+
 		//artist history
 		//todo: only using search button
 		if (m_cupdsrc != updRelSrc::ArtistProfile) {
@@ -1006,6 +1009,15 @@ void get_artist_process_callback::on_success(HWND p_wnd) {
 		{
 			log_msg(e.what());
 		}
+        if (retry_refresh && g_discogs && g_discogs->find_release_dialog) {
+            CFindReleaseDialog* dlg = g_discogs->find_release_dialog;
+            if (::IsWindow(dlg->m_hWnd) &&
+                dlg->m_alist.Get_Selected_Id().equals(m_artist->id)) {
+                cupdRelSrc refresh(updRelSrc::ArtistList);
+                refresh.extended = true;
+                dlg->convey_artist_list_selection(refresh);
+            }
+        }
 	}
 }
 

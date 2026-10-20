@@ -1,4 +1,5 @@
 #pragma once
+#include "discogger_artist_refresh.h"
 
 #include "exception.h"
 #include "utils.h"
@@ -130,6 +131,7 @@ namespace Discogs
 		std::chrono::steady_clock::time_point releases_loaded_at{};
 		std::timed_mutex releases_load_mutex;
 		std::atomic<unsigned long> releases_load_generation{0};
+        discogger_cache::artist_release_refresh release_refresh;
 		size_t search_role_list_pos = 0;
 
 		string_encoded_array get_id() const {

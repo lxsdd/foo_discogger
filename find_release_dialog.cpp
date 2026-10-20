@@ -1526,7 +1526,9 @@ void CFindReleaseDialog::convey_artist_list_selection(cupdRelSrc cupdsrc) {
 		return;
 	}
 
-	Artist_ptr artist = m_alist.Get_Artists()[pos];
+    const auto current_artists = m_alist.Get_Artists();
+    if (pos >= current_artists.get_count() || !current_artists[pos]) return;
+	Artist_ptr artist = current_artists[pos];
 
 	bool need_releases = cupdsrc == updRelSrc::ArtistList && !artist->loaded_releases;
 

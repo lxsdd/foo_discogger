@@ -3287,6 +3287,9 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
     if (loaded_releases && releases_load_generation.load(std::memory_order_acquire) != observed_generation) {
         return;
     }
+    // Only consume the request inside the per-artist lock. Commit the staged
+    // result atomically, and restore the request on cancellation or failure.
+    const bool explicit_refresh = release_refresh.take();
 
 	bool offline_can_read = ol::can_read();
 	bool offline_can_write = ol::can_write();
@@ -3295,7 +3298,7 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 	pfc::string8 n8_rel_path;
 	bool offline_avail_data = ol::is_data_avail(id, "", ol::GetFrom::ArtistReleases, n8_rel_path, true, expired);
 
-	bool btransient = !(offline_can_read && offline_avail_data) || offline_can_overwrite;
+	bool btransient = !(offline_can_read && offline_avail_data) || offline_can_overwrite || explicit_refresh;
 	bool db_ready = false;
 
     btransient &= !db_ready;
@@ -3303,13 +3306,14 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
     const auto memory_age = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - releases_loaded_at);
     if (discogger_cache::reuse_artist_releases(loaded_releases, releases_loaded_from_disk,
-        offline_can_read, offline_avail_data, offline_can_overwrite, memory_age,
+        offline_can_read, offline_avail_data, offline_can_overwrite || explicit_refresh, memory_age,
         discogger_cache::ttl(discogger_cache::group::artist_releases,
             CONF.artist_release_cache_hours, CONF.expiration_enabled(), CONF.expiration_days()))) {
         return;
     }
 
 	try {
+        if (explicit_refresh) p_status.set_item("Refreshing artist releases online...");
 		pfc::string8 url;
 		pfc::array_t<JSONParser_ptr> pages;
 		if (btransient) {
@@ -3375,9 +3379,11 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
         releases_load_generation.fetch_add(1, std::memory_order_release);
 	}
 	catch (const exception_aborted&) {
+        release_refresh.retry_after_failure(explicit_refresh);
 		throw;
 	}
 	catch (foo_discogs_exception &e) {
+        release_refresh.retry_after_failure(explicit_refresh);
 		if (throw_all) {
 			throw;
 		}
@@ -3386,6 +3392,7 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 		throw foo_discogs_exception(error);
 	}
 	catch (...) {
+        release_refresh.retry_after_failure(explicit_refresh);
 		foo_discogs_exception ex;
 		ex << "Unknown error loading releases.";
 		throw ex;

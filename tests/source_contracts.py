@@ -53,10 +53,23 @@ print("PASS: asynchronous search/tree/artist redraw work does not capture destro
 dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")
 
-assert '"&Refresh artist releases"' in artist
-assert "discogs_interface->delete_artist_cache(artist->id)" in artist
+assert '"&Refresh artist releases (online)"' in artist
+assert "cached_artist->release_refresh.request();" in artist
 assert "dlg->convey_artist_list_selection(refresh);" in artist
-assert "artist->loaded_releases = false;" in artist
+assert "discogs_interface->delete_artist_cache(artist->id)" not in artist
+assert "artist->loaded_releases = false;" not in artist
+assert "GetSubItemText(isel, 0, out);" in artist
+assert "if (pos >= current_artists.get_count() || !current_artists[pos]) return;" in dialog
+artist_load = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+artist_load = artist_load[artist_load.index("void Discogs::Artist::load_releases("):artist_load.index("void Discogs::MasterRelease::load_releases(")]
+assert "const bool explicit_refresh = release_refresh.take();" in artist_load
+assert "|| explicit_refresh" in artist_load
+assert artist_load.count("release_refresh.retry_after_failure(explicit_refresh);") == 3
+tasks_callbacks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+assert "m_artist->release_refresh.pending()" in tasks_callbacks
+assert "dlg->m_alist.Get_Selected_Id().equals(m_artist->id)" in tasks_callbacks
+for name in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
+    assert "artist_refresh_test.cpp" in (root / name).read_text(encoding="utf-8-sig")
 assert "if (need_data || cupdsrc == updRelSrc::UndefFast || cupdsrc == updRelSrc::ArtistList)" in dialog
 assert "discogger_net::parse_http_status_code(status.c_str())" in fetcher
 assert "throw http_429_exception();" in fetcher
