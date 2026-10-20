@@ -960,18 +960,19 @@ void DiscogsInterface::get_entity_offline_cache(ol::GetFrom getfrom, pfc::string
 
 	json_path << "\\root.json";
 
-	json_t* js_obj = offline_cache.Read_JSON(json_path.get_ptr());
+    // Fail closed on missing, invalid or empty offline data: never leave the
+    // caller's previous release JSON in the output argument.
+    html = "";
+    const auto json_cleanup = [](json_t* ptr) { if (ptr) json_decref(ptr); };
+    std::unique_ptr<json_t, decltype(json_cleanup)> js_obj(
+        offline_cache.Read_JSON(json_path.get_ptr()), json_cleanup);
+    if (!json_is_object(js_obj.get()) || json_object_size(js_obj.get()) == 0)
+        return;
 
-	// checking js_obj prevents crash on invalid offline files
-
-	if (js_obj) {
-
-		size_t obj_size = json_object_size(js_obj);
-
-		if (obj_size > 0) {
-			html = pfc::string8(json_dumps(js_obj, 0));
-		}
-	}
+    const auto text_cleanup = [](char* ptr) { if (ptr) json_free(ptr); };
+    std::unique_ptr<char, decltype(text_cleanup)> serialized(
+        json_dumps(js_obj.get(), 0), text_cleanup);
+    if (serialized) html = serialized.get();
 }
 
 pfc::string8 DiscogsInterface::get_username(threaded_process_status &p_status, abort_callback &p_abort) {

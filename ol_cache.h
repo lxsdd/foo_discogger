@@ -418,7 +418,9 @@ namespace Offline {
 
 			}
 
-			json_t* root = json_array();
+			// Do not allocate a placeholder before a successful json_loadfd:
+            // overwriting that pointer leaked a Jansson reference on every hit.
+            json_t* root = nullptr;
 
 			if (srclen > 0) {
 
@@ -451,9 +453,11 @@ namespace Offline {
 					catch (...) {
 						//
 					}
-				}
-			}
-			return root;
+                }
+            }
+            // Keep the historical empty-array fallback for missing/bad cache data.
+            // Callers that require an object must validate its type explicitly.
+            return root ? root : json_array();
 		}
 
 		// serves offline_cache_save

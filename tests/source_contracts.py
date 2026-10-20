@@ -706,3 +706,23 @@ assert "discogger_cache::artist_hours(item.value)" in conf_code
 for name in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
     assert "cache_expiry_test.cpp" in (root / name).read_text(encoding="utf-8-sig")
 print("PASS: safe cache-marker TTL, independent artist hours and configuration migration.")
+
+# Offline JSON cache: no overwritten placeholder refs, leaked json_dumps buffers,
+# or stale artist/release JSON on failed or empty cache reads.
+offline_cache_source = (root / "ol_cache.h").read_text(encoding="utf-8-sig")
+iface_source = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+cache_read = offline_cache_source[offline_cache_source.index("json_t* Read_JSON("):offline_cache_source.index("// serves offline_cache_save")]
+assert "json_t* root = nullptr;" in cache_read
+assert "json_t* root = json_array();" not in cache_read
+assert "return root ? root : json_array();" in cache_read
+offline_entity = iface_source[iface_source.index("void DiscogsInterface::get_entity_offline_cache("):iface_source.index("pfc::string8 DiscogsInterface::get_username(")]
+assert 'html = "";' in offline_entity
+assert "std::unique_ptr<json_t, decltype(json_cleanup)> js_obj(" in offline_entity
+assert "json_decref(ptr)" in offline_entity
+assert "json_is_object(js_obj.get())" in offline_entity
+assert "json_object_size(js_obj.get()) == 0" in offline_entity
+assert "std::unique_ptr<char, decltype(text_cleanup)> serialized(" in offline_entity
+assert "json_free(ptr)" in offline_entity
+assert "if (serialized) html = serialized.get();" in offline_entity
+assert "pfc::string8(json_dumps(" not in offline_entity
+print("PASS: offline cache JSON references and serialized buffers are released; invalid results clear stale output.")
