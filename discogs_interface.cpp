@@ -704,38 +704,56 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 		parse_amt_page(fake_artist, pages[i], pai, p_status, p_abort);
 	}
 
-	// A collaboration can be indexed under a participating artist rather than
-	// the combined name. Retry once with the trailing collaborator and album
-	// title only when the original Discogs query returned no releases.
-	// Keep the original query unmodified for the user and limit the fallback
-	// to a single extra API search (never retry it recursively).
-	if (!fake_artist->master_releases.get_count() && !fake_artist->releases.get_count()) {
-		const auto& original_artist = qdm_search_query.at("artist=").first;
-		const auto& release_title = qdm_search_query.at("title=").first;
-		const std::string collaborator = discogger_search::trailing_collaborator(original_artist);
-		if (!collaborator.empty() && !release_title.empty()) {
-			pfc::string8 fallback_expression;
-			fallback_expression << "q=" << collaborator.c_str() << " & title=" << release_title.c_str();
+    // Exact structured results take precedence; only widen after no parsed
+    // release/master candidates. At most two bounded online searches.
+    // Discogs fallback matches are suggestions, never silently promoted to
+    // an exact artist or metadata write.
+    bool used_broad_fallback = false;
+    if (!fake_artist->master_releases.get_count() && !fake_artist->releases.get_count()) {
+        const auto& original_artist = qdm_search_query.at("artist=").first;
+        const auto& release_title = qdm_search_query.at("title=").first;
+        const auto& original_track = qdm_search_query.at("track=").first;
+        // Keep this explicit for compatibility checks and collaborator UX.
+        const auto plans = discogger_search::build_fallback_plan(
+            original_artist, release_title, original_track);
+        for (const auto& candidate : plans) {
+            p_abort.check();
+            pfc::string8 fallback_expression;
+            fallback_expression << "q=" << candidate.q.c_str();
+            if (!candidate.title.empty())
+                fallback_expression << " & title=" << candidate.title.c_str();
+            QueryDefMap fallback_map;
+            std::pair<std::string, std::string> fallback_query;
+            if (!search_query::TextToMap(fallback_expression, fallback_map) ||
+                !search_query::MapToText(fallback_map, fallback_query, false) ||
+                fallback_query.second.empty())
+                continue;
 
-			QueryDefMap fallback_map;
-			std::pair<std::string, std::string> fallback_query;
-			if (search_query::TextToMap(fallback_expression, fallback_map) &&
-				search_query::MapToText(fallback_map, fallback_query, false) &&
-				!fallback_query.second.empty()) {
-				p_abort.check();
-				p_status.set_item("No exact release found; searching collaboration partner...");
-				pfc::string8 fallback_url("https://api.discogs.com/database/search");
-				pfc::string8 fallback_params(fallback_query.second.c_str());
-				size_t fallback_max = HIWORD(CONF.query_max);
-				pfc::array_t<JSONParser_ptr> fallback_pages =
-					get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,
-						"Fetching collaboration fallback results...", p_status);
-				for (size_t i = 0; i < fallback_pages.get_count(); ++i) {
-					parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
-				}
-			}
-		}
-	}
+            pfc::string8 status("No exact result: ");
+            status << candidate.label.c_str();
+            p_status.set_item(status);
+            pfc::string8 fallback_url("https://api.discogs.com/database/search");
+            pfc::string8 fallback_params(fallback_query.second.c_str());
+            size_t fallback_max = HIWORD(CONF.query_max);
+            pfc::array_t<JSONParser_ptr> fallback_pages =
+                get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,
+                    "Fetching bounded Discogs fallback candidates...", p_status);
+            if (fallback_max > max_to_abort) {
+                p_status.set_item("Fallback result limit exceeded; refine the search.");
+                break;
+            }
+            for (size_t i = 0; i < fallback_pages.get_count(); ++i) {
+                p_abort.check();
+                parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
+            }
+            if (fake_artist->master_releases.get_count() ||
+                fake_artist->releases.get_count()) {
+                used_broad_fallback = true;
+                p_status.set_item("Broader Discogs results: review release/version before tagging.");
+                break;
+            }
+        }
+    }
 
 	va_res_cap.first = fake_artist->master_releases.get_count();
 	va_res_cap.second = fake_artist->releases.get_count();
@@ -745,7 +763,17 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 		mr.second->loaded_preview = false;
 	}
 
-	process_amt_parsed_fake_artist(fake_artist, pai, true, true, va_res_cap, va_done_cap, p_status, p_abort);
+	// Low-confidence fallback suggestions stay in the 'other' section:
+    // the UI cannot mistake them for exact original-artist hits.
+    QueryDefMap presentation_query = qdm_search_query;
+    if (used_broad_fallback)
+        presentation_query["artist="].first.clear();
+    parse_amt_info presentation_pai = {
+        presentation_query, map_found_artists, set_bad_artists, mva_masters,
+        exact_matches, other_matches, qry_m_r_found
+    };
+    process_amt_parsed_fake_artist(fake_artist, presentation_pai, true, true,
+        va_res_cap, va_done_cap, p_status, p_abort);
 
 	size_t cmatches = pai.other_matches.get_count();
 

@@ -2739,7 +2739,11 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 
 									if (done = wamr->id.equals(release->master_id)) {
 										// ADD SUBRELEASE TO ANOHTER MASTER
-										wamr->sub_releases.add_item(release);
+                                        bool present = false;
+                                        for (const Release_ptr& prior : wamr->sub_releases) {
+                                            if (prior->id == release->id) { present = true; break; }
+                                        }
+                                        if (!present) wamr->sub_releases.add_item(release);
 										break;
 									}
 								}
@@ -2752,7 +2756,11 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 									}
 									//..
 									artist->master_releases.add_item(m);
-									m->sub_releases.add_item(release);
+									bool present = false;
+                                    for (const Release_ptr& prior : m->sub_releases) {
+                                        if (prior->id == release->id) { present = true; break; }
+                                    }
+                                    if (!present) m->sub_releases.add_item(release);
 								}
 							}
 						}

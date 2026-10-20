@@ -17,9 +17,24 @@ assert "throw http_429_exception();" in fetcher
 assert "error_code = 4011" not in fetcher
 
 search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
-assert "discogger_search::trailing_collaborator(original_artist)" in search
+assert "discogger_search::trailing_collaborator(" in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
+assert "discogger_search::build_fallback_plan(" in search
+assert "for (const auto& candidate : plans)" in search
 assert "get_all_pages(fallback_url, fallback_params" in search
 assert "search_query::TextToMap(fallback_expression, fallback_map)" in search
+assert "if (fallback_max > max_to_abort)" in search
+assert 'presentation_query["artist="].first.clear();' in search
+assert "used_broad_fallback = true;" in search
+assert "p_abort.check();" in search
+parsed_releases = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+release_section = parsed_releases[parsed_releases.index("void Discogs::parseArtistReleases("):
+                                  parsed_releases.index("void Discogs::parseMasterVersions(")]
+assert release_section.count("if (!present)") >= 2
+plan = (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
+assert "without_terminal_mix_suffix" in plan
+assert "build_fallback_plan(" in plan
+assert "if (key.size() < 3) return plan;" in plan
+assert "title-only discovery (review required)" in plan
 print("PASS: artist refresh, HTTP rate-limit routing and collaboration fallback are wired.")
 print("NOTE: full component compilation and live Discogs/foobar testing are separate gates.")
 
