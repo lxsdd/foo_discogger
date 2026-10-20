@@ -89,7 +89,7 @@ jobs:
         run: |
           $tokens = $null
           $parseErrors = $null
-          foreach ($scriptFile in @('scripts/build-component-dll.ps1', 'scripts/normalize-native-bitmaps.ps1', 'tests/native-bitmap-resource-test.ps1')) {
+          foreach ($scriptFile in @('scripts/build-component-dll.ps1', 'scripts/normalize-native-bitmaps.ps1', 'tests/native-bitmap-resource-test.ps1', 'scripts/host-discogger-gui.ps1')) {
             $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) $scriptFile), [ref]$tokens, [ref]$parseErrors)
             if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
           }
@@ -142,15 +142,15 @@ jobs:
         with:
           architecture: Win32
           component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll
-          context-command: 'Discogger/Write tags...'
-          expected-window-title: 'Find Releases'
-          required-control-ids: '1083,1086,1080,1018,1099,1107,1092,1198'
       - name: HARD GATE - real foobar2000 x64 component host load
         uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@99cc4b8c31d4ac8e640da0c375675566dc44762e
         with:
           architecture: x64
           component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll
-          context-command: 'Discogger/Write tags...'
-          expected-window-title: 'Find Releases'
-          required-control-ids: '1083,1086,1080,1018,1099,1107,1092,1198'
+      - name: HARD GATE - Discogger first-run SQLite configuration and Win32 native GUI
+        shell: pwsh
+        run: ./scripts/host-discogger-gui.ps1 -Architecture Win32 -ComponentDll "$env:RUNNER_TEMP/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll"
+      - name: HARD GATE - Discogger first-run SQLite configuration and x64 native GUI
+        shell: pwsh
+        run: ./scripts/host-discogger-gui.ps1 -Architecture x64 -ComponentDll "$env:RUNNER_TEMP/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll"
 

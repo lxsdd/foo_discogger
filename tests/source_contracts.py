@@ -931,7 +931,23 @@ ctx = menu[menu.index("case WriteTags:\n\t\tcase WriteTagsAlt: {"):
 assert "fb2k::newDialog<CFindReleaseDialog>" in ctx
 for forbidden in ("metadb_io", "file_info_writer", "write_tags(", "commit_tags(", "save_cue("):
     assert forbidden not in ctx
-assert host_wf.count("context-command: 'Discogger/Write tags...'") == 2
-assert host_wf.count("expected-window-title: 'Find Releases'") == 2
-assert host_wf.count("required-control-ids: '1083,1086,1080,1018,1099,1107,1092,1198'") == 2
-print("PASS: both native Discogger Find Releases HWND smoke gates are read-only and fail closed.")
+# The plain shared smoke may only assert DLL load + disposable WAV/CUE.
+# Discogger additionally needs its original SQLite configuration data file
+# beside a user-components installation, not a fabricated empty schema.
+assert not "context-command:" in host_wf
+assert host_wf.count("scripts/host-discogger-gui.ps1 -Architecture ") == 2
+assert "host-discogger-gui.ps1" in host_wf.split("Parse strict PowerShell DLL build script")[1].split("Test legacy resource image formats")[0]
+gui_smoke = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert (root / "foo_discogger.dll.db").read_bytes().startswith(b"SQLite format 3\x00")
+assert "foo_discogger.dll.db" in gui_smoke
+assert "DISCOGGER_INITIALIZATION_$Architecture=PASS" in gui_smoke
+assert "DISCOGGER_GUI_DIALOG_$Architecture=PASS" in gui_smoke
+assert "DISCOGGER_GUI_CONTROLS_$Architecture=PASS" in gui_smoke
+assert "DISCOGGER_GUI_SYNTHETIC_WAV_NO_WRITE_$Architecture=PASS" in gui_smoke
+assert "MEDIA_WRITE_SAFETY_$Architecture=NOT_TESTED" in gui_smoke
+assert "GetDlgItem" in gui_smoke and "Find Releases" in gui_smoke
+assert "Start-Process" in gui_smoke and "Write tags..." in gui_smoke
+assert "Test-Path -LiteralPath $dir" in gui_smoke
+for unsafe in ("-ExecutionPolicy Bypass", "actions/upload-artifact", "media_file_write", "CommitTags("):
+    assert unsafe not in gui_smoke
+print("PASS: original Discogger SQLite first-run fixture and independent fail-closed x86/x64 native GUI gates.")
