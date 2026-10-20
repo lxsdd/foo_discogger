@@ -8,6 +8,7 @@
 
 #include "tag_mappings_dialog.h"
 #include "find_release_dialog.h"
+#include "discogger_artist_activation.h"
 #include "discogger_search_visibility.h"
 
 namespace ol = Offline;
@@ -262,6 +263,27 @@ LRESULT CFindReleaseDialog::OnButtonNext(WORD /*wNotifyCode*/, WORD wID, HWND /*
 	}
 
 	return TRUE;
+}
+
+// Open the selected artist's releases on a genuine list-row double-click,
+// using the same path as Enter. The notification is sent to this dialog,
+// not to the list's own WTL message map.
+LRESULT CFindReleaseDialog::OnArtistListDoubleClick(
+    int /*idCtrl*/, LPNMHDR hdr, BOOL& bHandled) {
+    bHandled = FALSE;
+    if (hdr == nullptr || hdr->hwndFrom != m_artist_list ||
+        hdr->code != NM_DBLCLK)
+        return 0;
+
+    const auto* item = reinterpret_cast<const NMITEMACTIVATE*>(hdr);
+    if (!discogger_ui::should_load_artist_on_double_click(
+            item->iItem, m_alist.GetFirstSelected(),
+            m_alist.Get_Artists().get_count()))
+        return 0;
+
+    bHandled = TRUE;
+    m_alist.Default_Action();
+    return 0;
 }
 
 //from Enter key hook

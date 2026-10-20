@@ -56,6 +56,8 @@ public:
 		COMMAND_ID_HANDLER(IDC_BTN_CONFIGURE, OnButtonConfigure)
 		COMMAND_ID_HANDLER(IDC_BTN_PROCESS_RELEASE, OnButtonNext)
 
+		NOTIFY_HANDLER(IDC_ARTIST_LIST, NM_DBLCLK, OnArtistListDoubleClick)
+
 		COMMAND_ID_HANDLER(IDC_CHK_ONLY_EXACT_MATCHES, OnCheckboxOnlyExactMatches)
 		COMMAND_ID_HANDLER(IDC_CHK_RELEASE_SHOW_PROFILE, OnCheckboxBindProfilePanel)
 		COMMAND_ID_HANDLER(IDC_CHK_FIND_RELEASE_FILTER_VERS, OnCheckboxFindReleaseFilterFlags)
@@ -117,6 +119,7 @@ public:
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 
 	LRESULT OnButtonNext(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnArtistListDoubleClick(int idCtrl, LPNMHDR hdr, BOOL& bHandled);
 
 	LRESULT OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnButtonConfigure(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);

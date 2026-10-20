@@ -820,3 +820,22 @@ assert "m_alist.fill_artist_list(b_chk_exact_matches" in frag
 assert "search_visibility_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "search_visibility_test.cpp" in wf_gate
 print("PASS: alternative search candidates remain visible with matched checkbox state.")
+
+
+# Double-click on an actual artist list row routes through the same
+# release-load action as Enter, never from blank/stale selections.
+uih = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+uic = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+artist_list = (root / "find_artist_list.cpp").read_text(encoding="utf-8-sig")
+test_script = (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+validate = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "NOTIFY_HANDLER(IDC_ARTIST_LIST, NM_DBLCLK, OnArtistListDoubleClick)" in uih
+assert "LRESULT CFindReleaseDialog::OnArtistListDoubleClick(" in uic
+assert "hdr->hwndFrom != m_artist_list" in uic
+assert "discogger_ui::should_load_artist_on_double_click(" in uic
+assert "m_alist.Default_Action();" in uic[uic.index("LRESULT CFindReleaseDialog::OnArtistListDoubleClick("):
+                                       uic.index("//from Enter key hook")]
+assert "pos == ~0 || pos >= m_find_release_artists.get_count()" in artist_list
+assert "artist_activation_test.cpp" in test_script
+assert "artist_activation_test.cpp" in validate
+print("PASS: row-only artist double-click wired to guarded Enter/default action.")

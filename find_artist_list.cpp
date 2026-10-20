@@ -419,7 +419,7 @@ void CArtistList::Default_Action() {
 
 	size_t pos = GetFirstSelected();
 
-	if (pos == ~0) return;
+	if (pos == ~0 || pos >= m_find_release_artists.get_count()) return;
 
 	Artist_ptr artist = m_find_release_artists[pos];
 
