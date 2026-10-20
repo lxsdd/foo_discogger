@@ -754,3 +754,18 @@ assert "  official-sdk-probe:\n    # Fail cheap/static and native unit gates bef
 assert "    needs: [portable-core, windows-baseline, windows-native-unit]" in wf_gate
 assert "    runs-on: windows-2022" in wf_gate
 print("PASS: strict DLL gate depends on portable, Windows source and x86/x64 unit test successes.")
+
+# JSON cache replacement must not truncate a valid destination on failure.
+atomic_header = (root / "discogger_atomic_cache_file.h").read_text(encoding="utf-8-sig")
+assert "MoveFileExW(" in atomic_header
+assert "MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH" in atomic_header
+assert "if (!written)" in atomic_header and "fs::remove(temporary, ec)" in atomic_header
+cache_atomic = (root / "ol_cache.h").read_text(encoding="utf-8-sig")
+assert '#include "discogger_atomic_cache_file.h"' in cache_atomic
+assert "discogger_cache::atomic_cache_replace(destination," in cache_atomic
+assert "_O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY" in cache_atomic
+assert "const bool synced = serialized && _commit(jf) == 0;" in cache_atomic
+assert "fs::remove_all(os_ol.remove_filename())" not in cache_atomic
+assert "json_decref(root);" in cache_atomic
+assert "atomic_cache_file_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+print("PASS: atomic JSON cache publication and non-destructive parse failure.")

@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <filesystem>
 #include "discogger_cache_expiry.h"
+#include "discogger_atomic_cache_file.h"
 #include "jansson/jansson.h"
 #include "utils.h"
 #include "utils_path.h"
@@ -444,15 +445,12 @@ namespace Offline {
 					}
 					log_msg(err_msg);
 
-					try {
-
-						pfc::string8 debug;
-						debug << os_ol.remove_filename().c_str();
-						fs::remove_all(os_ol.remove_filename());
-					}
-					catch (...) {
-						//
-					}
+                    // One bad JSON page must not erase other cached pages.
+                    // The reader will reject it and fetch the entity online.
+                    if (root) {
+                        json_decref(root);
+                        root = nullptr;
+                    }
                 }
             }
             // Keep the historical empty-array fallback for missing/bad cache data.
@@ -463,34 +461,22 @@ namespace Offline {
 		// serves offline_cache_save
 
 		bool Dump_JSON(pfc::string8 path, json_t* root) {
-
-			const fs::path os_full = fs::u8path(path.c_str());
-			const fs::path os_parent = os_full.parent_path();
-
-			std::error_code ec;
-
-			bool bfolder_ready = fs::exists(os_parent, ec);
-
-			if (!bfolder_ready && !ec.value()) {
-
-				bfolder_ready = fs::create_directories(os_parent, ec);
-			}
-
-			if (bfolder_ready) {
-
-				int flags = 0; 
-
-				int jf = _wopen(os_full.wstring().c_str(), _O_CREAT | _O_TRUNC | _O_RDWR | _O_TEXT/*_O_U8TEXT*/, _S_IWRITE);
-
-				if (jf != -1) {
-					//-1 or 0
-					int result = json_dumpfd(root, jf, flags);
-					return (!_close(jf) && !(bool)result);
-				}
-
-			}
-			return false;
-		}
+            if (!root) return false;
+            const fs::path destination = fs::u8path(path.c_str());
+            return discogger_cache::atomic_cache_replace(destination,
+                [root](const fs::path& temporary) {
+                    // Exclusive creation, full serialization, disk flush,
+                    // close, then atomic publication of the new JSON file.
+                    const int jf = _wopen(temporary.wstring().c_str(),
+                        _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY,
+                        _S_IREAD | _S_IWRITE);
+                    if (jf == -1) return false;
+                    const bool serialized = json_dumpfd(root, jf, 0) == 0;
+                    const bool synced = serialized && _commit(jf) == 0;
+                    const bool closed = _close(jf) == 0;
+                    return serialized && synced && closed;
+                });
+        }
 
 	private:
 
