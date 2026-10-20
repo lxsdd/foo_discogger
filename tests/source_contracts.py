@@ -17,7 +17,7 @@ assert "throw http_429_exception();" in fetcher
 assert "error_code = 4011" not in fetcher
 
 search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
-assert "discogger_search::trailing_collaborator(" in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
+assert "inline std::string trailing_collaborator(" in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
 assert "discogger_search::build_fallback_plan(" in search
 assert "for (const auto& candidate : plans)" in search
 assert "get_all_pages(fallback_url, fallback_params" in search
