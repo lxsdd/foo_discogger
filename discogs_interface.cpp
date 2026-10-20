@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "discogger_search_fallback.h"
 #include "discogger_cache_pages.h"
+#include <cstdlib>
 
 #include "pfc/other.h"
 #include "discogs_interface.h"
@@ -772,32 +773,39 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 }
 
 pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8 &url, pfc::string8 params, abort_callback &p_abort) {
+    pfc::array_t<JSONParser_ptr> results;
+    if (params.get_length()) params << "&";
+    params << "per_page=100";
+    size_t page = 1, last = 0, first_items = 0, first_per_page = 0;
 
-	pfc::array_t<JSONParser_ptr> results;
-	if (params.get_length()) {
-		params << "&";
-	}
-	params << "per_page=100";
-	size_t page = 1;
-	size_t last = 0;
+    for (;;) {
+        p_abort.check();
+        pfc::string8 page_params;
+        page_params << params << "&page=" << page;
+        pfc::string8 json;
+        fetcher->fetch_html(url, page_params, json, p_abort);
+        JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
 
-	do {
-		pfc::string8 page_params;
-		page_params << params;
-		page_params << "&page=" << page;
-
-		pfc::string8 json;
-		fetcher->fetch_html(url, page_params, json, p_abort);
-		JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
-		results.append_single(std::move(jp));
-		if (page == 1) {
-			last = jp->get_object_int("pagination", "pages");
-		}
-		page++;
-
-	} while (page <= last && !p_abort.is_aborting());
-
-	return results;
+        // Inspect the response BEFORE moving jp into the result array.
+        const size_t returned_page = jp->get_object_int("pagination", "page");
+        const size_t returned_pages = jp->get_object_int("pagination", "pages");
+        const size_t per_page = jp->get_object_int("pagination", "per_page");
+        const size_t items = jp->get_object_int("pagination", "items");
+        if (!discogger_cache::valid_online_page(page, returned_page, returned_pages,
+                per_page, items, last, first_per_page, first_items))
+            throw foo_discogs_exception("Discogs returned invalid or changing pagination; refresh and retry.");
+        if (page == 1) {
+            last = returned_pages;
+            first_items = items;
+            first_per_page = per_page;
+        }
+        p_abort.check();
+        results.append_single(std::move(jp));
+        if (page >= last) break;
+        ++page;
+    }
+    p_abort.check();
+    return results;
 }
 
 pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8& url, pfc::string8 params, abort_callback& p_abort, const char* msg, threaded_process_status& p_status) {
@@ -806,47 +814,49 @@ pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8& url, 
 }
 
 pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8 &url, pfc::string8 params, size_t& max_to_abort, abort_callback &p_abort, const char *msg, threaded_process_status &p_status) {
+    pfc::array_t<JSONParser_ptr> results;
+    if (params.get_length()) params << "&";
+    params << "per_page=100";
+    size_t page = 1, last = 0, first_items = 0, first_per_page = 0;
 
-	pfc::array_t<JSONParser_ptr> results;
-	if (params.get_length()) {
-		params << "&";
-	}
-	params << "per_page=100";
-	size_t page = 1;
-	size_t last = 0;
+    for (;;) {
+        p_abort.check();
+        pfc::string8 status(msg);
+        if (page > 1) status << " page " << page << "/" << last << " (100 x page)";
+        p_status.set_item(status);
+        pfc::string8 page_params;
+        page_params << params << "&page=" << page;
+        pfc::string8 json;
+        fetcher->fetch_html(url, page_params, json, p_abort);
+        JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
 
-	do {
-		pfc::string8 status(msg);
-		if (page > 1) {
-			status << " page " << page << "/" << last << " (100 x page)";
-		}
-		p_status.set_item(status);
+        // Validate first: std::move(jp) transfers ownership of the parser.
+        const size_t returned_page = jp->get_object_int("pagination", "page");
+        const size_t returned_pages = jp->get_object_int("pagination", "pages");
+        const size_t per_page = jp->get_object_int("pagination", "per_page");
+        const size_t items = jp->get_object_int("pagination", "items");
+        if (!discogger_cache::valid_online_page(page, returned_page, returned_pages,
+                per_page, items, last, first_per_page, first_items))
+            throw foo_discogs_exception("Discogs returned invalid or changing pagination; refresh and retry.");
 
-		pfc::string8 page_params;
-		page_params << params;
-		page_params << "&page=" << page;
-
-		pfc::string8 json;
-
-		fetcher->fetch_html(url, page_params, json, p_abort);
-		JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
-
-		results.append_single(std::move(jp));
-
-		if (page == 1) {
-			size_t items = jp->get_object_int("pagination", "items");
-			if (items > max_to_abort) {
-				results.force_reset();
-				max_to_abort = items;
-				return results;
-			}
-			last = jp->get_object_int("pagination", "pages");
-		}
-		page++;
-
-	} while (page <= last && !p_abort.is_aborting());
-
-	return results;
+        if (page == 1) {
+            // Preserve the existing explicit query-volume refusal, with no
+            // partially populated result and no additional network requests.
+            if (items > max_to_abort) {
+                max_to_abort = items;
+                return results;
+            }
+            last = returned_pages;
+            first_items = items;
+            first_per_page = per_page;
+        }
+        p_abort.check();
+        results.append_single(std::move(jp));
+        if (page >= last) break;
+        ++page;
+    }
+    p_abort.check();
+    return results;
 }
 
 namespace fs =std::filesystem;
@@ -969,7 +979,7 @@ void DiscogsInterface::get_entity_offline_cache(ol::GetFrom getfrom, pfc::string
     if (!json_is_object(js_obj.get()) || json_object_size(js_obj.get()) == 0)
         return;
 
-    const auto text_cleanup = [](char* ptr) { if (ptr) json_free(ptr); };
+    const auto text_cleanup = [](char* ptr) { if (ptr) std::free(ptr); };
     std::unique_ptr<char, decltype(text_cleanup)> serialized(
         json_dumps(js_obj.get(), 0), text_cleanup);
     if (serialized) html = serialized.get();

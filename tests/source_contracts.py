@@ -726,3 +726,23 @@ assert "json_free(ptr)" in offline_entity
 assert "if (serialized) html = serialized.get();" in offline_entity
 assert "pfc::string8(json_dumps(" not in offline_entity
 print("PASS: offline cache JSON references and serialized buffers are released; invalid results clear stale output.")
+
+# Live Discogs pagination must read each parser before moving it, reject changed
+# cursors, and propagate cancellation rather than returning partial results.
+online = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+start = online.index("pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(")
+end = online.index("namespace fs =std::filesystem;", start)
+pager = online[start:end]
+assert pager.count("results.append_single(std::move(jp));") == 2
+assert pager.count("discogger_cache::valid_online_page(") == 2
+assert pager.count("p_abort.check();") >= 6
+assert pager.count("const size_t returned_page = jp->get_object_int") == 2
+for fn in pager.split("pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(")[1:]:
+    if "results.append_single(std::move(jp));" in fn:
+        assert fn.index('get_object_int("pagination", "pages")') < fn.index("results.append_single(std::move(jp));")
+        assert fn.index("discogger_cache::valid_online_page(") < fn.index("results.append_single(std::move(jp));")
+assert "std::free(ptr)" in online
+assert "json_free(ptr)" not in online
+assert "#include <cstdlib>" in online
+assert "valid_online_page(" in (root / "discogger_cache_pages.h").read_text(encoding="utf-8-sig")
+print("PASS: online cursor bounds, moved-parser lifetime, abort safety and Jansson free contract.")

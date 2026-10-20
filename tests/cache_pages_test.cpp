@@ -3,6 +3,27 @@
 
 int main() {
     using namespace discogger_cache;
+    // Discogs live pagination: zero-result pages, consistency across requests,
+    // bounded page counts and fail-closed truncated/changed metadata.
+    assert(valid_online_page(1, 1, 3, 100, 201, 0, 0, 0));
+    assert(valid_online_page(2, 2, 3, 100, 201, 3, 100, 201));
+    assert(valid_online_page(3, 3, 3, 100, 201, 3, 100, 201));
+    assert(valid_online_page(1, 1, 0, 100, 0, 0, 0, 0));
+    assert(valid_online_page(1, 1, 1, 100, 0, 0, 0, 0));
+    assert(!valid_online_page(0, 0, 3, 100, 201, 0, 0, 0));
+    assert(!valid_online_page(1, 0, 3, 100, 201, 0, 0, 0));
+    assert(!valid_online_page(1, 2, 3, 100, 201, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 0, 100, 1, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 2, 100, 0, 0, 0, 0));
+    assert(!valid_online_page(1, 1, max_cached_pages + 1, 100, 201, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 3, 0, 201, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 3, 101, 201, 0, 0, 0));
+    assert(!valid_online_page(2, 2, 2, 100, 201, 3, 100, 201));
+    assert(!valid_online_page(2, 2, 3, 50, 201, 3, 100, 201));
+    assert(!valid_online_page(2, 2, 3, 100, 202, 3, 100, 201));
+    assert(!valid_online_page(4, 4, 3, 100, 201, 3, 100, 201));
+    assert(!valid_online_page(max_cached_pages + 1, max_cached_pages + 1,
+                              max_cached_pages, 100, 201, max_cached_pages, 100, 201));
     std::size_t n = 999;
     assert(parse_cache_page_folder("page-0", n) && n == 0);
     assert(parse_cache_page_folder("page-17", n) && n == 17);

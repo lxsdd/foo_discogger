@@ -6,6 +6,29 @@
 namespace discogger_cache {
 inline constexpr std::size_t max_cached_pages = 10000;
 
+// Discogs API pagination is untrusted network data. Reject impossible cursors,
+// oversized page ranges and metadata changes across pages instead of returning
+// an incomplete artist, search or collection result.
+inline bool valid_online_page(std::size_t requested_page, std::size_t returned_page,
+                              std::size_t pages, std::size_t per_page, std::size_t items,
+                              std::size_t first_pages, std::size_t first_per_page,
+                              std::size_t first_items) noexcept {
+    if (requested_page == 0 || requested_page > max_cached_pages ||
+        returned_page != requested_page || pages > max_cached_pages ||
+        per_page == 0 || per_page > 100) return false;
+    // Discogs may report zero pages for an empty first-page result.
+    if (items == 0) {
+        if (pages > 1 || requested_page != 1) return false;
+    } else if (pages == 0) {
+        return false;
+    }
+    if (pages != 0 && requested_page > pages) return false;
+    if (requested_page > 1 &&
+        (pages != first_pages || per_page != first_per_page ||
+         items != first_items)) return false;
+    return true;
+}
+
 // Disk page-N is zero-based; Discogs pagination.page is one-based.
 inline bool parse_cache_page_folder(std::string_view name, std::size_t& index) noexcept {
     constexpr std::string_view prefix = "page-";
