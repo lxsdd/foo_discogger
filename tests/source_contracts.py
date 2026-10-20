@@ -769,3 +769,22 @@ assert "fs::remove_all(os_ol.remove_filename())" not in cache_atomic
 assert "json_decref(root);" in cache_atomic
 assert "atomic_cache_file_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 print("PASS: atomic JSON cache publication and non-destructive parse failure.")
+
+
+# Full cache directory publication uses isolated staging, a completed marker,
+# two-phase rename, recovery, and negative portable/MSVC tests.
+txn = (root / "discogger_directory_cache.h").read_text(encoding="utf-8-sig")
+assert "recover_cache_unlocked(active_)" in txn
+assert "fs::rename(active_, backup_, ec);" in txn
+assert "fs::rename(stage_, active_, ec);" in txn
+assert "fs::rename(backup_, active_, restore_ec);" in txn
+assert "cache_has_marker(stage_)" in txn
+assert "std::unique_lock<std::mutex> lock_" in txn
+assert "directory_cache_transaction_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+core = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+assert core.count("discogger_cache::directory_cache_transaction tx(") == 4
+assert core.count("ol::staged_cache_json_path(tx") == 4
+assert "ol::stamp_download(" not in core
+assert "fs::remove_all(os_file)" not in offline_cache_source
+assert "discogger_cache::recover_cache_directory(" in offline_cache_source
+print("PASS: full cache directory transaction, rollback and recovery contracts.")

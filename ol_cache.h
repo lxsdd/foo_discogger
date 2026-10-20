@@ -7,6 +7,7 @@
 #include <filesystem>
 #include "discogger_cache_expiry.h"
 #include "discogger_atomic_cache_file.h"
+#include "discogger_directory_cache.h"
 #include "jansson/jansson.h"
 #include "utils.h"
 #include "utils_path.h"
@@ -217,80 +218,7 @@ namespace Offline {
 	}
 
 
-	//sets folder job: 'loading.' or 'TaskReg.txt' (done param value)
-
-	bool static stamp_download(pfc::string8 fcontent, pfc::string8 path, bool done) {
-
-		bool bok = false;
-		bool brelease = false;
-
-		if (!done) {
-
-			//delete if exists
-
-			fs::path os_file = fs::u8path(path.c_str());
-
-			try {
-				fs::remove_all(os_file);
-			}
-			catch (...) {
-				return false;
-			}
-
-			//pending
-
-			bool bfolder_created = false;
-
-			std::error_code ec;
-
-			try {
-				bfolder_created = fs::create_directories(os_file, ec);
-			}
-			catch (...) {
-				return false;
-			}
-
-			if (!ec.value() && bfolder_created) {
-
-				os_file = fs::u8path((PFC_string_formatter() << path << "\\" << MARK_LOADING_NAME).c_str());
-
-				int flags = 0; // JSON_ENCODE_ANY | JSON_INDENT(1);
-
-				auto jf = _wopen(os_file.wstring().c_str(), _O_CREAT | _O_TRUNC | _O_RDWR | _O_TEXT/*_O_U8TEXT*/, _S_IWRITE);
-
-				if (jf != -1) {
-					int w = _write(jf, fcontent.get_ptr(), fcontent.get_length());
-					const int closed = _close(jf);
-                    bok = w >= 0 && static_cast<size_t>(w) == fcontent.get_length() && closed == 0;
-					return bok;
-				}
-			}
-
-			bok = false;
-		}
-		else {
-
-			//done
-
-			pfc::string8 oldname(path); oldname << "\\" << MARK_LOADING_NAME;
-			pfc::string8 newname(path); newname << "\\" << MARK_CHECK_NAME;
-			fs::path os_old = fs::u8path(oldname.c_str());
-			fs::path os_new = fs::u8path(newname.c_str());
-
-			std::error_code ec;
-
-			try {
-				fs::rename(os_old, os_new, ec);
-			}
-			catch (...) {
-				return false;
-			}
-
-			bok = !ec.value();
-		}
-
-		return bok;
-	}
+    // Directory cache transactions supersede destructive stamp_download.
 
     // Check the completed marker's timestamp without reading unbounded content.
     bool static check_download(pfc::string8 path, bool& out_expired, GetFrom kind) {
@@ -314,6 +242,17 @@ namespace Offline {
         return !out_expired;
     }
 
+
+    static pfc::string8 staged_cache_json_path(
+        const discogger_cache::directory_cache_transaction& tx, size_t page = SIZE_MAX) {
+        fs::path file = tx.staging_directory();
+        if (page != SIZE_MAX) file /= "page-" + std::to_string(page);
+        file /= "root.json";
+        const auto utf8 = file.u8string();
+        const std::string bytes(utf8.begin(), utf8.end());
+        return pfc::string8(bytes.c_str());
+    }
+
 	// checks precondition and stamp
 
 	static bool is_data_avail(pfc::string8 id, pfc::string8 secid, GetFrom gfFrom, pfc::string8& out_relative_path, bool native, bool& expired) {
@@ -328,6 +267,8 @@ namespace Offline {
 		//..
 
 		out_relative_path = get_offline_path(id, gfFrom, secid, native);
+        if (!discogger_cache::recover_cache_directory(fs::u8path(out_relative_path.c_str())))
+            return false;
 		bool bres = check_offline_entity_folder(id, gfFrom, secid);
 		bres &= check_download(out_relative_path, expired, gfFrom);
 

@@ -3025,42 +3025,13 @@ void Discogs::Artist::load(threaded_process_status &p_status, abort_callback &p_
 		//..
 
 		loaded = true;
-		bool bCacheSaved = false;
-
-		if (btransient && offline_can_write) {
-			try {
-
-				//create page-n folder
-				bool bFolderReady = ol::create_offline_entity_folder(id, ol::GetFrom::Artist);
-
-				if (bFolderReady) {
-
-					//PENDING
-					bool bmark_loading = ol::stamp_download("", n8_rel_path, false/*done*/);
-
-					pfc::string8 page_path = ol::get_offline_path(id, ol::GetFrom::Artist, "", true);
-					page_path << "\\root.json";
-
-					bCacheSaved = bmark_loading && discogs_interface->offline_cache_save(page_path, jp.root);
-				}
-			}
-			catch (...) {
-				//..
-			}
-		}
-
-		if (btransient && offline_can_write) {
-			if (bCacheSaved) {
-				try {
-
-					//DONE
-					bool bmark_done = ol::stamp_download("", n8_rel_path, true/*done*/);
-				}
-				catch (...) {
-					//..
-				}
-			}
-		}
+        if (btransient && offline_can_write) {
+            discogger_cache::directory_cache_transaction tx(
+                std::filesystem::u8path(n8_rel_path.c_str()));
+            if (tx.ready() && discogs_interface->offline_cache_save(
+                    ol::staged_cache_json_path(tx), jp.root))
+                tx.publish("");
+        }
 	}
 	catch (http_404_exception &e) {
 		throw;
@@ -3215,56 +3186,22 @@ void Discogs::Release::load(threaded_process_status &p_status, abort_callback &p
         pfc::string8 cache_stamp;
         cache_stamp << date_added.get_ptr() << " " << date_changed.get_ptr();
 
-		bool bCacheSaved = false;
-
-		if (btransient && offline_can_write) {
-			try {
-				if (atoi(offlineArtistId) == pfc_infinite || !offlineArtistId.get_length()) {
-
-					offlineArtistId = artists[0]->id;
-					//we could recheck now that we have artist id...
-					pfc::string8 tmp_n8_rel_path;
-					bool tmp_avail_data = ol::is_data_avail(offlineArtistId, release_id, ol::GetFrom::Release, tmp_n8_rel_path, true, expired);
-					bool btmp_transient = !(offline_can_read && tmp_avail_data) || offline_can_ovr;
-					btmp_transient &= db_skip;
-					if (!btmp_transient) {
-						return;
-					}
-					//end recheck
-				}
-				pfc::string8 target_artist_id = offlineArtistId;
-				n8_rel_path = ol::get_offline_path(offlineArtistId, ol::GetFrom::Release, id, true);
-
-				bool bFolderReady = ol::create_offline_entity_folder(target_artist_id, ol::GetFrom::Release, id);
-
-				if (bFolderReady) {
-
-					//mark PENDING
-					bool bmark_loading = ol::stamp_download(cache_stamp, n8_rel_path, false/*done*/);
-
-					pfc::string8 page_path = ol::get_offline_path(target_artist_id, ol::GetFrom::Release, id, true);
-					page_path << "\\root.json";
-
-					bCacheSaved = bmark_loading && discogs_interface->offline_cache_save(page_path, jp.root);
-				}
-			}
-			catch (...) {
-				//..
-			}
-		}
-
-		if (btransient && offline_can_write) {
-
-			if (bCacheSaved) {
-				try {
-					//mark DONE
-					bool bmark_done = ol::stamp_download(cache_stamp, n8_rel_path, true/*done*/);
-				}
-				catch (...) {
-					//..
-				}
-			}
-		}
+        if (btransient && offline_can_write) {
+            if (atoi(offlineArtistId) == pfc_infinite || !offlineArtistId.get_length()) {
+                offlineArtistId = artists[0]->id;
+                pfc::string8 alt_path;
+                bool alt_expired = false;
+                if (ol::is_data_avail(offlineArtistId, id, ol::GetFrom::Release,
+                        alt_path, true, alt_expired) && !offline_can_ovr)
+                    return;
+            }
+            n8_rel_path = ol::get_offline_path(offlineArtistId, ol::GetFrom::Release, id, true);
+            discogger_cache::directory_cache_transaction tx(
+                std::filesystem::u8path(n8_rel_path.c_str()));
+            if (tx.ready() && discogs_interface->offline_cache_save(
+                    ol::staged_cache_json_path(tx), jp.root))
+                tx.publish(cache_stamp.c_str());
+        }
 	}
 	catch (foo_discogs_exception &e) {
 		if (throw_all) {
@@ -3398,70 +3335,25 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
             parseArtistReleases(pages[i]->root, &staged, SearchMode::DEFAULT_SEARCH, mva_masters);
         }
 
-        bool bCacheSaved = true;
-        bool bmark_pending = false;
         bool cache_ready = !btransient;
-        for (size_t i = 0; i < count; i++) {
-            p_abort.check();
-
-			if (btransient && offline_can_write) {
-
-				try {
-
-					if (i == 0) {
-						//create release folder
-						bool bfolder_ready = ol::create_offline_subpage_folder(id, art_src::unknown, pfc_infinite, ol::GetFrom::ArtistReleases, "");
-
-						if (bfolder_ready) {
-
-							pfc::string8 markcontent = JSONString(json_object_get(pages[i]->root, "items"));
-
-							//mark pending job
-							bmark_pending = ol::stamp_download(markcontent, n8_rel_path, false/*done*/);
-						}
-					}
-
-					//create page-n folder
-					if (bmark_pending) {
-
-						bool bfolder_ready = ol::create_offline_subpage_folder(id, art_src::unknown, i, ol::GetFrom::ArtistReleases, "");
-
-						if (bfolder_ready) {
-
-							pfc::string8 n8_page_path = ol::get_offline_pages_path(id, i, ol::GetFrom::ArtistReleases, "", true);
-							n8_page_path << "\\root.json";
-
-							bCacheSaved &= discogs_interface->offline_cache_save(n8_page_path, pages[i]->root);
-						}
-                        else {
-                            bCacheSaved = false;
-                        }
-					}
-					else {
-						bCacheSaved = false;
-					}
-				}
-				catch (const std::exception&) {
-					bCacheSaved = false;
-				}
-				catch (...) {
-					bCacheSaved = false;
-				}
-			}
-			if (btransient && offline_can_write) {
-
-				if ((i == count - 1) && (bCacheSaved)) {
-
-					try {
-
-						cache_ready = ol::stamp_download("", n8_rel_path, true/*done*/);
-					}
-					catch (...) {
-						//..
-					}
-				}
-			}
-		}
+        if (btransient && offline_can_write) {
+            discogger_cache::directory_cache_transaction tx(
+                std::filesystem::u8path(n8_rel_path.c_str()));
+            if (tx.ready()) {
+                bool saved = true;
+                for (size_t page = 0; page < count; ++page) {
+                    p_abort.check();
+                    saved = discogs_interface->offline_cache_save(
+                        ol::staged_cache_json_path(tx, page), pages[page]->root);
+                    if (!saved) break;
+                }
+                if (saved) {
+                    const pfc::string8 marker = JSONString(
+                        json_object_get(pages[0]->root, "items"));
+                    cache_ready = tx.publish(marker.c_str());
+                }
+            }
+        }
 
 
         p_abort.check();
@@ -3546,73 +3438,28 @@ void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, ab
 		const size_t cPages = pages.get_count();
         if (!cPages) throw foo_discogs_exception("Master versions pages were empty; retaining previous results.");
 
-		bool bCacheSaved = true;
-		bool bmark_pending = false;
-
-		for (size_t i = 0; i < cPages; i++) {
+        for (size_t page = 0; page < cPages; ++page) {
             p_abort.check();
-
-			//parse master versions
-
-			parseMasterVersions(pages[i]->root, this, query_mode);
-
-			//..
-
-			if (btransient && offline_can_write) {
-
-				try {
-
-					if (i == 0) {
-						//create release folder
-						bool bfolder_ready = ol::create_offline_subpage_folder(artist_id, art_src::unknown, pfc_infinite, gfVersions, master_id);
-
-						if (bfolder_ready) {
-
-							pfc::string8 markcontent = JSONString(json_object_get(pages[i]->root, "items"));
-
-							//mark as pending
-							bmark_pending = ol::stamp_download(markcontent, n8_rel_path, false);
-						}
-					}
-
-					if (bmark_pending) {
-
-						//create page-n folder
-						bool bfolder_ready = ol::create_offline_subpage_folder(artist_id, art_src::unknown, i, gfVersions, master_id);
-
-						if (bfolder_ready) {
-
-							pfc::string8 n8_page_path = ol::get_offline_pages_path(artist_id, i, gfVersions, master_id, true);
-							n8_page_path << "\\root.json";
-
-							bCacheSaved &= discogs_interface->offline_cache_save(n8_page_path, pages[i]->root);
-						}
-                        else {
-                            bCacheSaved = false;
-                        }
-					}
-                    else {
-                        bCacheSaved = false;
-                    }
-				}
-				catch (...) {
-                    bCacheSaved = false;
-			}
-
-				if (btransient && offline_can_write) {
-					if ((i == cPages - 1) && (bCacheSaved)) {
-						try {
-
-							//mark as done...
-							bool bmark_done = ol::stamp_download("", n8_rel_path, true);
-						}
-						catch (...) {
-							//..
-						}
-					}
-				}
-			}
-		}
+            parseMasterVersions(pages[page]->root, this, query_mode);
+        }
+        if (btransient && offline_can_write) {
+            discogger_cache::directory_cache_transaction tx(
+                std::filesystem::u8path(n8_rel_path.c_str()));
+            if (tx.ready()) {
+                bool saved = true;
+                for (size_t page = 0; page < cPages; ++page) {
+                    p_abort.check();
+                    saved = discogs_interface->offline_cache_save(
+                        ol::staged_cache_json_path(tx, page), pages[page]->root);
+                    if (!saved) break;
+                }
+                if (saved) {
+                    const pfc::string8 marker = JSONString(
+                        json_object_get(pages[0]->root, "items"));
+                    tx.publish(marker.c_str());
+                }
+            }
+        }
 		loaded_releases = true;
 	}
 	catch (foo_discogs_exception &e) {
