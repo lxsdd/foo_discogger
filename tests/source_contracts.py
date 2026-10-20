@@ -721,7 +721,7 @@ tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
 assert "cuesheet_modified" in preflight and 'meta_find("CUESHEET")' in preflight
 assert "std::vector<bool> matched(next_count, false)" in preflight
 assert "std::strcmp(old_text, new_text) == 0" in preflight
-assert "if (previous_count > next_count)" not in preflight
+assert "result.removed_values += previous_count - next_count;" not in preflight
 assert "if (previous_count <= 1)" in preflight
 assert "removed_fields" in preflight and "removed_values" in preflight
 assert "discard_pending_changes()" in file_manager_h and "original_info" in file_manager_h
