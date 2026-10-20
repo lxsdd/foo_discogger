@@ -869,3 +869,18 @@ assert "_wopen(" not in thumbnail_func
 assert "thumbnail_bounds_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "thumbnail_bounds_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
 print("PASS: cached artwork preview rejects invalid indices, oversized and partial files.")
+
+
+# Shared CI host smoke must actually launch official x86/x64 foobar hosts
+# and inspect the exact built component in the same ephemeral Windows job.
+# A source-wiring check is not itself live-host acceptance.
+host_wf = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+shared_action = "lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@0d5baa8c655abd9b447556505fa98ce1396a3135"
+assert host_wf.count("uses: " + shared_action) == 2
+assert host_wf.index("run: ./scripts/build-component-dll.ps1") < host_wf.index("HARD GATE - real foobar2000 Win32 component host load")
+assert host_wf.index("HARD GATE - real foobar2000 Win32 component host load") < host_wf.index("HARD GATE - real foobar2000 x64 component host load")
+assert "architecture: Win32" in host_wf and "architecture: x64" in host_wf
+assert "foo_discogger/Win32/Release/foo_discogger.dll" in host_wf
+assert "foo_discogger/x64/Release/foo_discogger.dll" in host_wf
+assert "actions/upload-artifact" not in host_wf
+print("PASS: exact-SHA shared foobar Win32/x64 component host smoke is fail-closed after native linking.")

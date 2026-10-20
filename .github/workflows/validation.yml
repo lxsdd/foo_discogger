@@ -135,3 +135,14 @@ jobs:
       - name: HARD GATE - full Win32 x64 Discogger DLL build and link
         shell: pwsh
         run: ./scripts/build-component-dll.ps1
+      - name: HARD GATE - real foobar2000 Win32 component host load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@0d5baa8c655abd9b447556505fa98ce1396a3135
+        with:
+          architecture: Win32
+          component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll
+      - name: HARD GATE - real foobar2000 x64 component host load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@0d5baa8c655abd9b447556505fa98ce1396a3135
+        with:
+          architecture: x64
+          component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll
+
