@@ -138,13 +138,19 @@ jobs:
         shell: pwsh
         run: ./scripts/build-component-dll.ps1
       - name: HARD GATE - real foobar2000 Win32 component host load
-        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@7acb670f96fff4f63e8f84d8ccb3a4c3f84b8c64
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@99cc4b8c31d4ac8e640da0c375675566dc44762e
         with:
           architecture: Win32
           component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll
+          context-command: 'Discogger/Write tags...'
+          expected-window-title: 'Find Releases'
+          required-control-ids: '1083,1086,1080,1018,1099,1107,1092,1198'
       - name: HARD GATE - real foobar2000 x64 component host load
-        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@7acb670f96fff4f63e8f84d8ccb3a4c3f84b8c64
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@99cc4b8c31d4ac8e640da0c375675566dc44762e
         with:
           architecture: x64
           component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll
+          context-command: 'Discogger/Write tags...'
+          expected-window-title: 'Find Releases'
+          required-control-ids: '1083,1086,1080,1018,1099,1107,1092,1198'
 

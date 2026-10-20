@@ -875,7 +875,7 @@ print("PASS: cached artwork preview rejects invalid indices, oversized and parti
 # and inspect the exact built component in the same ephemeral Windows job.
 # A source-wiring check is not itself live-host acceptance.
 host_wf = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
-shared_action = "lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@7acb670f96fff4f63e8f84d8ccb3a4c3f84b8c64"
+shared_action = "lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@99cc4b8c31d4ac8e640da0c375675566dc44762e"
 assert host_wf.count("uses: " + shared_action) == 2
 assert host_wf.index("run: ./scripts/build-component-dll.ps1") < host_wf.index("HARD GATE - real foobar2000 Win32 component host load")
 assert host_wf.index("HARD GATE - real foobar2000 Win32 component host load") < host_wf.index("HARD GATE - real foobar2000 x64 component host load")
@@ -904,3 +904,34 @@ assert "bool require_item_body = false" in tree_header
 assert "release_tree_snapshot_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "release_tree_snapshot_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
 print("PASS: stale release-tree callback, partial cached release and row hit-test guards.")
+
+
+# Discogger's native Find Releases window opens from a context menu;
+# no release apply/write command may be invoked by the disposable host probe.
+# The shared pinned action checks a live HWND, required Win32 control IDs,
+# modeless reuse and unchanged synthetic WAV/CUE after launcher dispatch.
+resource = (root / "resource.h").read_text(encoding="utf-8-sig")
+dialogs = (root / "foo_discogger.rc").read_text(encoding="utf-8-sig")
+menu = (root / "mainmenu.cpp").read_text(encoding="utf-8-sig")
+for control, value in {
+    "IDC_EDIT_SEARCH":1083, "IDC_BTN_SEARCH":1086,
+    "IDC_ARTIST_LIST":1080, "IDC_RELEASE_TREE":1018,
+    "IDC_EDIT_FILTER":1099, "IDC_CHK_ONLY_EXACT_MATCHES":1107,
+    "IDC_RELEASE_URL_TEXT":1092, "IDC_BTN_PROCESS_RELEASE":1198
+}.items():
+    assert f"#define {control}" in resource
+    assert any(line.strip().startswith(f"#define {control} ") and
+               line.split()[-1] == str(value) for line in resource.splitlines())
+    assert control in dialogs[dialogs.index("IDD_DIALOG_FIND_RELEASE DIALOGEX"):
+                              dialogs.index("IDD_DIALOG_FIND_RELEASE_MINI DIALOGEX")]
+assert 'CAPTION "Find Releases"' in dialogs
+assert 'p_out = "Write tags...";' in menu
+ctx = menu[menu.index("case WriteTags:\\n\\t\\tcase WriteTagsAlt: {"):
+           menu.index("case EditTagMappings:", menu.index("case WriteTags:\\n\\t\\tcase WriteTagsAlt: {"))]
+assert "fb2k::newDialog<CFindReleaseDialog>" in ctx
+for forbidden in ("metadb_io", "file_info_writer", "write_tags(", "commit_tags(", "save_cue("):
+    assert forbidden not in ctx
+assert host_wf.count("context-command: 'Discogger/Write tags...'") == 2
+assert host_wf.count("expected-window-title: 'Find Releases'") == 2
+assert host_wf.count("required-control-ids: '1083,1086,1080,1018,1099,1107,1092,1198'") == 2
+print("PASS: both native Discogger Find Releases HWND smoke gates are read-only and fail closed.")
