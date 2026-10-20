@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <utility>
+#include <vector>
 
 namespace discogger_write_safety {
 struct tag_deletion_report {
@@ -48,8 +49,34 @@ tag_deletion_report inspect_tag_deletions(const Before& original,
         }
         const auto previous_count = original.meta_enum_value_count(i);
         const auto next_count = proposed.meta_enum_value_count(new_field);
-        if (previous_count > next_count) {
-            result.removed_values += previous_count - next_count;
+        // A same-sized multivalue edit can still remove a pre-existing
+        // value (e.g. GENRE=Trance;Progressive -> Trance;House). Compare
+        // the exact values as a multiset, including duplicate multiplicity.
+        // Single-value replacements remain ordinary edits, not removals.
+        std::size_t removed = 0;
+        if (previous_count <= 1) {
+            if (previous_count > next_count) removed = previous_count - next_count;
+        } else {
+            std::vector<bool> matched(next_count, false);
+            for (std::size_t old_value = 0; old_value < previous_count; ++old_value) {
+                const char* old_text = original.meta_enum_value(i, old_value);
+                bool found = false;
+                if (old_text) {
+                    for (std::size_t new_value = 0; new_value < next_count; ++new_value) {
+                        if (matched[new_value]) continue;
+                        const char* new_text = proposed.meta_enum_value(new_field, new_value);
+                        if (new_text && std::strcmp(old_text, new_text) == 0) {
+                            matched[new_value] = true;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if (!found) ++removed;
+            }
+        }
+        if (removed) {
+            result.removed_values += removed;
             removed_name(name);
         }
     }

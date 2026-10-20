@@ -53,6 +53,37 @@ int main() {
     next=old; next.data[1].second.pop_back();
     r=inspect(next);
     assert(r.removed_fields==0 && r.removed_values==1 && names==std::vector<std::string>{"GENRE"});
+    // Replacing one value in a multi-value field at the same cardinality is
+    // a real removal, unlike a normal scalar value replacement.
+    next=old; next.data[1].second={"Trance","House"};
+    r=inspect(next);
+    assert(r.removed_fields==0 && r.removed_values==1 &&
+           names==std::vector<std::string>{"GENRE"});
+    next=old; next.data[1].second={"Progressive","Trance"};
+    r=inspect(next);
+    assert(r.removed_values==0 && names.empty()); // Reordering is safe.
+    next=old; next.data[1].second={"House","Techno"};
+    r=inspect(next);
+    assert(r.removed_values==2 && names==std::vector<std::string>{"GENRE"});
+    next=old; next.data[1].second.push_back("House");
+    r=inspect(next);
+    assert(r.removed_values==0); // Addition is not deletion.
+    next=old; next.data[1].second={"Trance","Trance"};
+    r=inspect(next);
+    assert(r.removed_values==1); // Duplicating one value removes another.
+    next=old; next.data[0].second={"Updated Artist"};
+    r=inspect(next);
+    assert(r.removed_fields==0 && r.removed_values==0); // Normal scalar edit.
+    next=old; next.data[1].second={"Trance","Progressive","Trance"};
+    next.data[1].second.pop_back();
+    r=inspect(next);
+    assert(r.removed_values==0);
+    // Duplicate values in the original multiset must not be silently lost.
+    const Meta duplicated{{{"GENRE",{"Trance","Trance","Progressive"}}}};
+    const Meta lost_duplicate{{{"GENRE",{"Trance","Progressive","House"}}}};
+    names.clear();
+    r=inspect_tag_deletions(duplicated,lost_duplicate,[&](const char* name){names.emplace_back(name);});
+    assert(r.removed_values==1 && names==std::vector<std::string>{"GENRE"});
     next=old; next.data[2].second={"TRACK 02 AUDIO"};
     assert(inspect(next).cuesheet_modified);
     next=old; next.data.erase(next.data.begin()+2);
