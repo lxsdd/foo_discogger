@@ -953,7 +953,16 @@ assert "DISCOGGER_GUI_DIALOG_$Architecture=PASS" in gui_smoke
 assert "DISCOGGER_GUI_CONTROLS_$Architecture=PASS" in gui_smoke
 assert "DISCOGGER_GUI_SYNTHETIC_WAV_NO_WRITE_$Architecture=PASS" in gui_smoke
 assert "MEDIA_WRITE_SAFETY_$Architecture=NOT_TESTED" in gui_smoke
-assert "GetDlgItem" in gui_smoke and "Find Releases" in gui_smoke
+assert "GetDlgItem" in gui_smoke and "FindReleaseDialogs" in gui_smoke
+assert "FindReleaseDialogs([uint32]$proc.Id)" in gui_smoke
+assert "GetDlgItem(h,id)==IntPtr.Zero" in gui_smoke
+assert "Find([uint32]$proc.Id,'Find Releases')" not in gui_smoke
+# Context menu must refuse zero selected handles; the dialog reads m_items[0].
+menu_text = (root / "mainmenu.cpp").read_text(encoding="utf-8-sig")
+assert "if (p_data.get_count() == 0) return;" in menu_text
+assert "p_data.get_count() != 0 &&" in menu_text
+assert "metadb_handle_ptr item = m_items[0];" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert 'bk_frm_album.get_ptr() : "Find releases"' in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 assert "Start-Process" in gui_smoke and "Write tags..." in gui_smoke
 assert "Test-Path -LiteralPath $dir" in gui_smoke
 for unsafe in ("-ExecutionPolicy Bypass", "actions/upload-artifact", "media_file_write", "CommitTags("):

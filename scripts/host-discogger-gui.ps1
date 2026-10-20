@@ -85,6 +85,18 @@ public static class DiscoggerWindowTest {
     },IntPtr.Zero);
     return list.ToArray();
   }
+  public static IntPtr[] FindReleaseDialogs(uint pid) {
+    var matches=new List<IntPtr>();
+    EnumWindows((h,d)=>{
+      uint owner; GetWindowThreadProcessId(h,out owner);
+      if(owner!=pid || !IsWindowVisible(h)) return true;
+      int[] ids={1083,1086,1080,1018,1099,1107,1092,1198};
+      foreach(var id in ids) if(GetDlgItem(h,id)==IntPtr.Zero) return true;
+      matches.Add(h);
+      return true;
+    },IntPtr.Zero);
+    return matches.ToArray();
+  }
   public static bool Responsive(IntPtr h) {
     IntPtr result;
     return SendMessageTimeoutW(h,0,IntPtr.Zero,IntPtr.Zero,2,3000,out result)!=IntPtr.Zero;
@@ -191,8 +203,8 @@ try {
         Write-Host ('DISCOGGER_CONTEXT_ROUTE='+$name)
         for($i=0;$i -lt 14;$i++){
             Start-Sleep -Milliseconds 500
-            $matches=[DiscoggerWindowTest]::Find([uint32]$proc.Id,'Find Releases')
-            if($matches.Length -gt 1){throw 'Duplicate native Find Releases windows.'}
+            $matches=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+            if($matches.Length -gt 1){throw 'Multiple native Find Releases dialogs with the expected control IDs.'}
             if($matches.Length -eq 1){$window=$matches[0];break}
         }
         if($window -ne [IntPtr]::Zero){break}
@@ -204,7 +216,7 @@ try {
         Write-Host ('DISCOGGER_RUNNING_PROCESS_IDS='+($currentProcesses.Id -join ','))
         Write-Host ('DISCOGGER_WINDOWS='+([DiscoggerWindowTest]::List([uint32]$proc.Id) -join '|'))
         Write-Host ('DISCOGGER_ALL_VISIBLE_WINDOWS='+([DiscoggerWindowTest]::AllVisible() -join '|'))
-        throw 'Find Releases did not open: see isolated host/process/route diagnostics.'
+        throw 'No native Discogger dialog with all eight expected controls; see isolated host diagnostics.'
     }
     if(-not [DiscoggerWindowTest]::Responsive($window)){throw 'Native Find Releases window not responsive.'}
     foreach($id in @(1083,1086,1080,1018,1099,1107,1092,1198)){
