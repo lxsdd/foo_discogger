@@ -369,9 +369,12 @@ void CFindReleaseDialog::SetSearchModeText(const pfc::string8 msg, bool mode_pre
 		buffer = msg;
 	}
 
-	fb2k::inMainThread([this, buffer] {
-		uSetWindowText(m_static_search_msg, buffer);
-		});
+    const HWND status_window = m_static_search_msg;
+    fb2k::inMainThread([status_window, buffer] {
+        if (::IsWindow(status_window) &&
+            ::GetDlgCtrlID(status_window) == IDC_STATIC_FIND_REL_SEARCH_STATS)
+            uSetWindowText(status_window, buffer);
+    });
 }
 
 pfc::string8 CFindReleaseDialog::GetSearchModeMsg() {
@@ -1190,9 +1193,12 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 		std::lock_guard<std::mutex> guard(g_discogs->tree_locked_mutex);
 		m_dctree.EnableDispInfo(true);
 		//todo:
-		fb2k::inMainThread([this] {
-			::InvalidateRect(m_release_tree, {0}, TRUE);
-			});
+        const HWND tree_window = m_release_tree;
+        fb2k::inMainThread([tree_window] {
+            if (::IsWindow(tree_window) &&
+                ::GetDlgCtrlID(tree_window) == IDC_RELEASE_TREE)
+                ::InvalidateRect(tree_window, nullptr, TRUE);
+        });
 	}
 
 	if (m_tracer.is_multi_artist()) {
@@ -1220,9 +1226,12 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 
 	std::lock_guard<std::mutex> guard(g_discogs->tree_locked_mutex);
 	m_dctree.EnableDispInfo(true);
-	fb2k::inMainThread([this] {
-		::InvalidateRect(m_release_tree, NULL, TRUE);
-		});
+    const HWND tree_window = m_release_tree;
+    fb2k::inMainThread([tree_window] {
+        if (::IsWindow(tree_window) &&
+            ::GetDlgCtrlID(tree_window) == IDC_RELEASE_TREE)
+            ::InvalidateRect(tree_window, nullptr, TRUE);
+    });
 }
 
 void CFindReleaseDialog::OnTypeFilterTimer(WPARAM id) {

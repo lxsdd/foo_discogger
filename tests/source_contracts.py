@@ -37,6 +37,19 @@ assert "if (!g_hIcon_quian || item >=" in paint
 assert "std::numeric_limits<int>::max" in artist
 print("PASS: artist list rendering bounds checks and no allocating GDI bitmap probes.")
 
+# Do not retain dialog or artist-list objects in queued main-thread redraw work.
+assert "fb2k::inMainThread([this" not in artist
+assert "fb2k::inMainThread([dlg" not in artist
+assert "void queue_artist_redraw(HWND window)" in artist
+assert "GetDlgCtrlID(window) == IDC_ARTIST_LIST" in artist
+dialog_redraw = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "fb2k::inMainThread([this" not in dialog_redraw
+assert "::IsWindow(status_window)" in dialog_redraw
+assert "IDC_STATIC_FIND_REL_SEARCH_STATS" in dialog_redraw
+assert dialog_redraw.count("::IsWindow(tree_window)") >= 2
+print("PASS: asynchronous search/tree/artist redraw work does not capture destroyed UI objects.")
+
+
 dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")
 

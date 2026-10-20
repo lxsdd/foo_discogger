@@ -12,6 +12,17 @@ const size_t TRACER_IMG_NDX = 3;
 const size_t LOADED_RELEASES_IMG_NDX = 6;
 const size_t SHOWING_IMAGE_NDX = 1;
 
+namespace {
+// Delayed invalidation must not retain the artist-list object after the
+// modeless Find Releases dialog is destroyed.
+void queue_artist_redraw(HWND window) {
+    fb2k::inMainThread([window] {
+        if (::IsWindow(window) && ::GetDlgCtrlID(window) == IDC_ARTIST_LIST)
+            ::InvalidateRect(window, nullptr, TRUE);
+    });
+}
+} // namespace
+
 CArtistList::CArtistList(IListControlOwnerDataSource* ilo, id_tracer* idtracer_p)
 	: CListControlOwnerData(ilo), m_idtracer_p(idtracer_p) {
 	//..
@@ -43,20 +54,22 @@ void CArtistList::on_get_artist_done(cupdRelSrc updsrc, const Artist_ptr artist)
 			rppair rpempty;
 			dlg->print_root_stats(rpempty, false);
 
-			fb2k::inMainThread([dlg, rpempty] {
-				dlg->print_root_stats(rpempty, false);
-				});
+            // Resolve the live dialog on the main thread instead of
+            // dereferencing a stale object captured before close/reopen.
+            const HWND expected_dialog = dlg->m_hWnd;
+            fb2k::inMainThread([expected_dialog, rpempty] {
+                if (!g_discogs || !g_discogs->find_release_dialog ||
+                    !::IsWindow(expected_dialog) ||
+                    g_discogs->find_release_dialog->m_hWnd != expected_dialog)
+                    return;
+                g_discogs->find_release_dialog->print_root_stats(rpempty, false);
+            });
 
 		}
 
 		set_artists(true, false, artist, m_artist_exact_matches, m_artist_other_matches);
 
-		fb2k::inMainThread([this] {
-			try {
-				::InvalidateRect(m_hWnd, NULL, TRUE);
-			}
-			catch(...) {}
-			});
+		queue_artist_redraw(m_hWnd);
 
 		return;
 	}
@@ -98,12 +111,7 @@ void CArtistList::on_get_artist_done(cupdRelSrc updsrc, const Artist_ptr artist)
 				}
 			}
 
-			fb2k::inMainThread([this] {
-				try {
-				::InvalidateRect(m_hWnd, NULL, TRUE);
-				}
-				catch(...) {}
-				});
+			queue_artist_redraw(m_hWnd);
 
 		}
 	}
@@ -262,12 +270,7 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
 		m_find_release_artists[i]->search_role_list_pos = get_next_role_pos();
 	}
 
-	fb2k::inMainThread([this] {
-    				try {
-    				::InvalidateRect(m_hWnd, NULL, TRUE);
-    				}
-    				catch(...) {}
-    				});
+	queue_artist_redraw(m_hWnd);
 
 	auto citems = get_size();
 	bool bskip_idded_release_dlg = CONF.skip_mng_flag & SkipMng::RELEASE_DLG_IDED;
@@ -277,12 +280,7 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
 		|| (CONF.auto_rel_load_on_open && op == 3)
 		|| (op == 0 && citems == 1 && append == false)))
 	{
-		fb2k::inMainThread([this] {
-			try {
-			::InvalidateRect(m_hWnd, NULL, TRUE);
-			}
-			catch(...) {}
-			});
+		queue_artist_redraw(m_hWnd);
 
 	}
 }
