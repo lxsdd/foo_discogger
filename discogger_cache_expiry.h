@@ -19,4 +19,15 @@ inline bool expired(std::chrono::seconds age, std::chrono::seconds lifetime) noe
     if (age < -std::chrono::minutes(5)) return true;
     return age >= lifetime;
 }
+ // A disk-loaded list remains valid only while its original marker is fresh;
+ // a network-loaded list has its own bounded in-memory lifetime.
+ inline bool reuse_artist_releases(bool loaded, bool from_disk, bool disk_read_enabled,
+                                   bool disk_current, bool force_overwrite,
+                                   std::chrono::seconds memory_age,
+                                   std::chrono::seconds lifetime) noexcept {
+     if (!loaded || force_overwrite) return false;
+     if (from_disk && disk_read_enabled) return disk_current;
+     return memory_age >= std::chrono::seconds::zero() && !expired(memory_age, lifetime);
+ }
+
 }

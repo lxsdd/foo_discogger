@@ -3331,20 +3331,38 @@ void Discogs::MasterRelease::load(threaded_process_status &p_status, abort_callb
 
 
 void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_callback &p_abort, bool throw_all, db_fetcher* dbfetcher) {
-	if (loaded_releases) {
-		return;
-	}
+
+    // Coalesce concurrent requests, but let waiting tasks honor cancellation.
+    const auto observed_generation = releases_load_generation.load(std::memory_order_acquire);
+    std::unique_lock<std::timed_mutex> load_guard(releases_load_mutex, std::defer_lock);
+    while (!load_guard.try_lock_for(std::chrono::milliseconds(100))) {
+        p_abort.check();
+    }
+    p_abort.check();
+    if (loaded_releases && releases_load_generation.load(std::memory_order_acquire) != observed_generation) {
+        return;
+    }
 
 	bool offline_can_read = ol::can_read();
 	bool offline_can_write = ol::can_write();
 	bool offline_can_overwrite = ol::can_ovr();
-	bool expired;
+	bool expired = false;
 	pfc::string8 n8_rel_path;
 	bool offline_avail_data = ol::is_data_avail(id, "", ol::GetFrom::ArtistReleases, n8_rel_path, true, expired);
 
 	bool btransient = !(offline_can_read && offline_avail_data) || offline_can_overwrite;
 	bool db_ready = false;
-	btransient &= !db_ready;
+
+    btransient &= !db_ready;
+
+    const auto memory_age = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - releases_loaded_at);
+    if (discogger_cache::reuse_artist_releases(loaded_releases, releases_loaded_from_disk,
+        offline_can_read, offline_avail_data, offline_can_overwrite, memory_age,
+        discogger_cache::ttl(discogger_cache::group::artist_releases,
+            CONF.artist_release_cache_hours, CONF.expiration_enabled(), CONF.expiration_days()))) {
+        return;
+    }
 
 	try {
 		pfc::string8 url;
@@ -3359,22 +3377,23 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 			offline_can_write = false;
 		}
 
-		loaded_releases_offline = !btransient;
+        const size_t count = pages.get_count();
+        if (!count) throw foo_discogs_exception("Artist release pages were empty; retaining previous results.");
 
-		const size_t count = pages.get_count();
+        // Stage the entire result before publishing or completing any disk marker.
+        Artist staged(id.c_str());
+        staged.search_role_list_pos = search_role_list_pos;
+        std::map<std::string, MasterRelease_ptr> mva_masters;
+        for (size_t i = 0; i < count; ++i) {
+            p_abort.check();
+            parseArtistReleases(pages[i]->root, &staged, SearchMode::DEFAULT_SEARCH, mva_masters);
+        }
 
-		bool bCacheSaved = true;
-		bool bmark_pending = false;
-
-		std::map<std::string, MasterRelease_ptr> mva_masters;
-
-		for (size_t i = 0; i < count; i++) {
-
-			//parse artist releases
-
-			parseArtistReleases(pages[i]->root, this, SearchMode::DEFAULT_SEARCH, mva_masters);
-
-			//..
+        bool bCacheSaved = true;
+        bool bmark_pending = false;
+        bool cache_ready = !btransient;
+        for (size_t i = 0; i < count; i++) {
+            p_abort.check();
 
 			if (btransient && offline_can_write) {
 
@@ -3410,11 +3429,11 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 						bCacheSaved = false;
 					}
 				}
-				catch (std::exception e) {
-					//..
+				catch (const std::exception&) {
+					bCacheSaved = false;
 				}
 				catch (...) {
-					//..
+					bCacheSaved = false;
 				}
 			}
 			if (btransient && offline_can_write) {
@@ -3423,7 +3442,7 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 
 					try {
 
-						loaded_releases_offline = ol::stamp_download("", n8_rel_path, true/*done*/);
+						cache_ready = ol::stamp_download("", n8_rel_path, true/*done*/);
 					}
 					catch (...) {
 						//..
@@ -3432,7 +3451,19 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 			}
 		}
 
-		loaded_releases = true;
+
+        p_abort.check();
+        master_releases = std::move(staged.master_releases);
+        releases = std::move(staged.releases);
+        search_order_master = std::move(staged.search_order_master);
+        releases_loaded_from_disk = !btransient;
+        loaded_releases_offline = cache_ready;
+        releases_loaded_at = std::chrono::steady_clock::now();
+        loaded_releases = true;
+        releases_load_generation.fetch_add(1, std::memory_order_release);
+	}
+	catch (const exception_aborted&) {
+		throw;
 	}
 	catch (foo_discogs_exception &e) {
 		if (throw_all) {

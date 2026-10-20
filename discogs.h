@@ -12,6 +12,9 @@ namespace Discogs { class missing_data_exception : public foo_discogs_exception 
 
 #include <map>
 #include <functional>
+#include <atomic>
+#include <chrono>
+#include <mutex>
 
 namespace Discogs
 {
@@ -123,6 +126,10 @@ namespace Discogs
 		bool loaded_preview = false;
 		bool loaded_releases = false;
 		bool loaded_releases_offline = false;
+		bool releases_loaded_from_disk = false;
+		std::chrono::steady_clock::time_point releases_loaded_at{};
+		std::timed_mutex releases_load_mutex;
+		std::atomic<unsigned long> releases_load_generation{0};
 		size_t search_role_list_pos = 0;
 
 		string_encoded_array get_id() const {
