@@ -974,3 +974,14 @@ assert "Test-Path -LiteralPath $dir" in gui_smoke
 for unsafe in ("-ExecutionPolicy Bypass", "actions/upload-artifact", "media_file_write", "CommitTags("):
     assert unsafe not in gui_smoke
 print("PASS: original Discogger SQLite first-run fixture and independent fail-closed x86/x64 native GUI gates.")
+
+
+# Real host crash regression: absent PNG resources must not be dereferenced.
+icon_source = (root / "icon_map.cpp").read_text(encoding="utf-8-sig")
+assert icon_source.count("if (!rec_image.Load(") == 2
+assert icon_source.count("!rec_image.m_pBitmap) return nullptr;") == 2
+assert icon_source.count("mapped->second.empty()") == 2
+assert "HBITMAP h_bitmap = nullptr;" in icon_source
+assert "DeleteObject(rec_image);" not in icon_source
+assert "rec_image.Empty();" in icon_source
+print("PASS: GDI+ icon loader rejects missing resources and null bitmaps before use.")
