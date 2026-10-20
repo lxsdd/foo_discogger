@@ -926,8 +926,8 @@ for control, value in {
                               dialogs.index("IDD_DIALOG_FIND_RELEASE_MINI DIALOGEX")]
 assert 'CAPTION "Find Releases"' in dialogs
 assert 'p_out = "Write tags...";' in menu
-ctx = menu[menu.index("case WriteTags:\\n\\t\\tcase WriteTagsAlt: {"):
-           menu.index("case EditTagMappings:", menu.index("case WriteTags:\\n\\t\\tcase WriteTagsAlt: {"))]
+ctx = menu[menu.index("case WriteTags:\n\t\tcase WriteTagsAlt: {"):
+           menu.index("case EditTagMappings:", menu.index("case WriteTags:\n\t\tcase WriteTagsAlt: {"))]
 assert "fb2k::newDialog<CFindReleaseDialog>" in ctx
 for forbidden in ("metadb_io", "file_info_writer", "write_tags(", "commit_tags(", "save_cue("):
     assert forbidden not in ctx
