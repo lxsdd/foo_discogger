@@ -72,6 +72,19 @@ public static class DiscoggerWindowTest {
     },IntPtr.Zero);
     return list.ToArray();
   }
+  [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr hwnd,uint message,IntPtr wp,IntPtr lp);
+  public static string[] AllVisible() {
+    var list=new List<string>();
+    EnumWindows((h,d)=>{
+      if(!IsWindowVisible(h)) return true;
+      uint p; GetWindowThreadProcessId(h,out p);
+      var sb=new StringBuilder(256); GetWindowTextW(h,sb,256);
+      string title=sb.ToString();
+      if(title.Length>0 && list.Count<32) list.Add(p.ToString()+":"+title);
+      return true;
+    },IntPtr.Zero);
+    return list.ToArray();
+  }
   public static bool Responsive(IntPtr h) {
     IntPtr result;
     return SendMessageTimeoutW(h,0,IntPtr.Zero,IntPtr.Zero,2,3000,out result)!=IntPtr.Zero;
@@ -130,15 +143,52 @@ try {
     if(-not @((Get-Process -Id $proc.Id).Modules | Where-Object {$_.ModuleName -ieq 'foo_discogger.dll'}).Count){
         throw 'Discogger module is absent from host process.'
     }
+    # Validate the actual initialization side effect; absence of a visible
+    # error dialog alone never proves that CONF.load() completed.
+    $profileRoots=@($hostDir,(Join-Path $hostDir 'profile'))
+    $configurationDatabases=@($profileRoots | ForEach-Object {
+        Join-Path (Join-Path $_ 'configuration') 'foo_discogger.dll.db'
+    })
+    $installed=@($configurationDatabases | Where-Object {Test-Path -LiteralPath $_ -PathType Leaf})
+    if($installed.Count -eq 0) {
+        Write-Host 'DISCOGGER_INIT_DIAGNOSTIC=no_configuration_database'
+        Write-Host ('DISCOGGER_HOST_VISIBLE_WINDOWS='+([DiscoggerWindowTest]::List([uint32]$proc.Id) -join '|'))
+        throw 'Discogger CONF.load did not install its SQLite configuration DB into the portable profile.'
+    }
+    foreach($configured in $installed) {
+        if ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($configured),0,16) -ne ("SQLite format 3"+[char]0)) {
+            throw 'Discogger created an invalid SQLite configuration database.'
+        }
+    }
     if(@([DiscoggerWindowTest]::Find([uint32]$proc.Id,'foo_discogger initialization')).Count){
         throw 'Discogger configuration initialization blocked by a modal error.'
     }
+    # The official player may show its one-time appearance chooser before it
+    # accepts any forwarded /context_command. Dismiss ONLY that chooser,
+    # and ONLY when its HWND belongs to this disposable foobar process.
+    $appearance=@([DiscoggerWindowTest]::Find([uint32]$proc.Id,'Quick Appearance Setup'))
+    if($appearance.Count -eq 1) {
+        Write-Host 'DISCOGGER_FIRST_RUN_APPEARANCE=DISMISS_IN_TEST_ONLY'
+        if(-not [DiscoggerWindowTest]::PostMessageW($appearance[0],0x0010,[IntPtr]::Zero,[IntPtr]::Zero)) {
+            throw 'Could not dismiss isolated Quick Appearance Setup wizard.'
+        }
+        Start-Sleep -Seconds 2
+        if(@([DiscoggerWindowTest]::Find([uint32]$proc.Id,'Quick Appearance Setup')).Count){
+            throw 'First-run appearance dialog still blocks context commands.'
+        }
+    } elseif($appearance.Count -gt 1) {
+        throw 'Multiple first-run appearance dialogs in disposable host.'
+    }
     Write-Host "DISCOGGER_INITIALIZATION_$Architecture=PASS"
+    Write-Host ('DISCOGGER_INITIAL_WINDOWS='+([DiscoggerWindowTest]::List([uint32]$proc.Id) -join '|'))
     $window=[IntPtr]::Zero
     foreach($name in @('Tagging/Discogger/Write tags...','Discogger/Write tags...','Write tags...')){
         $args='/context_command:"'+$name+'" "'+$wav+'"'
         $launcher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $args -PassThru
         if(-not $launcher.WaitForExit(15000) -or $launcher.ExitCode -ne 0){throw "Context launcher failed: $name"}
+        $proc.Refresh()
+        if($proc.HasExited){throw "The actual foobar host exited after context route $name"}
+        Write-Host ('DISCOGGER_CONTEXT_ROUTE='+$name)
         for($i=0;$i -lt 14;$i++){
             Start-Sleep -Milliseconds 500
             $matches=[DiscoggerWindowTest]::Find([uint32]$proc.Id,'Find Releases')
@@ -148,8 +198,13 @@ try {
         if($window -ne [IntPtr]::Zero){break}
     }
     if($window -eq [IntPtr]::Zero){
+        $proc.Refresh()
+        Write-Host ('DISCOGGER_HOST_ALIVE='+(-not $proc.HasExited))
+        $currentProcesses=@(Get-Process -Name foobar2000 -ErrorAction SilentlyContinue)
+        Write-Host ('DISCOGGER_RUNNING_PROCESS_IDS='+($currentProcesses.Id -join ','))
         Write-Host ('DISCOGGER_WINDOWS='+([DiscoggerWindowTest]::List([uint32]$proc.Id) -join '|'))
-        throw 'Find Releases did not open through a registered context command.'
+        Write-Host ('DISCOGGER_ALL_VISIBLE_WINDOWS='+([DiscoggerWindowTest]::AllVisible() -join '|'))
+        throw 'Find Releases did not open: see isolated host/process/route diagnostics.'
     }
     if(-not [DiscoggerWindowTest]::Responsive($window)){throw 'Native Find Releases window not responsive.'}
     foreach($id in @(1083,1086,1080,1018,1099,1107,1092,1198)){

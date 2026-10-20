@@ -941,6 +941,14 @@ gui_smoke = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-
 assert (root / "foo_discogger.dll.db").read_bytes().startswith(b"SQLite format 3\x00")
 assert "foo_discogger.dll.db" in gui_smoke
 assert "DISCOGGER_INITIALIZATION_$Architecture=PASS" in gui_smoke
+assert "DISCOGGER_INIT_DIAGNOSTIC=no_configuration_database" in gui_smoke
+assert "DISCOGGER_FIRST_RUN_APPEARANCE=DISMISS_IN_TEST_ONLY" in gui_smoke
+assert "DISCOGGER_RUNNING_PROCESS_IDS" in gui_smoke
+assert "DISCOGGER_ALL_VISIBLE_WINDOWS" in gui_smoke
+assert "DISCOGGER_CONTEXT_ROUTE=" in gui_smoke
+assert "Get-Process -Name foobar2000" in gui_smoke
+assert "The actual foobar host exited after context route" in gui_smoke
+assert "foo_discogger.dll.db" in gui_smoke
 assert "DISCOGGER_GUI_DIALOG_$Architecture=PASS" in gui_smoke
 assert "DISCOGGER_GUI_CONTROLS_$Architecture=PASS" in gui_smoke
 assert "DISCOGGER_GUI_SYNTHETIC_WAV_NO_WRITE_$Architecture=PASS" in gui_smoke
