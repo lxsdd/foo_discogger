@@ -944,6 +944,7 @@ bool get_artist_process_callback::check_in() {
 }
 
 void get_artist_process_callback::check_out() {
+	if (!m_artist_load_registered) return;
 	std::lock_guard lg(g_discogs->mx_vArtistLoadReleasesTasks);
 	auto found_it =
 		std::find_if(g_discogs->vArtistLoadReleasesTasks.begin(), g_discogs->vArtistLoadReleasesTasks.end(), [&](const pfc::string8& e) {
@@ -952,12 +953,14 @@ void get_artist_process_callback::check_out() {
 	if (found) {
 		g_discogs->vArtistLoadReleasesTasks.erase(found_it);
 	}
+	m_artist_load_registered = false;
 }
 
 void get_artist_process_callback::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 
 	if (m_bload_releases) {
-		if (!check_in()) {
+		m_artist_load_registered = check_in();
+		if (!m_artist_load_registered) {
 			return;
 		}
 	}
@@ -984,11 +987,13 @@ void get_artist_process_callback::safe_run(threaded_process_status &p_status, ab
 
 void get_artist_process_callback::on_success(HWND p_wnd) {
 
-	if (m_artist) {
+	// Release our marker even if the SDK returned a null artist. A duplicate
+	// task never acquired the marker and must not cancel the real owner's load.
+	if (m_bload_releases) {
+		check_out();
+	}
 
-		if (m_bload_releases) {
-			check_out();
-		}
+	if (m_artist) {
 
         // Honor a request made while an earlier artist load was running.
         const bool retry_refresh = m_bload_releases && m_artist->release_refresh.pending();

@@ -61,6 +61,24 @@ assert native_tasks_cpp.count("m_owner_window = parent;") >= 2
 assert native_tasks_cpp.count("g_discogs->find_release_dialog->m_hWnd != m_owner_window") >= 3
 assert "if (::IsWindow(m_owner_window) && g_discogs" in native_tasks_cpp
 print("PASS: artist async task owns ID/name data and rejects stale-dialog callbacks.")
+# Duplicate requests must not unregister another task's in-flight artist ID.
+# A successful request that returned no artist must still release its own ID.
+artist_worker = native_tasks_cpp.split("void get_artist_process_callback::check_in()", 1)[1].split(
+    "void get_multi_artists_process_callback::start", 1
+)[0]
+artist_checkout = artist_worker.split("void get_artist_process_callback::check_out()", 1)[1].split(
+    "void get_artist_process_callback::safe_run", 1
+)[0]
+artist_success = artist_worker.split("void get_artist_process_callback::on_success", 1)[1].split(
+    "void get_artist_process_callback::on_abort", 1
+)[0]
+assert "bool m_artist_load_registered = false;" in native_tasks_h
+assert "m_artist_load_registered = check_in();" in artist_worker
+assert "if (!m_artist_load_registered) {" in artist_worker
+assert "if (!m_artist_load_registered) return;" in artist_checkout
+assert "m_artist_load_registered = false;" in artist_checkout
+assert artist_success.index("check_out();") < artist_success.index("if (m_artist)")
+print("PASS: duplicate artist loads cannot clear another worker's marker; null results release ownership.")
 
 
 

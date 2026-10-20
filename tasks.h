@@ -215,6 +215,8 @@ private:
 	Artist_ptr m_artist;
 	cupdRelSrc m_cupdsrc;
 	bool m_bload_releases = false;
+	// Only the task that inserted the artist ID may remove its in-flight marker.
+	bool m_artist_load_registered = false;
 
 	bool check_in();
 	void check_out();
