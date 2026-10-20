@@ -63,7 +63,7 @@ assert "if (::IsWindow(m_owner_window) && g_discogs" in native_tasks_cpp
 print("PASS: artist async task owns ID/name data and rejects stale-dialog callbacks.")
 # Duplicate requests must not unregister another task's in-flight artist ID.
 # A successful request that returned no artist must still release its own ID.
-artist_worker = native_tasks_cpp.split("void get_artist_process_callback::check_in()", 1)[1].split(
+artist_worker = native_tasks_cpp.split("bool get_artist_process_callback::check_in()", 1)[1].split(
     "void get_multi_artists_process_callback::start", 1
 )[0]
 artist_checkout = artist_worker.split("void get_artist_process_callback::check_out()", 1)[1].split(
