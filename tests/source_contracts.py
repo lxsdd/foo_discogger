@@ -946,6 +946,12 @@ assert "DISCOGGER_FIRST_RUN_APPEARANCE=DISMISS_IN_TEST_ONLY" in gui_smoke
 assert "DISCOGGER_RUNNING_PROCESS_IDS" in gui_smoke
 assert "DISCOGGER_ALL_VISIBLE_WINDOWS" in gui_smoke
 assert "DISCOGGER_CONTEXT_ROUTE=" in gui_smoke
+assert "DISCOGGER_CRASH_AFTER_CONTEXT_ROUTE=" in gui_smoke
+assert "DISCOGGER_CRASH_EVENT_ID=" in gui_smoke
+assert "DISCOGGER_CRASH_REPORTS_FOUND=" in gui_smoke
+assert "Write-DiscoggerCrashEvidence" in gui_smoke
+assert "foobar2000 has crashed" in gui_smoke
+assert "Real foobar2000 crashed during the first matching tagging context dispatch." in gui_smoke
 assert "Get-Process -Name foobar2000" in gui_smoke
 assert "The actual foobar host exited after context route" in gui_smoke
 assert "foo_discogger.dll.db" in gui_smoke

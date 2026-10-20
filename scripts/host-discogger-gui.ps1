@@ -103,6 +103,49 @@ public static class DiscoggerWindowTest {
   }
 }
 '@
+function Write-DiscoggerCrashEvidence {
+    # All evidence is taken from this disposable host/profile and Windows'
+    # application error event metadata, never from user libraries or tokens.
+    Write-Host ('DISCOGGER_CRASH_WINDOWS='+([DiscoggerWindowTest]::AllVisible() -join '|'))
+    try {
+        $reports=@(Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Extension -in @('.txt','.log') -and
+                $_.Name -match 'crash|failure|exception|report'
+            } | Select-Object -First 6)
+        Write-Host ('DISCOGGER_CRASH_REPORTS_FOUND='+$reports.Count)
+        foreach($f in $reports) {
+            Write-Host ('DISCOGGER_CRASH_REPORT_NAME='+$f.Name)
+            $snippets=@(Get-Content -LiteralPath $f.FullName -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match 'Exception|Access violation|Fault|foo_discogger|Stack|Address|Module|foobar2000' } |
+                Select-Object -First 24)
+            foreach($line in $snippets) {
+                # Strip runner-local absolute paths and cap log disclosure.
+                $clean=$line -replace '[A-Za-z]:\\[^ ]+','<runner-path>'
+                Write-Host ('DISCOGGER_CRASH_REPORT_LINE='+$clean.Substring(0,[Math]::Min(220,$clean.Length)))
+            }
+        }
+    } catch { Write-Host 'DISCOGGER_CRASH_REPORT_READ=UNAVAILABLE' }
+    try {
+        $events=@(Get-WinEvent -FilterHashtable @{
+            LogName='Application'; Id=1000,1001
+            StartTime=[DateTime]::Now.AddMinutes(-20)
+        } -MaxEvents 30 -ErrorAction Stop |
+            Where-Object { $_.Message -match 'foobar2000.exe|foo_discogger.dll' } |
+            Select-Object -First 4)
+        foreach($event in $events) {
+            Write-Host ('DISCOGGER_CRASH_EVENT_ID='+$event.Id)
+            $details=@($event.Message -split "`r?`n" |
+                Where-Object {$_ -match 'Faulting application|Faulting module|Exception code|Fault offset|Application name|Module name|Ausnahme|Fehlerhaftes Modul'} |
+                Select-Object -First 9)
+            foreach($entry in $details) {
+                $clean=$entry -replace '[A-Za-z]:\\[^ ]+','<runner-path>'
+                Write-Host ('DISCOGGER_CRASH_EVENT_LINE='+$clean.Substring(0,[Math]::Min(220,$clean.Length)))
+            }
+        }
+        if($events.Count -eq 0){Write-Host 'DISCOGGER_CRASH_EVENT=NOT_PRESENT'}
+    } catch { Write-Host 'DISCOGGER_CRASH_EVENT=UNAVAILABLE' }
+}
 try {
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     Invoke-WebRequest -Uri $spec.Url -OutFile $installer -ErrorAction Stop
@@ -203,6 +246,13 @@ try {
         Write-Host ('DISCOGGER_CONTEXT_ROUTE='+$name)
         for($i=0;$i -lt 14;$i++){
             Start-Sleep -Milliseconds 500
+            $proc.Refresh()
+            $visible=@([DiscoggerWindowTest]::AllVisible())
+            if($proc.HasExited -or @($visible | Where-Object {$_ -match 'foobar2000 has crashed'}).Count) {
+                Write-Host ('DISCOGGER_CRASH_AFTER_CONTEXT_ROUTE='+$name)
+                Write-DiscoggerCrashEvidence
+                throw 'Real foobar2000 crashed during the first matching tagging context dispatch.'
+            }
             $matches=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
             if($matches.Length -gt 1){throw 'Multiple native Find Releases dialogs with the expected control IDs.'}
             if($matches.Length -eq 1){$window=$matches[0];break}
@@ -216,6 +266,10 @@ try {
         Write-Host ('DISCOGGER_RUNNING_PROCESS_IDS='+($currentProcesses.Id -join ','))
         Write-Host ('DISCOGGER_WINDOWS='+([DiscoggerWindowTest]::List([uint32]$proc.Id) -join '|'))
         Write-Host ('DISCOGGER_ALL_VISIBLE_WINDOWS='+([DiscoggerWindowTest]::AllVisible() -join '|'))
+        if($proc.HasExited -or @([DiscoggerWindowTest]::AllVisible() | Where-Object {$_ -match 'foobar2000 has crashed'}).Count) {
+            Write-DiscoggerCrashEvidence
+            throw 'foobar2000 crashed before Find Releases native controls could be verified.'
+        }
         throw 'No native Discogger dialog with all eight expected controls; see isolated host diagnostics.'
     }
     if(-not [DiscoggerWindowTest]::Responsive($window)){throw 'Native Find Releases window not responsive.'}
