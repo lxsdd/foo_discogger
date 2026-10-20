@@ -30,6 +30,7 @@ $Sources = @(
     'multivalue_fields_test.cpp',
     'cache_lru_test.cpp',
     'cache_expiry_test.cpp',
+    'cache_pages_test.cpp',
     'cfg_snapshot_ops_test.cpp',
     'async_write_lease_test.cpp',
     'artwork_noop_test.cpp',

@@ -46,6 +46,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/cache_lru_test.cpp -o /tmp/discogger-cache-test && /tmp/discogger-cache-test
       - name: Compile and run disk-cache TTL boundary regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cache_expiry_test.cpp -o /tmp/discogger-cache-expiry && /tmp/discogger-cache-expiry
+      - name: Compile and run disk-cache page integrity regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cache_pages_test.cpp -o /tmp/discogger-cache-pages && /tmp/discogger-cache-pages
       - name: Compile and run configuration snapshot migrations
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cfg_snapshot_ops_test.cpp -o /tmp/discogger-cfg-test && /tmp/discogger-cfg-test
       - name: Verify private SQLite namespace mapping across all linker imports

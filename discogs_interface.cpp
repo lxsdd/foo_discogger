@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "discogger_search_fallback.h"
+#include "discogger_cache_pages.h"
 
 #include "pfc/other.h"
 #include "discogs_interface.h"
@@ -851,64 +852,94 @@ pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8 &url, 
 namespace fs =std::filesystem;
 
 pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages_offline_cache(ol::GetFrom getFrom, pfc::string8& id, pfc::string8 &secid, pfc::string8 params, abort_callback& p_abort, const char* msg, threaded_process_status& p_status) {
+    (void)params; // The caller owns the correct API URL for an online retry.
+    p_abort.check();
+    if (getFrom != ol::GetFrom::ArtistReleases && getFrom != ol::GetFrom::Versions)
+        throw foo_discogs_exception("Unsupported offline cache page type.");
 
-	pfc::string8 path_container = get_offline_path(id, getFrom, secid, true);
-	std::filesystem::path os_path_container = std::filesystem::u8path(path_container.c_str());
+    const pfc::string8 path_container = get_offline_path(id, getFrom, secid, true);
+    const fs::path directory = fs::u8path(path_container.c_str());
+    std::map<std::size_t, fs::path> ordered_pages;
+    pfc::array_t<JSONParser_ptr> staged;
 
-	pfc::array_t<JSONParser_ptr> jparsers;
+    try {
+        if (!fs::is_directory(directory))
+            throw foo_discogs_exception("Offline cache page directory is missing.");
 
-	pfc::string8 status_msg(msg);
+        for (const auto& entry : fs::directory_iterator(directory)) {
+            p_abort.check();
+            if (entry.is_symlink())
+                throw foo_discogs_exception("Offline cache contains a symlink.");
+            if (!entry.is_directory()) continue; // Loading/task markers are files.
+            const auto utf8 = entry.path().filename().u8string();
+            const std::string name(utf8.begin(), utf8.end());
+            std::size_t index = 0;
+            if (!discogger_cache::parse_cache_page_folder(name, index) ||
+                !ordered_pages.emplace(index, entry.path()).second)
+                throw foo_discogs_exception("Offline cache page index is invalid or duplicated.");
+        }
 
-	try
-	{
-		if (fs::exists(os_path_container) && fs::is_directory(os_path_container))
-		{
-			//alt search recursive and detect root.json files
-			std::filesystem::directory_iterator dirpos{ os_path_container };
-			size_t msg_pos = 0;
-			for (std::filesystem::directory_entry walk_dir : dirpos) {
-				if (walk_dir.is_directory()) {
+        std::vector<std::size_t> indexes;
+        for (const auto& page : ordered_pages) indexes.push_back(page.first);
+        if (!discogger_cache::complete_cache_page_sequence(indexes))
+            throw foo_discogs_exception("Offline cache has missing or duplicate pages.");
 
-					if (p_abort.is_aborting()) break;
+        std::size_t expected_items = 0, expected_per_page = 0;
+        for (const auto& page : ordered_pages) {
+            p_abort.check();
+            pfc::string8 status(msg);
+            status << " page " << (page.first + 1) << "/" << ordered_pages.size();
+            p_status.set_item(status);
 
-					p_status.set_item(status_msg);
-					fs::path os_root = walk_dir;
-					os_root += "\\root.json";
-					const auto os_root_u8 = os_root.u8string();
-				const std::string os_root_utf8(os_root_u8.begin(), os_root_u8.end());
-				json_t* json_obj = offline_cache.Read_JSON(os_root_utf8.c_str());
+            const fs::path file = page.second / "root.json";
+            if (fs::is_symlink(file) || !fs::is_regular_file(file) || fs::file_size(file) == 0)
+                throw foo_discogs_exception("Offline cache page JSON is missing or empty.");
+            const auto utf8 = file.u8string();
+            const std::string file_name(utf8.begin(), utf8.end());
 
-					if (json_obj == nullptr) {
-						foo_discogs_exception ex(PFC_string_formatter() << "Invalid cache file:" << os_root.c_str());
-						throw ex;
-					}
+            const auto cleanup = [](json_t* ptr) { if (ptr) json_decref(ptr); };
+            std::unique_ptr<json_t, decltype(cleanup)> raw(
+                offline_cache.Read_JSON(file_name.c_str()), cleanup);
+            if (!json_is_object(raw.get()))
+                throw foo_discogs_exception("Offline cache page JSON root is not an object.");
 
-					pfc::string8 json(json_dumps(json_obj, 0));
+            const json_t* pagination = json_object_get(raw.get(), "pagination");
+            auto read_count = [pagination](const char* key, std::size_t& output) {
+                const json_t* value = json_object_get(pagination, key);
+                if (!json_is_integer(value) || json_integer_value(value) < 0) return false;
+                output = static_cast<std::size_t>(json_integer_value(value));
+                return true;
+            };
+            std::size_t api_page = 0, api_pages = 0, api_per_page = 0, api_items = 0;
+            const bool metadata_valid = json_is_object(pagination) &&
+                read_count("page", api_page) && read_count("pages", api_pages) &&
+                read_count("per_page", api_per_page) && read_count("items", api_items) &&
+                discogger_cache::valid_cache_pagination(page.first, ordered_pages.size(),
+                    api_page, api_pages, api_per_page, api_items);
+            const char* payload_name = getFrom == ol::GetFrom::ArtistReleases ? "releases" : "versions";
+            const json_t* payload = json_object_get(raw.get(), payload_name);
+            const bool payload_valid = metadata_valid && json_is_array(payload) &&
+                discogger_cache::valid_cache_payload_count(page.first, ordered_pages.size(),
+                    api_per_page, api_items, json_array_size(payload));
+            const bool consistent = page.first == 0 ||
+                (expected_items == api_items && expected_per_page == api_per_page);
+            if (!payload_valid || !consistent)
+                throw foo_discogs_exception("Offline cache pagination or page payload is inconsistent.");
 
-					JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
-					jparsers.append_single(std::move(jp));
-
-					status_msg = msg;
-					status_msg << PFC_string_formatter() << " page " << std::to_string(++msg_pos).c_str() << " (100 x page)";
-				}
-			}
-		}
-		else {
-
-			//try transient
-			return get_all_pages(id, params, p_abort, msg, p_status);
-		}
-	}
-	catch (const fs::filesystem_error& err)
-	{
-		log_msg(PFC_string_formatter() << "Can not access file: " << path_container);
-	}
-	catch (const std::exception& ex)
-	{
-		log_msg(PFC_string_formatter() << "Error in path: " << path_container);
-	}
-
-	return jparsers;
+            if (page.first == 0) {
+                expected_items = api_items;
+                expected_per_page = api_per_page;
+            }
+            // JSONParser retains its own Jansson reference; raw is always released.
+            JSONParser_ptr parsed = pfc::rcnew_t<JSONParser>(raw.get());
+            staged.append_single(std::move(parsed));
+        }
+    }
+    catch (const exception_aborted&) { throw; }
+    catch (const fs::filesystem_error&) {
+        throw foo_discogs_exception("Offline cache filesystem access failed.");
+    }
+    return staged; // No partial page array escapes on failure.
 }
 
 void DiscogsInterface::get_entity_offline_cache(ol::GetFrom getfrom, pfc::string8& artist_id, pfc::string8& release_id, pfc::string8& html, abort_callback& p_abort, const char* msg, threaded_process_status& p_status) {

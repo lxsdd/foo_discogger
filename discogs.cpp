@@ -3372,9 +3372,18 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 			pages = discogs_interface->get_all_pages(url, "", p_abort, "Fetching artist releases...", p_status);
 		}
 		else {
-
-			pages = discogs_interface->get_all_pages_offline_cache(ol::GetFrom::ArtistReleases, id, id, "", p_abort, "Fetching offline artist releases...", p_status);
-			offline_can_write = false;
+            try {
+                pages = discogs_interface->get_all_pages_offline_cache(ol::GetFrom::ArtistReleases, id, id, "", p_abort, "Fetching offline artist releases...", p_status);
+                offline_can_write = false;
+            }
+            catch (const exception_aborted&) { throw; }
+            catch (const std::exception&) {
+                // Never accept a partial or malformed artist cache as complete.
+                p_abort.check();
+                btransient = true;
+                url << "https://api.discogs.com/artists/" << id << "/releases";
+                pages = discogs_interface->get_all_pages(url, "", p_abort, "Refreshing invalid offline artist cache...", p_status);
+            }
 		}
 
         const size_t count = pages.get_count();
@@ -3424,6 +3433,9 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 
 							bCacheSaved &= discogs_interface->offline_cache_save(n8_page_path, pages[i]->root);
 						}
+                        else {
+                            bCacheSaved = false;
+                        }
 					}
 					else {
 						bCacheSaved = false;
@@ -3518,18 +3530,27 @@ void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, ab
 			pages = discogs_interface->get_all_pages(url, "", p_abort, "Fetching master release versions...", p_status);
 		}
 		else {
-				pages = discogs_interface->get_all_pages_offline_cache(gfVersions, artist_id, master_id, "", p_abort, "Fetching offline master releases versions ...", p_status);
-
-			//we have just read from offline, do not write in next step
-			offline_can_write = false;
+            try {
+                pages = discogs_interface->get_all_pages_offline_cache(gfVersions, artist_id, master_id, "", p_abort, "Fetching offline master releases versions ...", p_status);
+                offline_can_write = false;
+            }
+            catch (const exception_aborted&) { throw; }
+            catch (const std::exception&) {
+                p_abort.check();
+                btransient = true;
+                url << "https://api.discogs.com/masters/" << id << "/versions";
+                pages = discogs_interface->get_all_pages(url, "", p_abort, "Refreshing invalid offline master versions cache...", p_status);
+            }
 		}
 
 		const size_t cPages = pages.get_count();
+        if (!cPages) throw foo_discogs_exception("Master versions pages were empty; retaining previous results.");
 
 		bool bCacheSaved = true;
 		bool bmark_pending = false;
 
 		for (size_t i = 0; i < cPages; i++) {
+            p_abort.check();
 
 			//parse master versions
 
@@ -3566,11 +3587,17 @@ void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, ab
 
 							bCacheSaved &= discogs_interface->offline_cache_save(n8_page_path, pages[i]->root);
 						}
+                        else {
+                            bCacheSaved = false;
+                        }
 					}
+                    else {
+                        bCacheSaved = false;
+                    }
 				}
 				catch (...) {
-					//..
-				}
+                    bCacheSaved = false;
+			}
 
 				if (btransient && offline_can_write) {
 					if ((i == cPages - 1) && (bCacheSaved)) {

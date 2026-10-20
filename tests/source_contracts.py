@@ -253,6 +253,14 @@ cache_header = (root / 'ol_cache.h').read_text(encoding='utf-8-sig')
 assert 'bfolder_exists' not in cache_header
 assert 'fs::create_directories(os_path, ec);' in cache_header
 assert 'fs::is_directory(os_path, ec)' in cache_header
+reader = (root / 'discogs_interface.cpp').read_text(encoding='utf-8-sig')
+assert 'complete_cache_page_sequence(indexes)' in reader
+assert 'valid_cache_pagination(page.first, ordered_pages.size()' in reader
+assert 'valid_cache_payload_count(page.first, ordered_pages.size()' in reader
+assert 'get_all_pages(id, params, p_abort, msg, p_status)' not in reader
+discogs_source = (root / 'discogs.cpp').read_text(encoding='utf-8-sig')
+assert 'Refreshing invalid offline artist cache...' in discogs_source
+assert 'Refreshing invalid offline master versions cache...' in discogs_source
 assert 'class foo_discogs_threaded_locked_process_callback;' in (root / 'foo_discogs.h').read_text(encoding='utf-8-sig')
 assert 'return p ? p->id : pfc::string8();' in (root / 'find_artist_list.h').read_text(encoding='utf-8-sig')
 path_header = (root / 'utils_path.h').read_text(encoding='utf-8-sig')
