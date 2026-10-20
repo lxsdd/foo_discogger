@@ -864,7 +864,8 @@ assert "if (!img_artists_ndx_to_artist(release, img_ndx, artist, local_ndx)" in 
 assert "discogger_thumbnail::valid_cache_size(bytes)" in thumbnail_func
 assert "discogger_thumbnail::complete_read(input.gcount(), size)" in thumbnail_func
 assert "small_art.set_size(0);" in thumbnail_func
-assert "_read(" not in thumbnail_func
+assert "_read(jf," not in thumbnail_func
+assert "_wopen(" not in thumbnail_func
 assert "thumbnail_bounds_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "thumbnail_bounds_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
 print("PASS: cached artwork preview rejects invalid indices, oversized and partial files.")
