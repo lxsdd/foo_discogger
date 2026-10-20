@@ -103,7 +103,7 @@ public:
 		PFC_ASSERT(p_index >= 0 && p_index < get_num_items());
 		get_item_name(p_index, p_out);
 
-		if (!g_discogs) {
+		if (!g_discogs || p_data.get_count() == 0) {
 			//exit
 			p_displayflags = FLAG_GRAYED;
 			return true;
@@ -440,7 +440,7 @@ public:
 		PFC_ASSERT(p_index >= 0 && p_index < get_num_items());
 		get_item_name(p_index, p_out);
 
-		if (!g_discogs) {
+		if (!g_discogs || p_data.get_count() == 0) {
 			//exit
 			p_displayflags = FLAG_GRAYED;
 			return true;

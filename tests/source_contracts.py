@@ -3,6 +3,24 @@
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+
+# Reject unselected web/utility commands before reading item zero or dispatching.
+# This is a source guard; the actual Win32/x64 component compile and host checks
+# remain independent CI gates.
+mainmenu = (root / "mainmenu.cpp").read_text(encoding="utf-8-sig")
+web_menu = mainmenu.split("class contextmenu_discogs_web", 1)[1].split("class contextmenu_discogs :", 1)[0]
+utility_menu = mainmenu.split("class contextmenu_discogs_utilities", 1)[1]
+for section in (web_menu, utility_menu):
+    guard = "if (!g_discogs || p_data.get_count() == 0) {"
+    assert guard in section
+    assert section.index(guard) < section.index("switch (p_index)", section.index("bool context_get_display("))
+    assert "context_get_display(p_index, p_data, out, displayflags, p_caller);" in section
+    assert "if (displayflags & FLAG_GRAYED)" in section
+dialog_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+assert "if (vsplit_title.size() > 1 && tmp_artist.equals(vsplit_title[0])) {" in dialog_header
+assert "if (tmp_artist.equals(vsplit_title[0])) {" not in dialog_header
+print("PASS: empty web/utility selections are disabled; unsplit track titles never read a second token.")
+
 artist = (root / "find_artist_list.cpp").read_text(encoding="utf-8-sig")
 dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")

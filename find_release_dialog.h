@@ -442,7 +442,7 @@ private:
 			split(m_frm_track_title, "-", 0, vsplit_title);
 
 			if (vsplit_title.size()) {
-				if (tmp_artist.equals(vsplit_title[0])) {
+				if (vsplit_title.size() > 1 && tmp_artist.equals(vsplit_title[0])) {
 					tmp_track = trim(vsplit_title[1]);
 				}
 				else {
