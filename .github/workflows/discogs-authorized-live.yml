@@ -5,6 +5,12 @@ name: Discogger authorized read-only Discogs lookup
 # Never expose credentials to pull_request events or uploaded artifacts.
 on:
   workflow_dispatch:
+  # Required master checks run only when this workflow file itself changes.
+  # No token or secret is made available to these pull_request checks.
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/discogs-authorized-live.yml'
 
 permissions:
   contents: read
@@ -86,3 +92,82 @@ jobs:
               raise SystemExit('DISCOGS_LIVE_DISCOVERY=FAIL: one or more releases absent')
           print('DISCOGS_LIVE_DISCOVERY=PASS: 4/4 (fallback requires identity review)')
           PY
+
+  # No placeholder check successes: run actual portable/MSVC unit binaries
+  # from the previously verified exact Discogger development commit.
+  portable-core:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate manual-only secret access on this workflow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/discogs-authorized-live.yml').read_text()
+          assert '  workflow_dispatch:\n' in p and '  pull_request:\n' in p
+          assert '    branches: [master]\n' in p
+          assert "      - '.github/workflows/discogs-authorized-live.yml'\n" in p
+          assert "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'" in p
+          assert 'secrets.FB2K_DISCOGS_QA_TOKEN' in p
+          assert "http.client.HTTPSConnection('api.discogs.com', timeout=18)" in p
+          assert 'pull_request_target:' not in p
+          assert 'upload-artifact' not in p
+          print('PASS: manual-only Discord access is restricted.')
+          PY
+      - name: Checkout previously verified exact Discogger unit sources
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foo_discogger
+          ref: ae82b3f38a0380f885d9e0ec8397acf1b4a33389
+          path: source-tests
+          persist-credentials: false
+      - name: Execute real portable source regression contracts
+        run: python3 source-tests/tests/source_contracts.py
+      - name: Build and execute real portable C++17 safety tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for unit in write_safety_test.cpp collaboration_fallback_test.cpp result_alignment_test.cpp; do
+            g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 "source-tests/tests/$unit" -o "$RUNNER_TEMP/$unit.out"
+            "$RUNNER_TEMP/$unit.out"
+          done
+          echo 'PASS: Discogger portable safety and matching tests.'
+
+  windows-native-unit:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check read-only manual-token guard on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $text=Get-Content -LiteralPath '.github/workflows/discogs-authorized-live.yml' -Raw
+          if(-not $text.Contains("github.event_name == 'workflow_dispatch'") -or
+             -not $text.Contains("github.ref == 'refs/heads/master'") -or
+             -not $text.Contains("secrets.FB2K_DISCOGS_QA_TOKEN")) {
+            throw 'Manual-only authentication gate missing.'
+          }
+          Write-Host 'PASS: Windows manual-only authentication checks.'
+      - name: Checkout previously verified exact Discogger MSVC unit sources
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foo_discogger
+          ref: ae82b3f38a0380f885d9e0ec8397acf1b4a33389
+          path: source-tests
+          persist-credentials: false
+      - name: Compile and run real Discogger MSVC C++17 regression suite
+        shell: pwsh
+        run: ./source-tests/scripts/run-msvc-unit-tests.ps1 -Architecture '${{ matrix.architecture }}'
