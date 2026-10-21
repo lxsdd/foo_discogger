@@ -13,7 +13,21 @@ $SevenZip = (Get-Command '7z.exe' -ErrorAction SilentlyContinue).Source
 if (-not $SevenZip) { $SevenZip = Join-Path $env:ProgramFiles '7-Zip\7z.exe' }
 if (-not (Test-Path -LiteralPath $SevenZip)) { throw 'Official SDK probe requires 7z.exe.' }
 
-Invoke-WebRequest -Uri $Url -OutFile $Archive -MaximumRedirection 5
+# The official host occasionally refuses connections on ephemeral runners.
+# Retry transport failures only; never bypass the pinned archive hash/size.
+$DownloadComplete = $false
+for ($attempt = 1; $attempt -le 4; $attempt++) {
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Archive -MaximumRedirection 5 -ErrorAction Stop
+        $DownloadComplete = $true
+        break
+    } catch {
+        if ($attempt -eq 4) { throw }
+        Write-Warning "Official SDK download failed on attempt $attempt of 4; retrying."
+        Start-Sleep -Seconds (3 * $attempt)
+    }
+}
+if (-not $DownloadComplete) { throw 'Official SDK could not be downloaded.' }
 $Size = (Get-Item -LiteralPath $Archive).Length
 $Sha = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($Size -ne $ExpectedBytes -or $Sha -ne $ExpectedSha256) {

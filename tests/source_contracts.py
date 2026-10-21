@@ -1153,3 +1153,10 @@ assert gui_source.index("DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS") < gui_so
 assert "cfg_dialog_position_find_release_dlg.AddWindow(m_hWnd);" in dialog_src
 assert "cfg_dialog_position_find_release_dlg.RemoveWindow(m_hWnd);" in dialog_src
 print("PASS: disposable host resize, close/reopen and GUI position persistence gates.")
+
+# Bounded network retries never replace pinned SDK hash verification.
+sdk_probe = (root / "scripts/probe-official-sdk.ps1").read_text(encoding="utf-8-sig")
+assert "$DownloadComplete = $false" in sdk_probe
+assert "for ($attempt = 1; $attempt -le 4; $attempt++)" in sdk_probe
+assert "if ($attempt -eq 4) { throw }" in sdk_probe
+assert "$Size -ne $ExpectedBytes -or $Sha -ne $ExpectedSha256" in sdk_probe
