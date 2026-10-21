@@ -33,7 +33,7 @@ if ($signature -ne ("SQLite format 3"+[char]0)) { throw 'Invalid original Discog
 $dbHash=(Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash
 $dir=Join-Path $env:RUNNER_TEMP ('discogger-gui-'+$Architecture+'-'+[guid]::NewGuid().ToString('N'))
 $hostDir=Join-Path $dir 'host'
-$installer=Join-Path $dir 'official-installer.exe'
+$installer=$null
 $proc=$null
 Add-Type -TypeDefinition @'
 using System;
@@ -216,10 +216,20 @@ function Write-DiscoggerCrashEvidence {
 }
 try {
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    Invoke-WebRequest -Uri $spec.Url -OutFile $installer -ErrorAction Stop
-    if((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $spec.Hash) {
-        throw "Official installer hash mismatch: $Architecture"
+    # Two preceding SHA-pinned shared foobar host-smokes downloaded the
+    # original installers to the *same job's* content-addressed RUNNER_TEMP.
+    # This full GUI test must not repeat the blocked upstream download.
+    $cacheDir=Join-Path $env:RUNNER_TEMP 'foobar2000-verified-installer-v1'
+    $cacheName="$Architecture-2.26.1-$($spec.Hash.ToLowerInvariant()).exe"
+    $installer=Join-Path $cacheDir $cacheName
+    if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+        throw "DISCOGGER_GUI_INSTALLER_CACHE_MISSING_${Architecture}: pinned shared host-smoke must run first; GUI_NOT_TESTED"
     }
+    if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $spec.Hash) {
+        throw "DISCOGGER_GUI_INSTALLER_HASH_MISMATCH_${Architecture}: refusing modified cached executable; GUI_NOT_TESTED"
+    }
+    Write-Host "DISCOGGER_GUI_INSTALLER_SOURCE=VERIFIED_JOB_LOCAL_CACHE arch=$Architecture version=2.26.1"
+
     $install=Start-Process -FilePath $installer -ArgumentList @('/S',"/D=$hostDir") -Wait -PassThru
     if($install.ExitCode -ne 0){throw "Official installer exited $($install.ExitCode)"}
     $exe=Join-Path $hostDir 'foobar2000.exe'

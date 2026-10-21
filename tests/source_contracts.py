@@ -1150,6 +1150,18 @@ assert "host-discogger-gui.ps1" in host_wf.split("Parse strict PowerShell DLL bu
 gui_smoke = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 assert (root / "foo_discogger.dll.db").read_bytes().startswith(b"SQLite format 3\x00")
 assert "foo_discogger.dll.db" in gui_smoke
+# Full native GUI reuses only the byte-identical installer that the pinned
+# shared host-smoke downloaded in the same ephemeral Windows job.
+assert "foobar2000-verified-installer-v1" in gui_smoke
+assert "$Architecture-2.26.1-$($spec.Hash.ToLowerInvariant()).exe" in gui_smoke
+assert "Test-Path -LiteralPath $installer -PathType Leaf" in gui_smoke
+assert "(Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $spec.Hash" in gui_smoke
+assert "DISCOGGER_GUI_INSTALLER_CACHE_MISSING_" in gui_smoke
+assert "DISCOGGER_GUI_INSTALLER_HASH_MISMATCH_" in gui_smoke
+assert "DISCOGGER_GUI_INSTALLER_SOURCE=VERIFIED_JOB_LOCAL_CACHE" in gui_smoke
+assert "Invoke-WebRequest -Uri $spec.Url -OutFile $installer" not in gui_smoke
+shared_gui_flow = host_wf[host_wf.index("name: HARD GATE - real foobar2000 Win32 component host load"):]
+assert shared_gui_flow.index("name: HARD GATE - real foobar2000 Win32 component host load") < shared_gui_flow.index("name: HARD GATE - real foobar2000 x64 component host load") < shared_gui_flow.index("name: HARD GATE - Discogger first-run SQLite configuration and Win32 native GUI") < shared_gui_flow.index("name: HARD GATE - Discogger first-run SQLite configuration and x64 native GUI")
 assert "DISCOGGER_INITIALIZATION_$Architecture=PASS" in gui_smoke
 assert "DISCOGGER_INIT_DIAGNOSTIC=no_configuration_database" in gui_smoke
 assert "DISCOGGER_FIRST_RUN_APPEARANCE=DISMISS_IN_TEST_ONLY" in gui_smoke
