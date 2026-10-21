@@ -10,6 +10,7 @@
 #include "querydefmap.h"
 #include "discogs.h"
 #include "ol_cache.h"
+#include "discogger_cache_pages.h"  // paginated release list completeness guard
 
 using namespace Discogs;
 
