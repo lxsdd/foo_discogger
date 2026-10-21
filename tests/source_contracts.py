@@ -1035,7 +1035,7 @@ print("PASS: cached artwork preview rejects invalid indices, oversized and parti
 # and inspect the exact built component in the same ephemeral Windows job.
 # A source-wiring check is not itself live-host acceptance.
 host_wf = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
-shared_action = "lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@99cc4b8c31d4ac8e640da0c375675566dc44762e"
+shared_action = "lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec"
 assert host_wf.count("uses: " + shared_action) == 2
 assert host_wf.index("run: ./scripts/build-component-dll.ps1") < host_wf.index("HARD GATE - real foobar2000 Win32 component host load")
 assert host_wf.index("HARD GATE - real foobar2000 Win32 component host load") < host_wf.index("HARD GATE - real foobar2000 x64 component host load")
