@@ -9,6 +9,23 @@
 #include "discogger_result_alignment.h"
 #include <set>
 
+
+namespace {
+// Guard release/track dereferences during both preview generation and commit.
+// Old UI mappings may outlive the release tree they originally referred to.
+bool valid_enabled_track_mapping(const Release_ptr& release,
+    const track_mapping& mapping, size_t file_count) {
+    if (!release || mapping.file_index >= file_count ||
+        mapping.discogs_disc < 0 ||
+        static_cast<size_t>(mapping.discogs_disc) >= release->discs.get_count()) return false;
+    const auto& disc = release->discs[mapping.discogs_disc];
+    return disc && discogger_result_alignment::valid_track_location(
+        mapping.discogs_disc, mapping.discogs_track,
+        release->discs.get_count(), disc->tracks.get_count()) &&
+        static_cast<bool>(disc->tracks[mapping.discogs_track]);
+}
+} // namespace
+
 TagWriter::TagWriter(file_info_manager_ptr finfo_manager, Release_ptr release) : m_finfo_manager(finfo_manager), release(release), tag_results_mask_mode(PreView::Undef) {
 
 	pfc::string8 buffer;
@@ -325,6 +342,16 @@ bool check_multiple_results(pfc::array_t<string_encoded_array> where, string_enc
 void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_process_status& p_status, abort_callback& p_abort) {
 
 	atm_tag_results_ready = false;
+    if (!m_finfo_manager || !release)
+        throw foo_discogs_exception("Tag generation stopped: missing release or file context.");
+    // Check every enabled mapping before evaluating a formatting script.
+    // A partial preview must never silently shift approvals to other tracks.
+    for (size_t i = 0; i < m_track_mappings.get_count(); ++i) {
+        const auto& mapping = m_track_mappings[i];
+        if (mapping.enabled && !valid_enabled_track_mapping(
+                release, mapping, m_finfo_manager->get_item_count()))
+            throw foo_discogs_exception("Tag generation stopped: stale or invalid Discogs track mapping.");
+    }
 
 	auto masksize = tag_results_mask.size();
 
@@ -699,9 +726,9 @@ void TagWriter::write_tags() {
     for (size_t i = 0; i < m_track_mappings.get_count(); ++i) {
         const auto& mapping = m_track_mappings[i];
         if (!mapping.enabled) continue;
-        if (mapping.file_index >= file_count ||
+        if (!valid_enabled_track_mapping(release, mapping, file_count) ||
             !used_file_indices.insert(mapping.file_index).second)
-            throw foo_discogs_exception("Tagging stopped: invalid or duplicate file mapping.");
+            throw foo_discogs_exception("Tagging stopped: invalid, stale or duplicate track mapping.");
         ++enabled_count;
     }
     if (enabled_count == 0)
