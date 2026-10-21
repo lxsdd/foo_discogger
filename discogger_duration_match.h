@@ -11,7 +11,7 @@ inline std::size_t unique_nearest_unclaimed(
     const std::vector<int>& deltas, const std::vector<bool>& claimed) noexcept {
     const std::size_t none = static_cast<std::size_t>(-1);
     if (deltas.empty() || deltas.size() != claimed.size()) return none;
-    int best = std::numeric_limits<int>::max();
+    int best = (std::numeric_limits<int>::max)(); // Windows SDK defines max as macro
     std::size_t winner = none;
     bool ambiguous = false;
     for (std::size_t i = 0; i < deltas.size(); ++i) {

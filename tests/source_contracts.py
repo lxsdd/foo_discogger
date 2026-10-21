@@ -1404,3 +1404,10 @@ assert pagination_code.count('json_object_get(jp->root, "versions")') == 2
 assert pagination_code.count("json_is_array(page_entries)") == 2
 assert "valid_online_payload_count(" in (root / "tests/cache_pages_test.cpp").read_text(encoding="utf-8-sig")
 print("PASS: online search and artist pagination checks validate actual JSON array payload counts.")
+
+# Windows foobar2000 SDK headers may define the max(a,b) macro. Never use
+# unparenthesized numeric_limits<T>::max() inside a native component TU.
+duration_header = (root / "discogger_duration_match.h").read_text(encoding="utf-8-sig")
+assert "int best = (std::numeric_limits<int>::max)();" in duration_header
+assert "std::numeric_limits<int>::max();" not in duration_header
+print("PASS: duration matcher compiles with Windows SDK max macro.")
