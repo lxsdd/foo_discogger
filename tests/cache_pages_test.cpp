@@ -10,6 +10,18 @@ int main() {
     assert(valid_online_page(3, 3, 3, 100, 201, 3, 100, 201));
     assert(valid_online_page(1, 1, 0, 100, 0, 0, 0, 0));
     assert(valid_online_page(1, 1, 1, 100, 0, 0, 0, 0));
+    // A Discogs response must report exactly ceil(items/per_page) pages:
+    // otherwise a partial list can be incorrectly committed as complete.
+    assert(valid_online_page(1, 1, 1, 100, 100, 0, 0, 0));
+    assert(valid_online_page(1, 1, 2, 100, 101, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 1, 100, 101, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 2, 100, 201, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 4, 100, 201, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 3, 100, 200, 0, 0, 0));
+    assert(valid_online_page(1, 1, 0, 100, 0, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 0, 100, 1, 0, 0, 0));
+    assert(!valid_online_page(1, 1, 1, 100,
+        static_cast<std::size_t>(-1), 0, 0, 0));
     assert(!valid_online_page(0, 0, 3, 100, 201, 0, 0, 0));
     assert(!valid_online_page(1, 0, 3, 100, 201, 0, 0, 0));
     assert(!valid_online_page(1, 2, 3, 100, 201, 0, 0, 0));

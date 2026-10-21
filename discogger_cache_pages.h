@@ -19,8 +19,12 @@ inline bool valid_online_page(std::size_t requested_page, std::size_t returned_p
     // Discogs may report zero pages for an empty first-page result.
     if (items == 0) {
         if (pages > 1 || requested_page != 1) return false;
-    } else if (pages == 0) {
-        return false;
+    } else {
+        // Reject partial/contradictory API pagination before any result can
+        // be published to the GUI or accepted as a complete disk cache.
+        // Subtraction avoids overflow when items is untrusted SIZE_MAX.
+        if (pages == 0 || pages != 1 + (items - 1) / per_page)
+            return false;
     }
     if (pages != 0 && requested_page > pages) return false;
     if (requested_page > 1 &&

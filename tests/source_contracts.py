@@ -152,6 +152,9 @@ release_section = parsed_releases[parsed_releases.index("void Discogs::parseArti
                                   parsed_releases.index("void Discogs::parseMasterVersions(")]
 assert release_section.count("if (!present)") >= 2
 plan = (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
+cache_pages_contract = (root / "discogger_cache_pages.h").read_text(encoding="utf-8-sig")
+assert "pages != 1 + (items - 1) / per_page" in cache_pages_contract
+assert "discogger_cache::valid_online_page(" in search
 assert "without_terminal_mix_suffix" in plan
 assert "build_fallback_plan(" in plan
 assert "if (key.size() < 3) return plan;" in plan
