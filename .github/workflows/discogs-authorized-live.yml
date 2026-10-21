@@ -115,9 +115,9 @@ jobs:
           assert "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'" in p
           assert 'secrets.FB2K_DISCOGS_QA_TOKEN' in p
           assert "http.client.HTTPSConnection('api.discogs.com', timeout=18)" in p
-          assert 'pull_request_target:' not in p
-          assert 'upload-artifact' not in p
-          print('PASS: manual-only Discord access is restricted.')
+          assert not any(line.startswith('  pull_request_target:') for line in p.splitlines())
+          assert not any(line.lstrip().startswith('uses: actions/' + 'upload-artifact') for line in p.splitlines())
+          print('PASS: manual-only Discogs access is restricted.')
           PY
       - name: Checkout previously verified exact Discogger unit sources
         uses: actions/checkout@v4
