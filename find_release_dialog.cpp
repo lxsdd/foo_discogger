@@ -1922,14 +1922,14 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     // Exercise the real "no exact artist; show alternatives" handling.
     CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
     on_search_artist_done(exact, alternatives, false);
-    if (m_alist.get_size() != 1 ||
+    if (m_alist.Get_Artists().get_count() != 1 ||
         IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED)
         throw std::runtime_error("Native populated alternative artist list/filter failed.");
     ShowArtistSearchResults(artist);
     const size_t releases = m_dctree.Get_Size();
     if (releases != 4)
         throw std::runtime_error("Native populated release tree did not contain four releases.");
-    return {m_alist.get_size(), releases};
+    return {m_alist.Get_Artists().get_count(), releases};
 }
 #endif
 

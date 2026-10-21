@@ -564,10 +564,11 @@ private:
 
 	void on_get_artist_done(cupdRelSrc updsrc, Artist_ptr& artist);
 	void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap);
-	#if defined(DISCOGGER_RUNNER_MEDIA_QA)
-    // TEST-ONLY: synthetic, bounded artist/release models in real GUI.
-    // Never included in ordinary or distributable component builds.
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+public:
+    // TEST-ONLY: available solely in the isolated runner component.
     std::pair<size_t, size_t> runner_qa_populated_search_rows();
+private:
 #endif
     void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append) {
 		std::pair<size_t, size_t> unused_va_cap{0, 0};
