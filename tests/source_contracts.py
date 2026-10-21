@@ -619,6 +619,17 @@ assert "$savedCompilerFlags = $env:CL" in native_build
 assert "finally {\n            $env:CL = $savedCompilerFlags" in native_build
 assert 'Invoke-Required "Discogger native full build and LINK $platform"' in native_build
 print("PASS: native Win32/x64 zlib CMake generated headers use isolated MSVC CL search path.")
+# Isolated host tests also open a disposable external CUE through the real
+# Discogger context route and hash both the CUE and its synthetic WAV.
+host_gui = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "synthetic-album.cue" in host_gui
+assert 'FILE "synthetic-silence.wav" WAVE' in host_gui
+assert 'DISCOGGER_GUI_EXTERNAL_CUE_CONTEXT_NO_WRITE_$Architecture=PASS' in host_gui
+assert 'The external CUE was changed by a read-only context/dialog operation.' in host_gui
+assert '$cueHash' in host_gui and '$cueTicks' in host_gui
+assert 'MEDIA_WRITE_SAFETY_$Architecture=NOT_TESTED' in host_gui
+print("PASS: native host external CUE context and no-write evidence is enforced.")
+
 
 # Native Windows resource compiler gate: every named control in .rc must have
 # an assigned ID. Missing IDs compile silently in ClCompile but fail in RC.exe.

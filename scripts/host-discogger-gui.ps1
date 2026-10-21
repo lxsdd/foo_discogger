@@ -258,6 +258,21 @@ try {
     $wavHash=(Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash
     $wavSize=$before.Length
     $wavTicks=$before.LastWriteTimeUtc.Ticks
+    # A synthetic external CUE references only disposable test audio.
+    $cue=Join-Path $dir 'synthetic-album.cue'
+    $cueBody=@'
+PERFORMER "Discogger Synthetic Artist"
+TITLE "Discogger Synthetic Album"
+FILE "synthetic-silence.wav" WAVE
+  TRACK 01 AUDIO
+    TITLE "Synthetic Track"
+    INDEX 01 00:00:00
+'@
+    [IO.File]::WriteAllText($cue,$cueBody,[Text.Encoding]::ASCII)
+    $cueBefore=Get-Item -LiteralPath $cue
+    $cueHash=(Get-FileHash -LiteralPath $cue -Algorithm SHA256).Hash
+    $cueSize=$cueBefore.Length
+    $cueTicks=$cueBefore.LastWriteTimeUtc.Ticks
 
     $proc=Start-Process -FilePath $exe -WorkingDirectory $hostDir -PassThru
     Start-Sleep -Seconds 5
@@ -400,6 +415,41 @@ try {
     $reopenedLayoutError=[DiscoggerWindowTest]::CheckFindReleasesGeometry($reopened)
     if($reopenedLayoutError){throw ('Reopened Find Releases layout failed: '+$reopenedLayoutError)}
     Write-Host "DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS"
+    # Read-only external CUE context route; no tag/CUE writer is activated.
+    if(-not [DiscoggerWindowTest]::PostMessageW($reopened,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+        throw 'Cannot close disposable WAV dialog before the CUE context test.'
+    }
+    $oldDialogClosed=$false
+    for($n=0;$n -lt 35;$n++){
+        Start-Sleep -Milliseconds 200
+        if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){
+            $oldDialogClosed=$true;break
+        }
+    }
+    if(-not $oldDialogClosed){throw 'WAV dialog remains open before the CUE test.'}
+    $cueArgs='/context_command:"'+$chosenContextRoute+'" "'+$cue+'"'
+    $cueLauncher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $cueArgs -PassThru
+    if(-not $cueLauncher.WaitForExit(15000) -or $cueLauncher.ExitCode -ne 0){
+        throw 'External CUE context command could not be dispatched.'
+    }
+    $cueDialog=[IntPtr]::Zero
+    for($n=0;$n -lt 30;$n++){
+        Start-Sleep -Milliseconds 300
+        $proc.Refresh()
+        if($proc.HasExited){throw 'foobar2000 terminated during external CUE context load.'}
+        $matches=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+        if($matches.Length -gt 1){throw 'Multiple Find Releases dialogs during external CUE test.'}
+        if($matches.Length -eq 1){$cueDialog=$matches[0];break}
+    }
+    if($cueDialog -eq [IntPtr]::Zero -or -not [DiscoggerWindowTest]::Responsive($cueDialog)){
+        throw 'External CUE did not open a responsive native Find Releases dialog.'
+    }
+    $cueAfter=Get-Item -LiteralPath $cue
+    if((Get-FileHash -LiteralPath $cue -Algorithm SHA256).Hash -ne $cueHash -or
+       $cueAfter.Length -ne $cueSize -or $cueAfter.LastWriteTimeUtc.Ticks -ne $cueTicks){
+        throw 'The external CUE was changed by a read-only context/dialog operation.'
+    }
+    Write-Host "DISCOGGER_GUI_EXTERNAL_CUE_CONTEXT_NO_WRITE_$Architecture=PASS"
     $after=Get-Item -LiteralPath $wav
     if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash -or
        $after.Length -ne $wavSize -or $after.LastWriteTimeUtc.Ticks -ne $wavTicks){
