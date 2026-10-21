@@ -47,9 +47,16 @@ void run_disposable_media_writer_qa(t_uint32 format) {
     manager->invalidate_all();
     auto& info = manager->get_item(0);
     const size_t oldCount = info.meta_get_count_by_name("DISCOGGER_QA_RUNNER");
-    if (!discogger_write_safety::unchanged_single_value(
-            oldCount, oldCount ? info.meta_get("DISCOGGER_QA_RUNNER", 0) : nullptr,
-            "RUNNER-VERIFIED")) {
+    const bool unchanged = discogger_write_safety::unchanged_single_value(
+        oldCount, oldCount ? info.meta_get("DISCOGGER_QA_RUNNER", 0) : nullptr,
+        "RUNNER-VERIFIED");
+    // Isolated diagnostics only: no values, no personal paths, no host token.
+    if (format == 1) {
+        std::ofstream diagnostic(folder / "qa-flac-stage-evidence.txt", std::ios::app);
+        if (!diagnostic) throw std::runtime_error("Missing FLAC diagnostic stream.");
+        diagnostic << "count=" << oldCount << " unchanged=" << (unchanged ? 1 : 0) << '\n';
+    }
+    if (!unchanged) {
         info.meta_set("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED");
         manager->validate_item(0);
     }

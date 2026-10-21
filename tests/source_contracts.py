@@ -1523,3 +1523,12 @@ assert "discogger_write_safety::unchanged_single_value(" in tag_writer_src
 assert "discogger_write_safety::unchanged_single_value(" in qa_media_src
 assert "if (!discogger_write_safety::unchanged_single_value(" in qa_media_src
 print("PASS: single-value unchanged metadata does not call meta_set or physical write.")
+
+# Real FLAC no-op failures must identify whether the original readback matches
+# the desired single value, and distinguish actual byte rewrites from mtime.
+qa_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+qa_source = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+assert 'qa-flac-stage-evidence.txt' in qa_source
+assert 'qa-flac-stage-evidence.txt' in qa_host
+assert 'DISCOGGER_QA_NOOP_DIAGNOSTIC=' in qa_host
+print("PASS: synthetic FLAC readback and byte/mtime diagnostics are wired.")

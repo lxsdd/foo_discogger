@@ -597,8 +597,17 @@ FILE "synthetic-side-b.wav" WAVE
         if(-not $secondConfirmed){
             throw "QA $($qa.Name) identical second tag command lacked success/no-op callback."
         }
-        if((Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash -ne $stableHash -or
-           (Get-Item -LiteralPath $qa.File).LastWriteTimeUtc.Ticks -ne $stableTicks){
+        $bytesChanged=(Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash -ne $stableHash
+        $timeChanged=(Get-Item -LiteralPath $qa.File).LastWriteTimeUtc.Ticks -ne $stableTicks
+        if($bytesChanged -or $timeChanged){
+            if($qa.Name -eq 'FLAC'){
+                $stage=Join-Path $dir 'qa-flac-stage-evidence.txt'
+                if(Test-Path -LiteralPath $stage -PathType Leaf){
+                    Write-Host ('DISCOGGER_QA_FLAC_STAGES='+((Get-Content -LiteralPath $stage) -join '|'))
+                }
+            }
+            Write-Host ("DISCOGGER_QA_NOOP_DIAGNOSTIC="+$qa.Name+
+              " bytesChanged="+$bytesChanged+" mtimeChanged="+$timeChanged)
             throw "QA $($qa.Name) identical second tag commit changed bytes or timestamp."
         }
         Write-Host ("DISCOGGER_PHYSICAL_TAG_WRITE_NOOP_"+$qa.Name+"_"+$Architecture+"=PASS")
