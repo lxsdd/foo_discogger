@@ -8,6 +8,7 @@
 #include "error_manager.h"
 #include "tag_writer.h"
 #include "discogger_async_write_lease.h"
+#include "discogger_artist_load_ownership.h"
 
 #include "track_matching_dialog.h"
 #include "preview_dialog.h"
@@ -233,7 +234,7 @@ class get_multi_artists_process_callback : public foo_discogs_threaded_process_c
 {
 public:
 	get_multi_artists_process_callback(cupdRelSrc cupdsrc, const int va, const std::vector<size_t> & artist_ids)
-		: m_artist_ids(artist_ids), m_cupdsrc(cupdsrc), m_va(va) {
+		: m_artist_ids(discogger_async::unique_artist_ids(artist_ids)), m_cupdsrc(cupdsrc), m_va(va) {
 		
 		m_bload_releases = m_cupdsrc != updRelSrc::ArtistProfile && m_cupdsrc != updRelSrc::UndefFast;
 		m_bload_releases |= m_cupdsrc.extended;	

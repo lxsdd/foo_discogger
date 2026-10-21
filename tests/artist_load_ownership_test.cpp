@@ -4,6 +4,10 @@
 #include <vector>
 
 int main() {
+    const std::vector<std::size_t> duplicates{100,200,100,300,200,0,0};
+    assert((discogger_async::unique_artist_ids(duplicates) == std::vector<std::size_t>{100,200,300,0}));
+    assert(discogger_async::unique_artist_ids(std::vector<std::size_t>{}).empty());
+
     auto equal = [](const std::string& a, const std::string& b) { return a == b; };
     std::vector<std::string> active{"other", "mine-1", "mine-2"};
     std::vector<std::string> mine{"mine-1", "mine-2"};
