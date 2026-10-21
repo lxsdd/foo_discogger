@@ -560,16 +560,22 @@ FILE "synthetic-side-b.wav" WAVE
         if(-not $commandExe.WaitForExit(15000) -or $commandExe.ExitCode -ne 0){
             throw "Failed to invoke test-only $($qa.Name) metadata writer."
         }
+        $completion=Join-Path $dir ('qa-'+$qa.Name.ToLowerInvariant()+'-completed.txt')
+        if(Test-Path -LiteralPath $completion){throw 'Runner QA completion unexpectedly exists before first commit.'}
         $changed=$false
-        for($n=0;$n -lt 60;$n++){
+        $committed=$false
+        for($n=0;$n -lt 70;$n++){
             Start-Sleep -Milliseconds 400
-            if((Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash -ne $beforeHash){
-                $changed=$true;break
-            }
+            $changed=(Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash -ne $beforeHash
+            $committed=(Test-Path -LiteralPath $completion -PathType Leaf) -and
+                ((Get-Content -LiteralPath $completion -Raw).Trim() -ceq '1')
+            if($changed -and $committed){break}
             $proc.Refresh()
             if($proc.HasExited){throw "Foobar exited during $($qa.Name) physical writer."}
         }
-        if(-not $changed){throw "Expected actual $($qa.Name) physical tag write did not occur."}
+        if(-not ($changed -and $committed)){
+            throw "Expected physical tag write AND completion callback did not occur for $($qa.Name)."
+        }
         & python (Join-Path $PSScriptRoot '../tests/verify-runner-physical-tags.py') $original $qa.File
         if($LASTEXITCODE -ne 0){throw "QA $($qa.Name) metadata preservation failed"}
         $stableHash=(Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash
@@ -578,7 +584,19 @@ FILE "synthetic-side-b.wav" WAVE
         if(-not $noOp.WaitForExit(15000) -or $noOp.ExitCode -ne 0){
             throw "No-op test-only $($qa.Name) metadata command failed."
         }
-        Start-Sleep -Seconds 3
+        $secondConfirmed=$false
+        for($n=0;$n -lt 60;$n++){
+            Start-Sleep -Milliseconds 300
+            if((Test-Path -LiteralPath $completion -PathType Leaf) -and
+               (Get-Content -LiteralPath $completion -Raw).Trim() -ceq '2'){
+                $secondConfirmed=$true;break
+            }
+            $proc.Refresh()
+            if($proc.HasExited){throw "Foobar exited during $($qa.Name) no-op test."}
+        }
+        if(-not $secondConfirmed){
+            throw "QA $($qa.Name) identical second tag command lacked success/no-op callback."
+        }
         if((Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash -ne $stableHash -or
            (Get-Item -LiteralPath $qa.File).LastWriteTimeUtc.Ticks -ne $stableTicks){
             throw "QA $($qa.Name) identical second tag commit changed bytes or timestamp."

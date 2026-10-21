@@ -1478,3 +1478,14 @@ for guard in ('GITHUB_ACTIONS', 'RUNNER_TEMP', 'DISCOGGER_QA_MEDIA_DIR',
     assert guard in qa_source
 assert 'verify-runner-physical-tags.py' in host_test
 print("PASS: test-only actual file_info_manager write and no-op harness is wired.")
+
+# Verify native QA uses the real SDK menu header and acknowledges both
+# asynchronous writer completions; rejected second commands are not no-ops.
+assert '#include "SDK/menu.h"' in qa_source
+assert '#include "SDK/mainmenu.h"' not in qa_source
+assert "qa-mp3-completed.txt" in qa_source
+assert "qa-flac-completed.txt" in qa_source
+assert "manager->write_infos([completion, sequence]()" in qa_source
+assert "Expected physical tag write AND completion callback" in host_test
+assert "identical second tag command lacked success/no-op callback" in host_test
+print("PASS: test-only physical commit success and genuine no-op callback gates.")

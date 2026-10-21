@@ -2,7 +2,8 @@
 // Never present in any ordinary user build or distributed DLL.
 #include "file_info_manager.h"
 #include "discogger_async_write_lease.h"
-#include "SDK/mainmenu.h"
+#include "SDK/menu.h"
+#include <fstream>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -45,7 +46,24 @@ void run_disposable_media_writer_qa(t_uint32 format) {
     manager->validate_item(0);
     auto lease = discogger_write_safety::acquire_physical_write_lease();
     if (!lease) throw std::runtime_error("QA physical writer lease unavailable.");
-    manager->write_infos({}, std::move(lease), false);
+    // A write is not accepted merely because foobar's command launcher
+    // returned. Require completion callback evidence, once per invocation.
+    const auto completion = folder /
+        (format == 0 ? "qa-mp3-completed.txt" : "qa-flac-completed.txt");
+    int previous = 0;
+    if (std::filesystem::exists(completion)) {
+        std::ifstream prior(completion);
+        if (!(prior >> previous) || previous != 1)
+            throw std::runtime_error("QA completion marker is stale or invalid.");
+    }
+    const int sequence = previous + 1;
+    manager->write_infos([completion, sequence]() {
+        std::ofstream output(completion, std::ios::trunc);
+        if (!output) throw std::runtime_error("QA completion marker cannot be written.");
+        output << sequence << '\n';
+        output.flush();
+        if (!output) throw std::runtime_error("QA completion marker could not be flushed.");
+    }, std::move(lease), false);
 }
 
 class discogger_runner_media_commands : public mainmenu_commands {
