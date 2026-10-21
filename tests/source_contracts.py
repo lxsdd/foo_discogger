@@ -1489,3 +1489,8 @@ assert "manager->write_infos([completion, sequence]()" in qa_source
 assert "Expected physical tag write AND completion callback" in host_test
 assert "identical second tag command lacked success/no-op callback" in host_test
 print("PASS: test-only physical commit success and genuine no-op callback gates.")
+
+# Windows MSVC's default C++20 char8_t must not leak into std::string paths.
+assert "const std::string utf8path(utf8_units.begin(), utf8_units.end());" in qa_source
+assert "const std::string logical = \"file://\" + utf8path;" in qa_source
+print("PASS: runner-only native QA accepts MSVC char8_t UTF-8 file paths.")

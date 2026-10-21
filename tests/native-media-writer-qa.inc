@@ -30,7 +30,10 @@ void run_disposable_media_writer_qa(t_uint32 format) {
     if (!std::filesystem::is_regular_file(media) || std::filesystem::is_symlink(media))
         throw std::runtime_error("QA target is missing or a symlink.");
     // Convert the canonical, newly-created disposable target to foobar path.
-    const auto utf8path = media.u8string();
+    const auto utf8_units = media.u8string();
+    // MSVC's C++20 char8_t does not implicitly convert to std::string.
+    // Retain UTF-8 code units verbatim for foobar's playable-location path.
+    const std::string utf8path(utf8_units.begin(), utf8_units.end());
     const std::string logical = "file://" + utf8path;
     metadb_handle_ptr handle = metadb::get()->handle_create(logical.c_str(), 0);
     if (!handle || handle->get_subsong_index() != 0)
