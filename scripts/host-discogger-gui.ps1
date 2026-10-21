@@ -317,6 +317,8 @@ FILE "synthetic-side-b.wav" WAVE
         $moreBefore[$path]=@{ hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash;
             size=$item.Length; ticks=$item.LastWriteTimeUtc.Ticks }
     }
+    # QA-only DLL gets access to this ephemeral folder; no user music path.
+    [Environment]::SetEnvironmentVariable('DISCOGGER_QA_MEDIA_DIR',$dir,'Process')
     $proc=Start-Process -FilePath $exe -WorkingDirectory $hostDir -PassThru
     Start-Sleep -Seconds 5
     $proc.Refresh()
@@ -546,6 +548,43 @@ FILE "synthetic-side-b.wav" WAVE
         }
     }
     Write-Host "DISCOGGER_GUI_MP3_FLAC_CUE_READONLY_$Architecture=PASS"
+    # Real SDK file_info_manager tag commits, runner-only compiled command.
+    # These tests do not qualify artwork or failed multi-file rollback.
+    $qaPaths=@(@{Name='MP3';File=$mp3},@{Name='FLAC';File=$flac})
+    foreach($qa in $qaPaths){
+        $beforeHash=(Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash
+        $original=Join-Path $dir ('qa-original-'+$qa.Name.ToLowerInvariant()+'.backup')
+        Copy-Item -LiteralPath $qa.File -Destination $original
+        $command='/command:"Discogger QA '+$qa.Name+' write"'
+        $commandExe=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $command -PassThru
+        if(-not $commandExe.WaitForExit(15000) -or $commandExe.ExitCode -ne 0){
+            throw "Failed to invoke test-only $($qa.Name) metadata writer."
+        }
+        $changed=$false
+        for($n=0;$n -lt 60;$n++){
+            Start-Sleep -Milliseconds 400
+            if((Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash -ne $beforeHash){
+                $changed=$true;break
+            }
+            $proc.Refresh()
+            if($proc.HasExited){throw "Foobar exited during $($qa.Name) physical writer."}
+        }
+        if(-not $changed){throw "Expected actual $($qa.Name) physical tag write did not occur."}
+        & python (Join-Path $PSScriptRoot '../tests/verify-runner-physical-tags.py') $original $qa.File
+        if($LASTEXITCODE -ne 0){throw "QA $($qa.Name) metadata preservation failed"}
+        $stableHash=(Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash
+        $stableTicks=(Get-Item -LiteralPath $qa.File).LastWriteTimeUtc.Ticks
+        $noOp=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $command -PassThru
+        if(-not $noOp.WaitForExit(15000) -or $noOp.ExitCode -ne 0){
+            throw "No-op test-only $($qa.Name) metadata command failed."
+        }
+        Start-Sleep -Seconds 3
+        if((Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash -ne $stableHash -or
+           (Get-Item -LiteralPath $qa.File).LastWriteTimeUtc.Ticks -ne $stableTicks){
+            throw "QA $($qa.Name) identical second tag commit changed bytes or timestamp."
+        }
+        Write-Host ("DISCOGGER_PHYSICAL_TAG_WRITE_NOOP_"+$qa.Name+"_"+$Architecture+"=PASS")
+    }
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"

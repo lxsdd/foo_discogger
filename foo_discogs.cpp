@@ -964,3 +964,7 @@ void foo_discogs::cui_v2_common_callback::on_font_changed(uint32_t changed_items
 	//..
 }
 #endif
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/native-media-writer-qa.inc"
+#endif

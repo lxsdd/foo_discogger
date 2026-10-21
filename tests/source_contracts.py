@@ -1464,3 +1464,17 @@ assert "synthetic-multifile.cue" in host_test
 assert "35369054c56f4c6ccb2f802944e9675852fd35ec" in host_workflow
 assert "b430229832fb8a1e7824716b1fefb34e5706ea89593dd73ddf7133c17ae8bec0" in mp3_fixture
 print("PASS: pinned synthetic MP3/FLAC/CUE native read-only media matrix wired.")
+
+# Runner-only native SDK writer harness: no production QA command and no
+# non-disposable paths; actual writes are independently checked by Python.
+qa_source = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+plugin_source = (root / "foo_discogs.cpp").read_text(encoding="utf-8-sig")
+assert '#if defined(DISCOGGER_RUNNER_MEDIA_QA)' in plugin_source
+assert 'CL: /DDISCOGGER_RUNNER_MEDIA_QA' in host_workflow
+assert 'DISCOGGER_QA_MEDIA_DIR' in host_test
+assert 'DISCOGGER_PHYSICAL_TAG_WRITE_NOOP_' in host_test
+for guard in ('GITHUB_ACTIONS', 'RUNNER_TEMP', 'DISCOGGER_QA_MEDIA_DIR',
+              'weakly_canonical', 'is_regular_file', 'is_symlink'):
+    assert guard in qa_source
+assert 'verify-runner-physical-tags.py' in host_test
+print("PASS: test-only actual file_info_manager write and no-op harness is wired.")
