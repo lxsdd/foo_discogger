@@ -46,6 +46,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_visibility_test.cpp -o /tmp/discogger-search-visibility && /tmp/discogger-search-visibility
       - name: Compile and run artist double-click selection regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_activation_test.cpp -o /tmp/discogger-artist-activate && /tmp/discogger-artist-activate
+      - name: Reject stale enabled-track approval and collapsed-value alignment
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/result_alignment_test.cpp -o /tmp/discogger-result-alignment && /tmp/discogger-result-alignment
       - name: Reject ambiguous or already claimed duration matches
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/duration_match_test.cpp -o /tmp/discogger-duration-match && /tmp/discogger-duration-match
       - name: Compile and run empty/shortened tag preview selection regressions

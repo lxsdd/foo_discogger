@@ -6,6 +6,8 @@
 #include "tag_writer.h"
 #include "tag_deletion_preflight.h"
 #include "discogger_duration_match.h"
+#include "discogger_result_alignment.h"
+#include <set>
 
 TagWriter::TagWriter(file_info_manager_ptr finfo_manager, Release_ptr release) : m_finfo_manager(finfo_manager), release(release), tag_results_mask_mode(PreView::Undef) {
 
@@ -455,9 +457,12 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 					}
 					result->value.append_single(value);
 				}
-				catch (http_404_exception) {
-					log_msg("error runing...");
-				}
+				catch (http_404_exception&) {
+                    // Never append approval rows for a tag whose value failed
+                    // to generate: truncated rows could target the wrong file.
+                    atm_tag_results_ready = true;
+                    throw foo_discogs_exception("Tag generation stopped: Discogs resource missing (HTTP 404).");
+                }
 				catch (foo_discogs_exception& e) {
 					atm_tag_results_ready = true;
 					foo_discogs_exception ex;
@@ -685,6 +690,32 @@ void process_result(const metadb_handle_ptr item, file_info* info, size_t ndx_tr
 }
 
 void TagWriter::write_tags() {
+    // Generator approval rows are indexed only by enabled track mappings.
+    // A stale preview, missing result, duplicate physical target, or out-of-
+    // range file index must be rejected BEFORE touching any working file_info.
+    const size_t file_count = m_finfo_manager->get_item_count();
+    size_t enabled_count = 0;
+    std::set<size_t> used_file_indices;
+    for (size_t i = 0; i < m_track_mappings.get_count(); ++i) {
+        const auto& mapping = m_track_mappings[i];
+        if (!mapping.enabled) continue;
+        if (mapping.file_index >= file_count ||
+            !used_file_indices.insert(mapping.file_index).second)
+            throw foo_discogs_exception("Tagging stopped: invalid or duplicate file mapping.");
+        ++enabled_count;
+    }
+    if (enabled_count == 0)
+        throw foo_discogs_exception("Tagging stopped: no enabled track mappings.");
+    if (tag_results_mask.size() > tag_results.get_count())
+        throw foo_discogs_exception("Tagging stopped: stale preview selection mask.");
+    for (size_t i = 0; i < tag_results.get_count(); ++i) {
+        const auto& result = tag_results[i];
+        if (!result || !result->tag_entry ||
+            !discogger_result_alignment::valid_result_shape(
+                enabled_count, result->r_approved.get_count(),
+                result->value.get_count(), result->old_value.get_count()))
+            throw foo_discogs_exception("Tagging stopped: stale or incomplete tag preview rows.");
+    }
 
 	m_finfo_manager->invalidate_all();
 
@@ -695,6 +726,7 @@ void TagWriter::write_tags() {
 	bool bhasmask = tag_results_mask.size();
 
 	//tracks
+    size_t enabled_result_index = 0;
 	for (size_t i = 0; i < m_track_mappings.get_count(); i++) {
 
 		const track_mapping &mapping = m_track_mappings[i];
@@ -702,12 +734,13 @@ void TagWriter::write_tags() {
 		if (!mapping.enabled) {
 			continue;
 		}
+        const size_t approval_row = enabled_result_index++;
 
 		size_t file_index = mapping.file_index;
 
 		if (file_index >= m_finfo_manager.get()->get_item_count()) {
-			//run out of tracks... skip unmatched files
-			break;
+			// Stale mapping: fail closed rather than submitting a partial batch.
+            throw foo_discogs_exception("Tagging stopped: mapping is outside the selected files.");
 		}
 		metadb_handle_ptr item = m_finfo_manager->get_item_handle(file_index);
 		file_info &info = m_finfo_manager->get_item(file_index);
@@ -730,7 +763,7 @@ void TagWriter::write_tags() {
 
 				bool bvalidate = false;
 				write_tag_nfo out_write_info = { 0 };
-				process_result(item, &info, i /*ndx_track_mappings*/, result, bhasmask, tag_results_mask_force_wu, false, bvalidate, out_write_info);
+				process_result(item, &info, approval_row /*enabled result row*/, result, bhasmask, tag_results_mask_force_wu, false, bvalidate, out_write_info);
 
 				if (out_write_info.item.get_ptr()) {
 					if (out_write_info.tag_values_array.get_count()) {
@@ -760,7 +793,7 @@ void TagWriter::write_tags() {
 
 				bool bvalidate = false;
 				write_tag_nfo out_write_info = { 0 };
-				process_result(item, &info, i, result, bhasmask, tag_results_mask_force_wu, mask_size, bvalidate, out_write_info);
+				process_result(item, &info, approval_row, result, bhasmask, tag_results_mask_force_wu, mask_size, bvalidate, out_write_info);
 
 				if (out_write_info.item.get_ptr()) {
 					if (out_write_info.tag_values_array.get_count()) {

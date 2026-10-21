@@ -1357,3 +1357,22 @@ for unit_runner in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/valida
     assert "duration_match_test.cpp" in (root / unit_runner).read_text(encoding="utf-8-sig")
 assert "- work/portable-build-properties-20261018" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
 print("PASS: conservative duration tie handling and exact-branch CI trigger guards.")
+
+# The generator stores approval rows only for enabled mapped tracks; the
+# write path must not index those rows with the unfiltered mapping index.
+writer_source = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+writer_commit = writer_source[writer_source.index("void TagWriter::write_tags()"):
+                              writer_source.index("// single vals", writer_source.index("void TagWriter::write_tags()"))]
+assert '#include "discogger_result_alignment.h"' in writer_source
+assert "valid_result_shape(" in writer_commit
+assert writer_commit.index("valid_result_shape(") < writer_commit.index("invalidate_all();")
+assert "const size_t approval_row = enabled_result_index++;" in writer_commit
+assert writer_commit.count("process_result(item, &info, approval_row") == 2
+assert "process_result(item, &info, i /*ndx_track_mappings*/" not in writer_commit
+assert "process_result(item, &info, i, result" not in writer_commit
+assert "std::set<size_t> used_file_indices;" in writer_commit
+assert "tag_results_mask.size() > tag_results.get_count()" in writer_commit
+assert "Tag generation stopped: Discogs resource missing (HTTP 404)." in writer_source
+for runner in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
+    assert "result_alignment_test.cpp" in (root / runner).read_text(encoding="utf-8-sig")
+print("PASS: compressed enabled-track preview rows, stale row reject, and HTTP 404 fail-closed.")

@@ -30,6 +30,7 @@ $Sources = @(
     'preview_selection_test.cpp',
     'preview_restore_test.cpp',
     'duration_match_test.cpp',
+    'result_alignment_test.cpp',
     'release_id_test.cpp',
     'release_tree_snapshot_test.cpp',
     'write_safety_test.cpp',
