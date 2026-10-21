@@ -1376,3 +1376,15 @@ assert "Tag generation stopped: Discogs resource missing (HTTP 404)." in writer_
 for runner in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "result_alignment_test.cpp" in (root / runner).read_text(encoding="utf-8-sig")
 print("PASS: compressed enabled-track preview rows, stale row reject, and HTTP 404 fail-closed.")
+
+# Statistics must never dereference a stale/missing or truncated preview row.
+stats_source = (root / "preview_dialog.cpp").read_text(encoding="utf-8-sig")
+stats_block = stats_source[stats_source.index("void CPreviewTagsDialog::compute_stats_track_map("):]
+assert '#include "discogger_result_alignment.h"' in stats_source
+assert "const size_t tk_count = res ? res->r_approved.get_count() : 0;" in stats_block
+assert "valid_result_shape(" in stats_block
+assert "if (!res || !res->tag_entry ||" in stats_block
+assert "m_vstats.emplace_back(preview_stats{});" in stats_block
+assert stats_block.count("if (walk_tag >= m_vstats.size()) m_vstats.resize(walk_tag + 1);") >= 2
+assert stats_block.index("valid_result_shape(") < stats_block.index("const tag_mapping_entry* entry = res->tag_entry;")
+print("PASS: preview statistics reject stale tag rows and retain stable vector indices.")

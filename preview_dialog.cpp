@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "discogger_result_alignment.h"
 
 #include <GdiPlus.h>
 #pragma comment(lib, "gdiplus.lib")
@@ -1010,12 +1011,25 @@ void CPreviewTagsDialog::compute_stats_track_map(pfc::bit_array_bittable list_ma
 
 		preview_stats stats;
 
-		const tag_result_ptr res = m_tag_writer->tag_results[walk_tag];
-		const tag_mapping_entry* entry = res->tag_entry;
-
-		int subwrites = 0, subupdates = 0, subskips = 0, wereequal = 0;
-
-		const size_t tk_count = res->r_approved.get_count();
+        const tag_result_ptr res = m_tag_writer->tag_results[walk_tag];
+        const size_t tk_count = res ? res->r_approved.get_count() : 0;
+        // Stats are observational, not a license to read stale preview
+        // rows or approve physical changes. Preserve vector indexing even
+        // when the editor was closed or a generator produced partial data.
+        if (!res || !res->tag_entry ||
+            !discogger_result_alignment::valid_result_shape(
+                tk_count, tk_count, res->value.get_count(),
+                res->old_value.get_count())) {
+            if (m_vstats_mask.size()) {
+                if (walk_tag >= m_vstats.size()) m_vstats.resize(walk_tag + 1);
+                m_vstats[walk_tag] = preview_stats{};
+            } else {
+                m_vstats.emplace_back(preview_stats{});
+            }
+            continue;
+        }
+        const tag_mapping_entry* entry = res->tag_entry;
+        int subwrites = 0, subupdates = 0, subskips = 0, wereequal = 0;
 
 		preview_stats before_tag_loop_stats = stats;
 
@@ -1124,6 +1138,7 @@ void CPreviewTagsDialog::compute_stats_track_map(pfc::bit_array_bittable list_ma
 			updatedtags++;
 
 		if (m_vstats_mask.size()) {
+            if (walk_tag >= m_vstats.size()) m_vstats.resize(walk_tag + 1);
 			m_vstats[walk_tag] = stats;
 		}
 		else {

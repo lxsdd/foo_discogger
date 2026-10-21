@@ -67,3 +67,10 @@ Verification: `tests/result_alignment_test.cpp`, `tests/source_contracts.py`,
 and the Linux/MSVC Win32/x64 CI matrix. Tests here do **not** certify actual
 MP3/FLAC metadata writes, rollback, embedded CUE editing, or DLL distribution.
 Release gates #5, #7 and #8 remain open until separately demonstrated.
+
+### Statistics UI row safety
+
+The tag statistics renderer also refuses missing or malformed generated
+result/approval arrays before accessing a row, and preserves statistics vector
+alignment. This prevents stale preview dialogs from treating absent tag data
+as an in-bounds row. The physical write path remains independently guarded.
