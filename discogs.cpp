@@ -3291,6 +3291,9 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
     // result atomically, and restore the request on cancellation or failure.
     const bool explicit_refresh = release_refresh.take();
 
+    // Disk-cache setup and configuration access can throw as well. Restore
+    // explicit refresh requests regardless of where an exception occurs.
+    try {
 	bool offline_can_read = ol::can_read();
 	bool offline_can_write = ol::can_write();
 	bool offline_can_overwrite = ol::can_ovr();
@@ -3312,7 +3315,6 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
         return;
     }
 
-	try {
         if (explicit_refresh) p_status.set_item("Refreshing artist releases online...");
 		pfc::string8 url;
 		pfc::array_t<JSONParser_ptr> pages;

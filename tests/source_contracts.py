@@ -121,6 +121,7 @@ assert "if (pos >= current_artists.get_count() || !current_artists[pos]) return;
 artist_load = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 artist_load = artist_load[artist_load.index("void Discogs::Artist::load_releases("):artist_load.index("void Discogs::MasterRelease::load_releases(")]
 assert "const bool explicit_refresh = release_refresh.take();" in artist_load
+assert artist_load.index("const bool explicit_refresh = release_refresh.take();") < artist_load.index("    try {") < artist_load.index("bool offline_can_read = ol::can_read();")
 assert "|| explicit_refresh" in artist_load
 assert artist_load.count("release_refresh.retry_after_failure(explicit_refresh);") == 3
 tasks_callbacks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")

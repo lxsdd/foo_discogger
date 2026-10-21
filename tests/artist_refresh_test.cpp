@@ -15,6 +15,16 @@ int main() {
     assert(gate.pending() && gate.take() && !gate.pending());
     gate.retry_after_failure(false);
     assert(!gate.pending());
+
+    // A disk-cache/setup failure before any HTTP request must requeue intent.
+    gate.request();
+    const bool before_cache_probe = gate.take();
+    try {
+        throw 42; // synthetic offline setup error
+    } catch (...) {
+        gate.retry_after_failure(before_cache_probe);
+    }
+    assert(gate.pending() && gate.take() && !gate.pending());
     gate.request();
     const bool in_flight = gate.take();
     std::thread next([&] { gate.request(); });
