@@ -90,6 +90,13 @@ assert 'discogger_async::unique_artist_ids(artist_ids)' in native_tasks_h
 assert "discogger_async::owns_id(m_checked_in_artist_ids, registry_id" in native_tasks_cpp
 assert "discogger_async::should_load_owned_releases(" in native_tasks_cpp
 assert "std::to_string(artist_id).c_str(), fetch_releases, p_status, p_abort" in native_tasks_cpp
+multi_safe_run = native_tasks_cpp.split("void get_multi_artists_process_callback::safe_run(", 1)[1].split(
+    "void get_multi_artists_process_callback::on_success(", 1
+)[0]
+assert "if (m_bload_releases) check_in();" in multi_safe_run
+assert "if (!check_in()) {" not in multi_safe_run
+assert "for (auto artist_id : m_artist_ids)" in multi_safe_run
+assert "m_artists.add_item(std::move(artist));" in multi_safe_run
 assert 'm_checked_in_artist_ids, g_discogs->vArtistLoadReleasesTasks' in multi_worker
 assert 'for (auto artist_id : m_artist_ids)' not in multi_worker.split(
     "void get_multi_artists_process_callback::check_out()", 1)[1]

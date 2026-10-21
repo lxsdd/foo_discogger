@@ -1099,11 +1099,11 @@ void get_multi_artists_process_callback::check_out() {
 
 void get_multi_artists_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
 
-	if (m_bload_releases) {
-		if (!check_in()) {
-			return;
-		}
-	}
+    // When every ID is owned by another worker, check_in() returns false.
+    // Still enumerate the selected artists for the UI; the per-ID ownership
+    // gate below suppresses every duplicate *release* download. Returning
+    // here used to publish an empty artist preview for a valid selection.
+    if (m_bload_releases) check_in();
 
 	size_t count = 0;
 	for (auto artist_id : m_artist_ids) {

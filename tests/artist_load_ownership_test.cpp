@@ -17,6 +17,31 @@ int main() {
     assert(!discogger_async::should_load_owned_releases(true, false));
     assert(!discogger_async::should_load_owned_releases(false, true));
     assert(!discogger_async::should_load_owned_releases(false, false));
+
+    // All selected artists are already being loaded by another task.
+    // The second task must still visit every artist for preview, while
+    // requesting zero redundant release downloads.
+    const std::vector<std::string> all_busy{"12","35","88"};
+    const std::vector<std::string> none_owned;
+    std::size_t visited = 0, duplicate_downloads = 0;
+    for (const auto& artist_id : all_busy) {
+        ++visited;
+        if (discogger_async::should_load_owned_releases(
+                true, discogger_async::owns_id(none_owned, artist_id, equal))) {
+            ++duplicate_downloads;
+        }
+    }
+    assert(visited == all_busy.size() && duplicate_downloads == 0);
+
+    // Partial overlap still loads only the ID actually acquired by this task.
+    const std::vector<std::string> partially_owned{"35"};
+    std::size_t partial_downloads = 0;
+    for (const auto& artist_id : all_busy) {
+        if (discogger_async::should_load_owned_releases(
+                true, discogger_async::owns_id(partially_owned, artist_id, equal)))
+            ++partial_downloads;
+    }
+    assert(partial_downloads == 1);
     std::vector<std::string> active{"other", "mine-1", "mine-2"};
     std::vector<std::string> mine{"mine-1", "mine-2"};
     std::vector<std::string> skipped; // "other" belonged to another task.
