@@ -1,0 +1,33 @@
+# Discogs online search pagination integrity
+
+The online Discogs API may return valid-looking pagination metadata without
+providing the corresponding number of items in its actual JSON array.
+An incomplete response can masquerade as an empty/missing release and can
+also poison cached artist-release and master-version lists.
+
+The draft Discogger branch checks the actual `results`, `releases` or
+`versions` JSON array in **both** online page-fetching overloads. The
+helper `discogger_cache::valid_online_payload_count` verifies the exact item
+count for each page, including the last partial page and both valid forms
+of zero-result pagination (`pages=0` and `pages=1`).
+
+Malformed or incomplete results throw a descriptive exception before
+publishing the staged page list. They are not interpreted as successful
+no-result matches; the caller can retry after a temporary server failure.
+
+## Regression qualification
+
+- `tests/cache_pages_test.cpp` includes missing/short/excess pages, final
+  partial pages and empty-result cases.
+- `tests/source_contracts.py` verifies checks in **both** actual online
+  fetching overloads and guards against accidental removal.
+- Linux C++17 and MSVC Win32/x64 unit tests are part of the ordinary Draft
+  PR workflow, followed by the existing full DLL/real host/GUI hard gate.
+
+## Limits
+
+These tests do not prove that all four user-reported missing Discogs releases
+are found through authenticated live queries. They also do not prove safe
+metadata/artwork/replaygain/CUE writes to disposable MP3 or FLAC fixtures.
+Until independent tests and upstream rights review are complete, no merged
+or distributed binary may be treated as approved.
