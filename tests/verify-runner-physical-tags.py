@@ -68,7 +68,7 @@ def id3_txxx_values(content):
         if enc == 1 and not (raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff")):
             codec = "utf-16-le"
         try:
-            payload = raw.decode(codec).strip("\x00")
+            payload = raw.decode(codec).replace("\ufeff", "").strip("\x00")
         except UnicodeError as error:
             raise AssertionError("Corrupt Unicode TXXX frame") from error
         if "\x00" in payload:
@@ -120,6 +120,13 @@ def selftest_id3():
             frame = b"TXXX" + size + bytes(2) + body
             fake = b"ID3" + bytes((version, 0, 0)) + ss(len(frame)) + frame
             assert id3_txxx_values(fake) == [("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")]
+    # UTF-16 values may carry their own second BOM after the description.
+    dual = (b"\xff\xfe" + "DISCOGGER_QA_RUNNER".encode("utf-16-le") +
+            b"\x00\x00\xff\xfe" + "RUNNER-VERIFIED".encode("utf-16-le"))
+    body = b"\x01" + dual
+    frame = b"TXXX" + len(body).to_bytes(4, "big") + bytes(2) + body
+    assert id3_txxx_values(b"ID3\x03\x00\x00" + ss(len(frame)) + frame) == [
+        ("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")]
     print("DISCOGGER_ID3_TXXX_UNICODE_VERIFIER=PASS")
 
 if __name__ == "__main__":
