@@ -12,6 +12,7 @@
 #include "configuration_dialog.h"
 #include "crc.h"
 #include "tasks.h"
+#include "discogger_preview_selection.h"
 #include "discogger_artist_load_ownership.h"
 #include "discogger_write_safety.h"
 #include "discogger_physical_targets.h"
@@ -131,36 +132,30 @@ void generate_tags_task::on_success(HWND p_wnd) {
 		CPreviewLeadingTagDialog* preview_modal_tag_dialog = g_discogs->preview_modal_tag_dialog;
 		if (preview_modal_tag_dialog && IsWindow(preview_modal_tag_dialog->m_hWnd)) {
 
-			tag_result_ptr detailed_res;
-			size_t new_sel = 0;
-			size_t curr_sel = preview_modal_tag_dialog->GetResult(detailed_res);
-
-			bool bmovetoprev = false;
-			if (new_res_count <= curr_sel) {
-				bmovetoprev = true;
-			}
-			else {
-
-				bool new_enabled = m_tag_writer->tag_results[curr_sel]->tag_entry->enable_write || m_tag_writer->tag_results[curr_sel]->tag_entry->enable_update;
-				if (!new_enabled) {
-					bmovetoprev = true;
-				}
-			}
-
-			if (bmovetoprev) {
-				if (curr_sel - 1 < new_res_count)
-					new_sel = curr_sel - 1 < 0 ? 0 : curr_sel - 1;
-				else
-					new_sel = new_res_count - 1;
-			}
-			else {
-				new_sel = curr_sel;
-			}
-
-			const auto new_res_tag_entry = m_tag_writer->tag_results[new_sel]->tag_entry;
-			preview_modal_tag_dialog->SetTagWriter(m_tag_writer);
-
-			preview_modal_tag_dialog->ReloadItem(core_api::get_main_window(), new_sel, /*use current modal preview view mode*/PreView::Undef);
+            // Regeneration can legitimately produce zero tags (all rejected
+            // or no matching tracks). Do not access [size-1] in that case.
+            if (new_res_count == 0) {
+                ::DestroyWindow(preview_modal_tag_dialog->m_hWnd);
+            } else {
+                tag_result_ptr detailed_res;
+                const size_t curr_sel = preview_modal_tag_dialog->GetResult(detailed_res);
+                bool selected_enabled = false;
+                if (curr_sel < new_res_count) {
+                    const auto& current = m_tag_writer->tag_results[curr_sel];
+                    selected_enabled = current && current->tag_entry &&
+                        (current->tag_entry->enable_write || current->tag_entry->enable_update);
+                }
+                const auto next = discogger_ui::choose_preview_detail(
+                    curr_sel, new_res_count, selected_enabled);
+                const auto& next_result = m_tag_writer->tag_results[next.index];
+                if (!next_result || !next_result->tag_entry) {
+                    ::DestroyWindow(preview_modal_tag_dialog->m_hWnd);
+                } else {
+                    preview_modal_tag_dialog->SetTagWriter(m_tag_writer);
+                    preview_modal_tag_dialog->ReloadItem(
+                        core_api::get_main_window(), next.index, PreView::Undef);
+                }
+            }
 
 		}
 

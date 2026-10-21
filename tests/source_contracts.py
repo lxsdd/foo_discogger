@@ -617,6 +617,19 @@ assert "g_discogs->track_matching_dialog != m_dialog" in artwork_complete
 assert "g_discogs->track_matching_dialog->m_hWnd != m_owner_window" in artwork_complete
 assert "g_discogs->track_matching_dialog->process_download_art_paths_done(" in artwork_complete
 assert "IsWindow(m_dialog->m_hWnd)" not in artwork_complete
+# Recomputed tag results may shrink or be empty while a detail modal is open.
+# Revalidate the selected index before dereferencing and close empty modals.
+preview_task_source = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+preview_success = preview_task_source[preview_task_source.index("void generate_tags_task::on_success("):
+    preview_task_source.index("void generate_tags_task::on_abort(")]
+assert '#include "discogger_preview_selection.h"' in preview_task_source
+assert "if (new_res_count == 0)" in preview_success
+assert "discogger_ui::choose_preview_detail(" in preview_success
+assert "::DestroyWindow(preview_modal_tag_dialog->m_hWnd)" in preview_success
+assert "m_tag_writer->tag_results[new_sel]" not in preview_success
+assert "curr_sel - 1 < 0" not in preview_success
+for filepath in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
+    assert "preview_selection_test.cpp" in (root / filepath).read_text(encoding="utf-8-sig")
 print("PASS: native compile-cluster source regressions (tag write lock, C++20, UI and CRC32).")
 
 # C++20 / SDK cfg_objList mapping ownership and pointer lifetime contracts.
