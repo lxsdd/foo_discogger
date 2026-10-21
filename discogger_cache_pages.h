@@ -78,4 +78,20 @@ inline bool valid_cache_payload_count(std::size_t folder_index, std::size_t fold
     const std::size_t expected = remaining < api_per_page ? remaining : api_per_page;
     return actual_items == expected;
 }
+
+ // Validate actual online response entry counts. Empty result pages may
+ // use pages=0 or pages=1; normalize to the one returned JSON response.
+inline bool valid_online_payload_count(std::size_t requested_page,
+                                       std::size_t reported_pages,
+                                       std::size_t per_page,
+                                       std::size_t items,
+                                       std::size_t actual_items) noexcept {
+    if (requested_page == 0 || per_page == 0 || per_page > 100 ||
+        reported_pages > max_cached_pages || (reported_pages == 0 && items != 0))
+        return false;
+    const std::size_t page_count = reported_pages == 0 ? 1 : reported_pages;
+    return valid_cache_payload_count(requested_page - 1, page_count,
+        per_page, items, actual_items);
+}
+
 }

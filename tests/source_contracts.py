@@ -1411,3 +1411,10 @@ duration_header = (root / "discogger_duration_match.h").read_text(encoding="utf-
 assert "int best = (std::numeric_limits<int>::max)();" in duration_header
 assert "std::numeric_limits<int>::max();" not in duration_header
 print("PASS: duration matcher compiles with Windows SDK max macro.")
+
+# A call-site-only pagination predicate is not sufficient; require the
+# actual helper definition in the checked-out SDK-independent header.
+cache_header = (root / "discogger_cache_pages.h").read_text(encoding="utf-8-sig")
+assert "inline bool valid_online_payload_count(" in cache_header
+assert "return valid_cache_payload_count(requested_page - 1, page_count," in cache_header
+print("PASS: native/portable online page payload verifier has an actual definition.")
