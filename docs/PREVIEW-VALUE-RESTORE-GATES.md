@@ -48,3 +48,22 @@ exercised on wholly disposable fixtures, with no user media.
 Upstream redistribution rights and user authorization for any DLL release
 remain separate blocked release gates. No merge, tag, release or binary
 artifact is implied by these tests.
+
+## Enabled-mapping row alignment and failure isolation (draft safety gate)
+
+Tag generation records one approval row per **enabled** mapping. The full release
+mapping list can also include disabled rows. Previously the write loop used the
+unfiltered mapping index when dereferencing the compact approval array; this
+could target another file's approval decision or access past the array.
+
+The write path now validates nonempty, complete tag-preview row shapes before
+any working metadata mutation, refuses duplicate or out-of-range target files,
+and advances a separate approval-row index only when a mapping is enabled.
+Shared original/current preview values (one item) remain valid alongside
+per-enabled-track arrays. Unmapped, truncated, stale, or missing entries fail
+closed; HTTP 404 during generation no longer leaves truncated rows behind.
+
+Verification: `tests/result_alignment_test.cpp`, `tests/source_contracts.py`,
+and the Linux/MSVC Win32/x64 CI matrix. Tests here do **not** certify actual
+MP3/FLAC metadata writes, rollback, embedded CUE editing, or DLL distribution.
+Release gates #5, #7 and #8 remain open until separately demonstrated.
