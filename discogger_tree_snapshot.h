@@ -5,6 +5,21 @@
 
 // Read-only tree label accounting; a cached release may be absent or partial.
 namespace discogger_tree {
+// Release-tree rows may outlive a cache rebuild. Index and row-type
+// validation is independent of the foobar GUI and tested on both architectures.
+enum class row_kind { master, subrelease, standalone, invalid };
+inline bool valid_row_indices(row_kind kind, std::size_t master_index,
+                              std::size_t release_index, std::size_t master_count,
+                              std::size_t subrelease_count, std::size_t release_count) noexcept {
+    switch (kind) {
+    case row_kind::master: return master_index < master_count;
+    case row_kind::subrelease:
+        return master_index < master_count && release_index < subrelease_count;
+    case row_kind::standalone: return release_index < release_count;
+    default: return false;
+    }
+}
+
 template <typename ReleasePtr>
 std::pair<std::size_t, std::size_t> count_cached_tracks(const ReleasePtr& release) {
     if (!release) return {0, 0};

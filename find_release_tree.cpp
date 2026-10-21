@@ -26,6 +26,39 @@ pfc::string8 CFindReleaseTree::run_hook_columns(row_col_data& row_data, int item
 	pfc::string8 id;
 
 	row_data.col_data_list.clear();
+    row_data.id = -1;
+
+    const auto unavailable = [&]() -> pfc::string8 {
+        pfc::string8 label("[Release unavailable]");
+        row_data.col_data_list.emplace_back(0, label);
+        return label;
+    };
+    if (!m_find_release_artist) return unavailable();
+
+    const auto kind = myparam.is_master() ? discogger_tree::row_kind::master :
+        myparam.is_release() ? discogger_tree::row_kind::subrelease :
+        myparam.is_nmrelease() ? discogger_tree::row_kind::standalone :
+                                discogger_tree::row_kind::invalid;
+    if (kind == discogger_tree::row_kind::invalid) return unavailable();
+
+    const bool needs_master = kind == discogger_tree::row_kind::master ||
+                              kind == discogger_tree::row_kind::subrelease;
+    MasterRelease_ptr master;
+    if (needs_master) {
+        if (myparam.master_ndx >= m_find_release_artist->master_releases.get_count())
+            return unavailable();
+        master = m_find_release_artist->master_releases[myparam.master_ndx];
+        if (!master) return unavailable();
+    }
+    const size_t child_count = master ? master->sub_releases.get_count() : 0;
+    if (!discogger_tree::valid_row_indices(kind, myparam.master_ndx,
+            myparam.release_ndx, m_find_release_artist->master_releases.get_count(),
+            child_count, m_find_release_artist->releases.get_count()))
+        return unavailable();
+    if (kind == discogger_tree::row_kind::subrelease &&
+        !master->sub_releases[myparam.release_ndx]) return unavailable();
+    if (kind == discogger_tree::row_kind::standalone &&
+        !m_find_release_artist->releases[myparam.release_ndx]) return unavailable();
 
 	if (myparam.is_master()) {
 		CONF.search_master_format_string->run_hook(m_location, m_info_p, m_hook.get(), search_formatted, nullptr);
@@ -36,7 +69,6 @@ pfc::string8 CFindReleaseTree::run_hook_columns(row_col_data& row_data, int item
 
 		if (myparam.is_release()) {
 			CONF.search_master_sub_format_string->run_hook(m_location, m_info_p, m_hook.get(), search_formatted, nullptr);
-			pfc::string8 main_release_id = m_find_release_artist->master_releases[myparam.master_ndx]->main_release->id;
 			pfc::string8 this_release_id = m_find_release_artist->master_releases[myparam.master_ndx]->sub_releases[myparam.release_ndx]->id;
 			id << this_release_id;
 		}

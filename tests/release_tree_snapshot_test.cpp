@@ -14,6 +14,18 @@ struct fake_release {
     } discs;
 };
 int main() {
+    using discogger_tree::row_kind;
+    using discogger_tree::valid_row_indices;
+    assert(valid_row_indices(row_kind::master, 0, 9999, 1, 0, 0));
+    assert(!valid_row_indices(row_kind::master, 1, 0, 1, 0, 0));
+    assert(valid_row_indices(row_kind::subrelease, 0, 1, 1, 2, 0));
+    assert(!valid_row_indices(row_kind::subrelease, 0, 2, 1, 2, 0));
+    assert(!valid_row_indices(row_kind::subrelease, 1, 0, 1, 2, 0));
+    assert(valid_row_indices(row_kind::standalone, 9999, 0, 0, 0, 1));
+    assert(!valid_row_indices(row_kind::standalone, 0, 1, 0, 0, 1));
+    assert(!valid_row_indices(row_kind::invalid, 0, 0, 1, 1, 1));
+    assert(!valid_row_indices(row_kind::master,
+        (std::numeric_limits<std::size_t>::max)(), 0, 1, 0, 0));
     std::shared_ptr<fake_release> missing;
     assert((discogger_tree::count_cached_tracks(missing) == std::pair<std::size_t, std::size_t>{0, 0}));
     auto release = std::make_shared<fake_release>();

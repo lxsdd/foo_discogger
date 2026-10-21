@@ -1057,6 +1057,16 @@ assert "cit == cache_ptr->cache.end() || cit->second.first.col_data_list.empty()
 assert tree_frag.index("cit == cache_ptr->cache.end()") < tree_frag.index("if (pItem->mask & TVIF_TEXT)")
 assert tree_frag.count("cache_ptr->cache.find(lparam)") == 1
 assert tree_source.count("discogger_tree::count_cached_tracks(release)") == 2
+tree_hooks = tree_source[tree_source.index("pfc::string8 CFindReleaseTree::run_hook_columns("):
+                         tree_source.index("void CFindReleaseTree::rebuild_treeview()")]
+assert "discogger_tree::valid_row_indices(kind" in tree_hooks
+assert "if (!m_find_release_artist) return unavailable();" in tree_hooks
+assert "if (!master) return unavailable();" in tree_hooks
+assert "if (kind == discogger_tree::row_kind::subrelease &&" in tree_hooks
+assert "if (kind == discogger_tree::row_kind::standalone &&" in tree_hooks
+assert "main_release->id" not in tree_hooks
+assert "row_data.id = -1;" in tree_hooks
+assert "row_data.col_data_list.emplace_back(0, label);" in tree_hooks
 assert "myparam.master_ndx >= m_find_release_artist->master_releases.get_count()" in tree_source
 assert "test_getatcursor(p, tvi, true)" in tree_source
 assert "(tvhitinfo.flags & TVHT_ONITEM)" in tree_source
