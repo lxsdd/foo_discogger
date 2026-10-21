@@ -1436,3 +1436,18 @@ write_button = preview_code.split("bool CPreviewTagsDialog::check_write_tags_sta
 )[0]
 assert "if (!m_tag_writer || !m_tag_writer->ResultsReady()) return false;" in write_button
 print("PASS: failed tag generation never re-enables stale preview writes.")
+
+# Empty/malformed Discogs artist lists cannot be dereferenced by preview
+# context menus, including a direct command without a menu selection.
+preview_menu = preview_code.split("bool CPreviewTagsDialog::context_menu_show(", 1)[1].split(
+    "bool CPreviewTagsDialog::context_menu_switch(", 1
+)[0]
+assert "if (!m_tag_writer || !m_tag_writer->GetRelease())" in preview_menu
+assert "tw_release->artists.get_count() && tw_release->artists[0]" in preview_menu
+assert "is_enabled() && m_tag_writer->ResultsReady()" in preview_menu
+preview_commands = preview_code.split("bool CPreviewTagsDialog::context_menu_switch(", 1)[1].split(
+    "bool CPreviewTagsDialog::check_write_tags_status()", 1
+)[0]
+assert "current->artists.get_count()" in preview_commands
+assert "static_cast<size_t>(cmd - ID_URL_ARTISTS) < vartists.size()" in preview_commands
+print("PASS: empty artists and stale previews do not enable context menu writes.")

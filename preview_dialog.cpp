@@ -420,7 +420,7 @@ LRESULT CPreviewTagsDialog::OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lPara
 
 bool CPreviewTagsDialog::context_menu_show(HWND wnd, size_t isel, LPARAM lParamPos) {
 
-	if (!m_tag_writer->GetRelease()) {
+	if (!m_tag_writer || !m_tag_writer->GetRelease()) {
 		return false;
 	}
 
@@ -445,13 +445,17 @@ bool CPreviewTagsDialog::context_menu_show(HWND wnd, size_t isel, LPARAM lParamP
 	auto tw_release = m_tag_writer->GetRelease();
 	pfc::string8 discogs_release_id(tw_release->id);
 	pfc::string8 master_release_id(tw_release->master_id);
-	pfc::string8 artist_id(tw_release->artists[0]->full_artist->id);
+	pfc::string8 artist_id;
+    if (tw_release->artists.get_count() && tw_release->artists[0] &&
+        tw_release->artists[0]->full_artist)
+        artist_id = tw_release->artists[0]->full_artist->id;
 
 	bool hasRelease = discogs_release_id.get_length();
 	bool hasMasterRelease = master_release_id.get_length();
 	bool hasArtist = artist_id.get_length();
 	std::vector<std::pair<std::string, std::string>>vartists;
-	bool bmultiartist = discogs_interface->artists_vid(tw_release, vartists);
+	bool bmultiartist = hasArtist &&
+        discogs_interface->artists_vid(tw_release, vartists);
 	//..
 
 	try {
@@ -524,11 +528,12 @@ bool CPreviewTagsDialog::context_menu_show(HWND wnd, size_t isel, LPARAM lParamP
 			str_force_wu << "&Force Write && Update selected tag" << (csel > 1 ? "s" : "");
 
 			uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-			uAppendMenu(menu, MF_STRING | (csel && is_enabled() ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_TAGS_MASK, str);
-			uAppendMenu(menu, MF_STRING | (csel && is_enabled() ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_TAGS_MASK_FORCE_WU, str_force_wu);
+			const bool can_write = is_enabled() && m_tag_writer->ResultsReady();
+            uAppendMenu(menu, MF_STRING | (csel && can_write ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_TAGS_MASK, str);
+			uAppendMenu(menu, MF_STRING | (csel && can_write ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_TAGS_MASK_FORCE_WU, str_force_wu);
 		}
 		uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-		uAppendMenu(menu, MF_STRING | (!is_enabled() ? MF_DISABLED | MF_GRAYED : 0), ID_PREVIEW_CMD_WRITE_TAGS, "&Write all tags");
+		uAppendMenu(menu, MF_STRING | (!(is_enabled() && m_tag_writer->ResultsReady()) ? MF_DISABLED | MF_GRAYED : 0), ID_PREVIEW_CMD_WRITE_TAGS, "&Write all tags");
 
 		int cmd = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD, point.x, point.y, 0, wnd, 0);
 		DestroyMenu(menu);
@@ -684,11 +689,15 @@ bool CPreviewTagsDialog::context_menu_switch(HWND wnd, POINT point, int cmd, bit
 		break;
 	}
 	case ID_URL_ARTIST: {
-		url << "https://www.discogs.com/artist/" << m_tag_writer->GetRelease()->artists[0]->full_artist->id;
+        const auto current = m_tag_writer ? m_tag_writer->GetRelease() : Release_ptr{};
+        if (!current || !current->artists.get_count() || !current->artists[0] ||
+            !current->artists[0]->full_artist) return false;
+		url << "https://www.discogs.com/artist/" << current->artists[0]->full_artist->id;
 		break;
 	}
 	default: {
-		if (cmd >= ID_URL_ARTISTS && cmd < ID_URL_ARTISTS + 100) {
+		if (cmd >= ID_URL_ARTISTS && cmd < ID_URL_ARTISTS + 100 &&
+            static_cast<size_t>(cmd - ID_URL_ARTISTS) < vartists.size()) {
 			pfc::string8 artist_id = vartists.at(cmd - ID_URL_ARTISTS).first.c_str();
 			url << "https://www.discogs.com/artist/" << artist_id;
 		}
