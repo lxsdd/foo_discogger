@@ -22,6 +22,50 @@ def flac_blocks(content):
         if last: return output
 
 
+
+def flac_vorbis_fields(block):
+    """Decode exact FLAC Vorbis-comment field names, not raw substrings.
+
+    In particular, CUE_TRACK01_DISCOGGER_QA_RUNNER is NOT the same field as
+    physical DISCOGGER_QA_RUNNER; a byte-string grep falsely accepts both.
+    """
+    offset = 0
+    def read_u32():
+        nonlocal offset
+        if offset + 4 > len(block):
+            raise AssertionError("Truncated FLAC Vorbis field length")
+        length = int.from_bytes(block[offset:offset + 4], "little")
+        offset += 4
+        return length
+    def read_bytes(length):
+        nonlocal offset
+        if length > len(block) - offset:
+            raise AssertionError("Truncated FLAC Vorbis comment")
+        data = block[offset:offset + length]
+        offset += length
+        return data
+
+    read_bytes(read_u32())  # vendor string, never displayed or logged
+    count = read_u32()
+    if count > (len(block) - offset) // 4:
+        raise AssertionError("Invalid FLAC Vorbis comment count")
+    fields = {}
+    for _ in range(count):
+        data = read_bytes(read_u32())
+        if b"=" not in data:
+            raise AssertionError("Invalid FLAC Vorbis comment key/value")
+        name, value = data.split(b"=", 1)
+        try:
+            key = name.decode("ascii").upper()
+        except UnicodeError as error:
+            raise AssertionError("Invalid FLAC Vorbis tag name") from error
+        if not key:
+            raise AssertionError("Empty FLAC Vorbis tag key")
+        fields.setdefault(key, []).append(value)
+    if offset != len(block):
+        raise AssertionError("Unexpected FLAC Vorbis trailing bytes")
+    return fields
+
 def _syncsafe_size(value):
     if len(value) != 4 or any(byte & 0x80 for byte in value):
         raise AssertionError("Invalid ID3v2 synchsafe header")
@@ -94,19 +138,43 @@ def verify(before: bytes, after: bytes, suffix):
             raise AssertionError("Native FLAC Type-5 CUESHEET changed")
         if not first.get(4) or not second.get(4):
             raise AssertionError("Vorbis comments missing")
-        before_cue = [x for x in first[4][0].split(b"CUESHEET=")][1:]
-        after_cue = [x for x in second[4][0].split(b"CUESHEET=")][1:]
-        if not before_cue or not after_cue:
-            raise AssertionError("Embedded textual CUESHEET missing")
+        before_fields = flac_vorbis_fields(first[4][0])
+        after_fields = flac_vorbis_fields(second[4][0])
+        if not before_fields.get("CUESHEET") or before_fields["CUESHEET"] != after_fields.get("CUESHEET"):
+            raise AssertionError("Embedded textual CUESHEET bytes changed or disappeared")
         for token in (b"Runner Embedded EP", b"Progressive Trance", b"Preserve me"):
-            if token not in second[4][0]:
-                raise AssertionError(f"Custom FLAC tag or CUE marker missing: {token!r}")
+            if not any(token in value for value in after_fields["CUESHEET"]):
+                raise AssertionError(f"Embedded FLAC CUE marker missing: {token!r}")
+        if after_fields.get("DISCOGGER_QA_RUNNER") != [b"RUNNER-VERIFIED"]:
+            raise AssertionError("Physical FLAC writer did not persist the exact custom tag key and value")
     else:
         raise AssertionError("Unknown media extension")
-    if suffix == ".flac" and (b"RUNNER-VERIFIED" not in after or
-                              b"DISCOGGER_QA_RUNNER" not in after):
-        raise AssertionError("Real foobar FLAC writer did not serialize QA Vorbis comment")
 
+
+
+def selftest_flac_vorbis():
+    def field(value):
+        return len(value).to_bytes(4, "little") + value
+    vendor = field(b"Discogger QA")
+    entries = [
+        b"CUESHEET=TITLE \"Test\"",
+        b"CUE_TRACK01_DISCOGGER_QA_RUNNER=RUNNER-VERIFIED",
+    ]
+    raw = vendor + len(entries).to_bytes(4, "little") + b"".join(map(field, entries))
+    parsed = flac_vorbis_fields(raw)
+    assert parsed["CUESHEET"] == [b'TITLE "Test"']
+    assert "DISCOGGER_QA_RUNNER" not in parsed
+    entries.append(b"DISCOGGER_QA_RUNNER=RUNNER-VERIFIED")
+    raw = vendor + len(entries).to_bytes(4, "little") + b"".join(map(field, entries))
+    assert flac_vorbis_fields(raw)["DISCOGGER_QA_RUNNER"] == [b"RUNNER-VERIFIED"]
+    for invalid in (raw[:-2], raw + b"junk", vendor + (99).to_bytes(4, "little")):
+        try:
+            flac_vorbis_fields(invalid)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Invalid Vorbis comment was not rejected")
+    print("DISCOGGER_FLAC_VORBIS_EXACT_KEY_VERIFIER=PASS")
 
 def selftest_id3():
     def ss(n):
@@ -132,6 +200,7 @@ def selftest_id3():
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == "--selftest":
         selftest_id3()
+        selftest_flac_vorbis()
         raise SystemExit(0)
     if len(sys.argv) != 3:
         raise SystemExit("Expected --selftest or original-copy and disposable updated file")

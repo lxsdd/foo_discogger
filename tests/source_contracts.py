@@ -1540,3 +1540,13 @@ assert "input_entry::g_open_for_info_read(reader, nullptr, logical.c_str(), abor
 assert "qa-flac-input-reader-evidence.txt" in qa_source
 assert "reader->get_info(0, raw, abort);" in qa_source
 print("PASS: native FLAC physical-versus-CUE read-only diagnostic compiled into runner QA.")
+
+# Physical FLAC assertions use parsed Vorbis key/value pairs. A track-local
+# CUE_TRACKNN_DISCOGGER_QA_RUNNER field must not masquerade as the physical
+# DISCOGGER_QA_RUNNER field; preserve CUESHEET text bytes and FLAC Type-5.
+verification_code = (root / "tests/verify-runner-physical-tags.py").read_text(encoding="utf-8-sig")
+assert "def flac_vorbis_fields(block):" in verification_code
+assert 'after_fields.get("DISCOGGER_QA_RUNNER") != [b"RUNNER-VERIFIED"]' in verification_code
+assert 'before_fields["CUESHEET"] != after_fields.get("CUESHEET")' in verification_code
+assert "selftest_flac_vorbis()" in verification_code
+print("PASS: FLAC physical metadata preservation checks exact semantic fields.")
