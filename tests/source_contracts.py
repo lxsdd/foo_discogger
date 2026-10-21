@@ -1418,3 +1418,21 @@ cache_header = (root / "discogger_cache_pages.h").read_text(encoding="utf-8-sig"
 assert "inline bool valid_online_payload_count(" in cache_header
 assert "return valid_cache_payload_count(requested_page - 1, page_count," in cache_header
 print("PASS: native/portable online page payload verifier has an actual definition.")
+
+
+# A generator failure must never publish partial approval rows as ready, and
+# neither the preview button nor the physical writer may reuse them.
+tagging_code = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+generator = tagging_code.split("void TagWriter::generate_tags(", 1)[1].split(
+    "struct write_tag_nfo", 1
+)[0]
+assert generator.count("atm_tag_results_ready = true;") == 1
+assert "catch (std::exception e)" not in generator
+assert "throw foo_discogs_exception(\"Tag generation stopped: missing selected file handle.\");" in generator
+assert 'if (!m_finfo_manager || !ResultsReady())' in tagging_code
+preview_code = (root / "preview_dialog.cpp").read_text(encoding="utf-8-sig")
+write_button = preview_code.split("bool CPreviewTagsDialog::check_write_tags_status()", 1)[1].split(
+    "bool CPreviewTagsDialog::init_other_controls_and_results()", 1
+)[0]
+assert "if (!m_tag_writer || !m_tag_writer->ResultsReady()) return false;" in write_button
+print("PASS: failed tag generation never re-enables stale preview writes.")

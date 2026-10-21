@@ -448,19 +448,17 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 				metadb_handle_ptr item = nullptr;
 
 				try {
-					if (file_index < m_finfo_manager->get_item_count()) {
-
-						item = m_finfo_manager->get_item_handle(file_index);
-
-					}
-					else {
-						break;
-					}
-				}
-				catch (std::exception e) {
-					std::string dbexception(e.what());
-					continue;
-				}
+                    // Failed lookups must abort generation, not silently omit
+                    // a row and allow approvals to shift to the next file.
+                    item = m_finfo_manager->get_item_handle(file_index);
+                }
+                catch (const std::exception& e) {
+                    foo_discogs_exception ex;
+                    ex << "Tag generation stopped: cannot load selected file [" << e.what() << "]";
+                    throw ex;
+                }
+                if (!item)
+                    throw foo_discogs_exception("Tag generation stopped: missing selected file handle.");
 				file_info& info = m_finfo_manager->get_item(file_index);
 
 				const ReleaseDisc_ptr& disc = release->discs[disc_index];
@@ -487,11 +485,9 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 				catch (http_404_exception&) {
                     // Never append approval rows for a tag whose value failed
                     // to generate: truncated rows could target the wrong file.
-                    atm_tag_results_ready = true;
                     throw foo_discogs_exception("Tag generation stopped: Discogs resource missing (HTTP 404).");
                 }
 				catch (foo_discogs_exception& e) {
-					atm_tag_results_ready = true;
 					foo_discogs_exception ex;
 					ex << "Error generating tag " << entry.tag_name << " [" << e.what() << "] for file " << item->get_path();
 					throw ex;
@@ -556,7 +552,6 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 					result->result_approved |= result->r_approved[result->r_approved.get_count() - 1];
 				}
 				catch (std::exception& e) {
-					atm_tag_results_ready = true;
 					foo_discogs_exception ex;
 					ex << "Error reading tag " << entry.tag_name << " [" << e.what() << "] for file " << item->get_path();
 					throw ex;
@@ -717,6 +712,10 @@ void process_result(const metadb_handle_ptr item, file_info* info, size_t ndx_tr
 }
 
 void TagWriter::write_tags() {
+    // Failed or cancelled tag generation must not reuse earlier preview rows,
+    // even if the caller bypasses the preview dialog's disabled Write button.
+    if (!m_finfo_manager || !ResultsReady())
+        throw foo_discogs_exception("Tagging stopped: no complete, current tag preview.");
     // Generator approval rows are indexed only by enabled track mappings.
     // A stale preview, missing result, duplicate physical target, or out-of-
     // range file index must be rejected BEFORE touching any working file_info.

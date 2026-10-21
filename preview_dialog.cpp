@@ -705,6 +705,7 @@ bool CPreviewTagsDialog::context_menu_switch(HWND wnd, POINT point, int cmd, bit
 }
 
 bool CPreviewTagsDialog::check_write_tags_status() {
+    if (!m_tag_writer || !m_tag_writer->ResultsReady()) return false;
 
 	auto checkstate = m_tristate.GetState();
 	bool skip_art = checkstate == BST_CHECKED;
