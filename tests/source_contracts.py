@@ -1562,3 +1562,19 @@ assert 'info_wrappers[n]->info = physical;' in manager_code
 assert 'DISCOGGER_FLAC_PHYSICAL_SDK_READBACK_' in host_code
 assert 'count=1 unchanged=1' in host_code
 print("PASS: multi-subsong FLAC physical metadata overrides stale cue projection.")
+
+# Synthetic original tag + binary-artwork acceptance uses no third-party image
+# files and compares full original compressed payload and picture bytes.
+mp3_gen = (root / "tests/create-synthetic-mp3.py").read_text(encoding="utf-8-sig")
+flac_gen = (root / "tests/enrich-synthetic-flac.py").read_text(encoding="utf-8-sig")
+phys_verify = (root / "tests/verify-runner-physical-tags.py").read_text(encoding="utf-8-sig")
+host_media = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "def with_synthetic_apic(raw):" in mp3_gen
+assert "def enrich(path):" in flac_gen
+assert 'if os.getenv("GITHUB_ACTIONS") != "true"' in flac_gen
+assert "id3_apic_frames(before)" in phys_verify
+assert "first.get(6) != second.get(6)" in phys_verify
+assert 'Counter(before_fields.get(field, []))' in phys_verify
+assert "id3_audio_payload(before) != id3_audio_payload(after)" in phys_verify
+assert "tests/enrich-synthetic-flac.py" in host_media
+print("PASS: runner actual MP3/FLAC writer preserves embedded pictures, multivalues and audio.")

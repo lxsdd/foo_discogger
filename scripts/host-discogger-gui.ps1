@@ -294,6 +294,10 @@ FILE "synthetic-silence.wav" WAVE
     if(-not (Test-Path -LiteralPath $flacGenerator -PathType Leaf)){throw 'Pinned FLAC generator unavailable'}
     & python $flacGenerator $flac
     if($LASTEXITCODE -ne 0){throw 'Pinned embedded CUE FLAC generator failed'}
+    # Add original synthetic artwork, multivalues and ReplayGain to be
+    # compared byte-for-byte/semantically after actual foobar metadata writes.
+    & python (Join-Path $PSScriptRoot '../tests/enrich-synthetic-flac.py') $flac
+    if($LASTEXITCODE -ne 0){throw 'Synthetic FLAC rich metadata generator failed'}
     $sideB=Join-Path $dir 'synthetic-side-b.wav'
     Copy-Item -LiteralPath $wav -Destination $sideB
     $multiCue=Join-Path $dir 'synthetic-multifile.cue'

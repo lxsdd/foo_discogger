@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify real runner-only physical writes and preserved CUE metadata."""
 from pathlib import Path
+from collections import Counter
 import sys
 
 def flac_blocks(content):
@@ -120,6 +121,32 @@ def id3_txxx_values(content):
             decoded.append((name.strip(), value.strip("\x00")))
     return decoded
 
+
+def id3_apic_frames(content):
+    """Inspect physical picture frame bytes, not only the ID3 TXXX text."""
+    if content[:3] != b"ID3" or content[3] not in (3, 4):
+        raise AssertionError("Invalid APIC source ID3v2")
+    end = 10 + _syncsafe_size(content[6:10])
+    if end > len(content):
+        raise AssertionError("Truncated MP3 ID3v2 header")
+    pos, pictures = 10, []
+    while pos + 10 <= end:
+        name = content[pos:pos + 4]
+        if name == bytes(4): break
+        size = (int.from_bytes(content[pos + 4:pos + 8], "big")
+                if content[3] == 3 else _syncsafe_size(content[pos + 4:pos + 8]))
+        pos += 10
+        if pos + size > end: raise AssertionError("Truncated APIC frame")
+        if name == b"APIC":
+            pictures.append(content[pos:pos + size])
+        pos += size
+    return pictures
+
+def id3_audio_payload(content):
+    end = 10 + _syncsafe_size(content[6:10])
+    if end > len(content): raise AssertionError("ID3 tag overlaps MP3 data")
+    return content[end:]
+
 def verify(before: bytes, after: bytes, suffix):
     if before == after:
         raise AssertionError("requested physical tag update was a no-op")
@@ -129,6 +156,11 @@ def verify(before: bytes, after: bytes, suffix):
         for item in (b"Synthetic Test", b"Discogger QA", b"Trance"):
             if item not in after:
                 raise AssertionError(f"Original MP3 metadata missing after writer: {item!r}")
+        original_art = id3_apic_frames(before)
+        if not original_art or original_art != id3_apic_frames(after):
+            raise AssertionError("Original ID3v2 APIC picture bytes were changed or removed")
+        if id3_audio_payload(before) != id3_audio_payload(after):
+            raise AssertionError("Original MP3 compressed audio payload changed")
         tags = id3_txxx_values(after)
         if ("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED") not in tags:
             raise AssertionError("Real foobar MP3 writer did not persist requested TXXX tag")
@@ -136,6 +168,17 @@ def verify(before: bytes, after: bytes, suffix):
         first, second = flac_blocks(before), flac_blocks(after)
         if first.get(5) != second.get(5):
             raise AssertionError("Native FLAC Type-5 CUESHEET changed")
+        if not first.get(6) or first.get(6) != second.get(6):
+            raise AssertionError("Original FLAC Type-6 PICTURE block changed")
+        def audio_tail(raw):
+            pos = 4
+            while True:
+                is_last = (raw[pos] & 128) != 0
+                size = int.from_bytes(raw[pos+1:pos+4], "big")
+                pos += 4 + size
+                if is_last: return raw[pos:]
+        if audio_tail(before) != audio_tail(after):
+            raise AssertionError("Original FLAC compressed audio payload changed")
         if not first.get(4) or not second.get(4):
             raise AssertionError("Vorbis comments missing")
         before_fields = flac_vorbis_fields(first[4][0])
@@ -145,6 +188,11 @@ def verify(before: bytes, after: bytes, suffix):
         for token in (b"Runner Embedded EP", b"Progressive Trance", b"Preserve me"):
             if not any(token in value for value in after_fields["CUESHEET"]):
                 raise AssertionError(f"Embedded FLAC CUE marker missing: {token!r}")
+        for field in ("GENRE", "REPLAYGAIN_TRACK_GAIN", "REPLAYGAIN_TRACK_PEAK", "DISCOGGER_QA_CUSTOM"):
+            if Counter(before_fields.get(field, [])) != Counter(after_fields.get(field, [])):
+                raise AssertionError(f"Original FLAC multi-value/custom/ReplayGain metadata changed: {field}")
+        if Counter(after_fields.get("GENRE", [])) != Counter((b"House", b"Progressive Trance")):
+            raise AssertionError("Original separate FLAC multi-value GENRE entries not retained")
         if after_fields.get("DISCOGGER_QA_RUNNER") != [b"RUNNER-VERIFIED"]:
             raise AssertionError("Physical FLAC writer did not persist the exact custom tag key and value")
     else:
