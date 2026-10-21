@@ -145,6 +145,7 @@ public:
 
 private:
 	CTrackMatchingDialog* m_dialog;
+    HWND m_owner_window = nullptr; // Captured before asynchronous launch.
 	pfc::array_t<GUID> m_album_art_ids;
 	pfc::string8 m_release_id;
 	metadb_handle_list m_items;

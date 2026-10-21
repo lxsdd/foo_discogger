@@ -599,6 +599,24 @@ cache_reader = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
 assert "fs::u8path(path_container.c_str())" in cache_reader
 assert "const auto utf8 = entry.path().filename().u8string();" in cache_reader
 assert "const std::string name(utf8.begin(), utf8.end());" in cache_reader
+# Avoid stale-dereference on async artwork path completion after the initiating
+# Track Matching dialog is closed and another dialog may replace it.
+artwork_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
+artwork_tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+artwork_class = artwork_header[artwork_header.index("class download_art_paths_task :"):
+    artwork_header.index("class find_deleted_releases_task :")]
+assert "HWND m_owner_window = nullptr;" in artwork_class
+artwork_start = artwork_tasks[artwork_tasks.index("void download_art_paths_task::start()"):
+    artwork_tasks.index("void download_art_paths_task::safe_run(")]
+assert "g_discogs->track_matching_dialog == m_dialog" in artwork_start
+assert "::IsWindow(m_dialog->m_hWnd)" in artwork_start
+artwork_complete = artwork_tasks[artwork_tasks.index("void download_art_paths_task::on_success("):
+    artwork_tasks.index("find_deleted_releases_task::find_deleted_releases_task(")]
+assert "!::IsWindow(m_owner_window)" in artwork_complete
+assert "g_discogs->track_matching_dialog != m_dialog" in artwork_complete
+assert "g_discogs->track_matching_dialog->m_hWnd != m_owner_window" in artwork_complete
+assert "g_discogs->track_matching_dialog->process_download_art_paths_done(" in artwork_complete
+assert "IsWindow(m_dialog->m_hWnd)" not in artwork_complete
 print("PASS: native compile-cluster source regressions (tag write lock, C++20, UI and CRC32).")
 
 # C++20 / SDK cfg_objList mapping ownership and pointer lifetime contracts.

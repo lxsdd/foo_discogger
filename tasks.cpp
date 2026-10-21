@@ -578,6 +578,12 @@ download_art_paths_task::download_art_paths_task(CTrackMatchingDialog* m_dialog,
 }
 
 void download_art_paths_task::start() {
+    // Record the live initiating window on the UI thread, before modeless IO.
+    if (m_dialog && g_discogs && g_discogs->track_matching_dialog == m_dialog &&
+        ::IsWindow(m_dialog->m_hWnd))
+        m_owner_window = m_dialog->m_hWnd;
+    else
+        m_owner_window = nullptr;
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_abort |
@@ -741,9 +747,15 @@ void download_art_paths_task::on_success(HWND p_wnd) {
 	}
 #endif
 
-	if (IsWindow(m_dialog->m_hWnd)) {
-		m_dialog->process_download_art_paths_done(m_release_id, vpaths, m_album_art_ids);
-	}
+    // Never dereference a dialog that may have been destroyed or replaced
+    // while the artwork query was running in the background.
+    if (!m_owner_window || !::IsWindow(m_owner_window) || !g_discogs ||
+        !g_discogs->track_matching_dialog ||
+        g_discogs->track_matching_dialog != m_dialog ||
+        g_discogs->track_matching_dialog->m_hWnd != m_owner_window)
+        return;
+    g_discogs->track_matching_dialog->process_download_art_paths_done(
+        m_release_id, vpaths, m_album_art_ids);
 }
 
 
