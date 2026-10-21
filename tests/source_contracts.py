@@ -154,6 +154,16 @@ assert release_section.count("if (!present)") >= 2
 plan = (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
 cache_pages_contract = (root / "discogger_cache_pages.h").read_text(encoding="utf-8-sig")
 assert "pages != 1 + (items - 1) / per_page" in cache_pages_contract
+artist_release_loader = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+artist_release_loader = artist_release_loader[
+    artist_release_loader.index("void Discogs::Artist::load_releases("):
+    artist_release_loader.index("void Discogs::MasterRelease::load_releases(")
+]
+assert "json_object_get(page->root, \"releases\")" in artist_release_loader
+assert "json_is_array(entries)" in artist_release_loader
+assert "discogger_cache::valid_cache_payload_count(" in artist_release_loader
+assert artist_release_loader.index("valid_cache_payload_count(") < artist_release_loader.index("Artist staged(id.c_str());")
+
 assert "discogger_cache::valid_online_page(" in search
 assert "without_terminal_mix_suffix" in plan
 assert "build_fallback_plan(" in plan

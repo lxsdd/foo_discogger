@@ -66,6 +66,14 @@ int main() {
     assert(valid_cache_payload_count(1, 3, 100, 201, 100));
     assert(valid_cache_payload_count(2, 3, 100, 201, 1));
     assert(valid_cache_payload_count(0, 1, 100, 0, 0));
+    // Live pages also need complete payloads; metadata alone is insufficient.
+    assert(valid_cache_payload_count(0, 3, 100, 201, 100));
+    assert(valid_cache_payload_count(1, 3, 100, 201, 100));
+    assert(valid_cache_payload_count(2, 3, 100, 201, 1));
+    assert(!valid_cache_payload_count(0, 3, 100, 201, 0));
+    assert(!valid_cache_payload_count(1, 3, 100, 201, 99));
+    assert(!valid_cache_payload_count(2, 3, 100, 201, 100));
+    assert(!valid_cache_payload_count(0, 1, 100, 0, 1));
     assert(!valid_cache_payload_count(0, 3, 100, 201, 99));
     assert(!valid_cache_payload_count(2, 3, 100, 201, 0));
     assert(!valid_cache_payload_count(2, 3, 100, 201, 2));

@@ -3340,6 +3340,23 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
         const size_t count = pages.get_count();
         if (!count) throw foo_discogs_exception("Artist release pages were empty; retaining previous results.");
 
+        // Validate the actual items in each page, not just the pagination
+        // header. A truncated but well-formed HTTP response must never
+        // replace the previously good artist release list or disk cache.
+        for (size_t i = 0; i < count; ++i) {
+            p_abort.check();
+            const auto& page = pages[i];
+            const size_t per_page = page->get_object_int("pagination", "per_page");
+            const size_t items = page->get_object_int("pagination", "items");
+            const json_t* entries = json_object_get(page->root, "releases");
+            if (!json_is_array(entries) ||
+                !discogger_cache::valid_cache_payload_count(
+                    i, count, per_page, items, json_array_size(entries))) {
+                throw foo_discogs_exception(
+                    "Incomplete Discogs artist release page; keeping the previous results.");
+            }
+        }
+
         // Stage the entire result before publishing or completing any disk marker.
         Artist staged(id.c_str());
         staged.search_role_list_pos = search_role_list_pos;
