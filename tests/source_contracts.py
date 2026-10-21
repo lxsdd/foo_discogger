@@ -1231,9 +1231,19 @@ assert "cfg_dialog_position_find_release_dlg.AddWindow(m_hWnd);" in dialog_src
 assert "cfg_dialog_position_find_release_dlg.RemoveWindow(m_hWnd);" in dialog_src
 print("PASS: disposable host resize, close/reopen and GUI position persistence gates.")
 
-# Bounded network retries never replace pinned SDK hash verification.
+# Vendor-independent SDK provenance must be exactly pinned to the
+# owner's previously captured source tree. Do not claim an archive SHA256
+# for the Git checkout, and never retry a blocked foobar2000.org download.
 sdk_probe = (root / "scripts/probe-official-sdk.ps1").read_text(encoding="utf-8-sig")
-assert "$DownloadComplete = $false" in sdk_probe
-assert "for ($attempt = 1; $attempt -le 4; $attempt++)" in sdk_probe
-assert "if ($attempt -eq 4) { throw }" in sdk_probe
-assert "$Size -ne $ExpectedBytes -or $Sha -ne $ExpectedSha256" in sdk_probe
+assert "$SdkVersion = '2026-10-01'" in sdk_probe
+assert "$TemplateCommit = '31a35947a7527826c2199491692802e3ce3d8bd7'" in sdk_probe
+assert "$TemplateSdkTree = '2ba8caeb73f72633ad7f60ee5f72ed8074a0eb17'" in sdk_probe
+assert "$ExpectedSha256 = 'd4c55077336fae81bf8df0259b5b2748fa45ea84132c656ead93eb123cbcdc26'" in sdk_probe
+assert "DISCOGGER_SDK_SOURCE_GIT_TREE_VERIFIED=PASS" in sdk_probe
+assert "DISCOGGER_SDK_ORIGINAL_ARCHIVE_SHA256=NOT_TESTED_BY_THIS_RUN" in sdk_probe
+assert "Invoke-WebRequest" not in sdk_probe and "Start-Sleep" not in sdk_probe
+sdk_workflow = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "repository: lxsdd/foobar2000_component_template" in sdk_workflow
+assert "ref: 31a35947a7527826c2199491692802e3ce3d8bd7" in sdk_workflow
+assert "path: external/sdk-template" in sdk_workflow
+
