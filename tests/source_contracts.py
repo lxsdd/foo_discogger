@@ -1233,6 +1233,18 @@ assert "The actual foobar host exited after context route" in gui_smoke
 assert "foo_discogger.dll.db" in gui_smoke
 assert "DISCOGGER_GUI_DIALOG_$Architecture=PASS" in gui_smoke
 assert "DISCOGGER_GUI_CONTROLS_$Architecture=PASS" in gui_smoke
+# Restoring original values from a multi-track detail preview must never
+# treat the address of the *whole PFC array* as an array of array objects.
+preview_ilo = (root / "preview_leading_tag_ILO.cpp").read_text(encoding="utf-8-sig")
+assert '#include "discogger_preview_restore.h"' in preview_ilo
+copy_restore = preview_ilo[preview_ilo.index("void ILOD_preview_leading::CopyFromOriginal()"):
+                           preview_ilo.index("void ILOD_preview_leading::TriggerAction()")]
+assert "discogger_preview::restore_original_values(" in copy_restore
+assert "m_ptag_result->value, m_ptag_result->old_value, visible_tracks" in copy_restore
+assert "arr_sea_val[w] = cmp_old_sea_val[w]" not in copy_restore
+assert "UpdateItemsAll();" in copy_restore
+for runner_path in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
+    assert "preview_restore_test.cpp" in (root / runner_path).read_text(encoding="utf-8-sig")
 assert "DISCOGGER_GUI_SYNTHETIC_WAV_NO_WRITE_$Architecture=PASS" in gui_smoke
 assert "MEDIA_WRITE_SAFETY_$Architecture=NOT_TESTED" in gui_smoke
 assert "GetDlgItem" in gui_smoke and "FindReleaseDialogs" in gui_smoke

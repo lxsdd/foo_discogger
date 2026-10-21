@@ -3,26 +3,20 @@
 #include "utils.h"
 #include "preview_leading_tag_dialog.h"
 #include "preview_leading_tag_ILO.h"
+#include "discogger_preview_restore.h"
 
 const int kDataCol = 2;
 
 void ILOD_preview_leading::CopyFromOriginal() {
-
-	pfc::array_t<string_encoded_array>* arr_sea_val = &m_ptag_result->value;
-	pfc::array_t<string_encoded_array>* cmp_old_sea_val =  &m_ptag_result->old_value;
-
-	bool oldvalarray = m_ptag_result->old_value[0].has_array();
-	bool valarray = m_ptag_result->value[0].has_array();
-
-	for (size_t w = 0; w < cmp_old_sea_val->get_count(); w++) {
-		arr_sea_val[w] = cmp_old_sea_val[w];
-		bool oldvalarray = cmp_old_sea_val[w].get_ptr()->has_array();
-		bool valarray = arr_sea_val[w].get_ptr()->has_array();
-		bool tavalarray = m_ptag_result->value[0].has_array();
-		valarray = valarray;
-
-	}
-	ilo_get_uilist()->UpdateItemsAll();
+    // A tag may store one shared original value or one value per visible
+    // mapped track. Copy the *values*, not a pointer to the array container.
+    // Reject missing or stale shapes without changing the approved preview.
+    if (!m_ptag_result || !ilo_get_uilist()) return;
+    const size_t visible_tracks = ilo_get_vtracks_desc().size();
+    if (!discogger_preview::restore_original_values(
+            m_ptag_result->value, m_ptag_result->old_value, visible_tracks))
+        return;
+    ilo_get_uilist()->UpdateItemsAll();
 }
 
 void ILOD_preview_leading::TriggerAction() {

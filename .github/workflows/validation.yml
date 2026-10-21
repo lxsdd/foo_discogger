@@ -46,6 +46,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_activation_test.cpp -o /tmp/discogger-artist-activate && /tmp/discogger-artist-activate
       - name: Compile and run empty/shortened tag preview selection regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/preview_selection_test.cpp -o /tmp/discogger-preview-selection && /tmp/discogger-preview-selection
+      - name: Guard original-to-leading-tag preview restoration
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/preview_restore_test.cpp -o /tmp/discogger-preview-restore && /tmp/discogger-preview-restore
       - name: Compile and run bounded cached thumbnail regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/thumbnail_bounds_test.cpp -o /tmp/discogger-thumbnail-test && /tmp/discogger-thumbnail-test
       - name: Compile and run stale release-tree snapshot regressions
