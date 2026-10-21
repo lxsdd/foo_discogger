@@ -1355,7 +1355,10 @@ assert "deltas[i] == best" in duration_helper
 assert "claimed[i] && deltas[i] <= best" in duration_helper
 for unit_runner in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "duration_match_test.cpp" in (root / unit_runner).read_text(encoding="utf-8-sig")
-assert "- work/portable-build-properties-20261018" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+# PR synchronization now works; do not spend duplicate native jobs on pushes.
+validation_trigger = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "  pull_request:" in validation_trigger
+assert "- work/portable-build-properties-20261018" not in validation_trigger
 print("PASS: conservative duration tie handling and exact-branch CI trigger guards.")
 
 # The generator stores approval rows only for enabled mapped tracks; the
