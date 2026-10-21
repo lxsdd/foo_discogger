@@ -122,14 +122,21 @@ jobs:
 
   official-sdk-probe:
     # Fail cheap/static and native unit gates before launching the costly SDK
-    # download and two complete Win32/x64 component link operations.
+    # provenance and two complete Win32/x64 component link operations.
     needs: [portable-core, windows-baseline, windows-native-unit]
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Verify pinned official SDK 2026-10-01 on Windows
+      - name: Checkout exact owner SDK source 2026-10-01 without direct vendor downloads
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - name: Verify pinned official SDK 2026-10-01 Git source on Windows
         shell: pwsh
         run: ./scripts/probe-official-sdk.ps1
       - name: Compile official SDK core libraries for Win32 and x64 (not Discogger DLL)
