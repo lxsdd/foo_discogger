@@ -31,3 +31,14 @@ are found through authenticated live queries. They also do not prove safe
 metadata/artwork/replaygain/CUE writes to disposable MP3 or FLAC fixtures.
 Until independent tests and upstream rights review are complete, no merged
 or distributed binary may be treated as approved.
+
+## SHA-specific native regression evidence
+
+The first CI run containing the page-length tests, `39617180905` on
+`8cce334391121e894b735adb9e8ef5db133838fd`, FAILED in the MSVC
+unit matrix because the predicate was referenced in the test/callers but
+its actual header definition was absent. Commit
+`c70ae00ac3b62ca9a0c60961b0d098369ed0a115` adds that definition
+and a source contract requiring it. This historical failed run does not
+qualify the fix; use only a subsequent CI run at the exact current SHA
+for PASS claims.
