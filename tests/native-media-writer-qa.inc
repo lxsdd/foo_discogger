@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <iterator>
 
 namespace {
 static const GUID qa_mp3_command = {0x4a1d5a11,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
@@ -15,6 +16,7 @@ static const GUID qa_flac_command = {0x4a1d5a12,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x
 static const GUID qa_targets_command = {0x4a1d5a13,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_batch_command = {0x4a1d5a14,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_populated_gui_command = {0x4a1d5a15,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
+static const GUID qa_stale_disk_command = {0x4a1d5a16,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 
 void run_disposable_media_writer_qa(t_uint32 format) {
     const char* github = std::getenv("GITHUB_ACTIONS");
@@ -266,15 +268,95 @@ void run_populated_search_gui_qa() {
     if (!out) throw std::runtime_error("Could not flush synthetic GUI evidence.");
 }
 
+
+void run_disposable_stale_disk_qa() {
+    const char* github = std::getenv("GITHUB_ACTIONS");
+    const char* runner = std::getenv("RUNNER_TEMP");
+    const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+    if (!github || std::string(github) != "true" || !runner || !location)
+        throw std::runtime_error("Stale physical metadata QA requires an ephemeral runner.");
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+    const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+    const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+    if (folder.native().size() <= prefix.size() ||
+        _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+        !std::filesystem::is_directory(folder))
+        throw std::runtime_error("Unsafe synthetic stale-metadata test directory.");
+    const auto mp3 = folder / "synthetic-metadata.mp3";
+    if (!std::filesystem::is_regular_file(mp3) || std::filesystem::is_symlink(mp3))
+        throw std::runtime_error("Stale metadata fixture missing or unsafe.");
+    const auto pathUnits = mp3.u8string();
+    const std::string url = "file://" + std::string(pathUnits.begin(), pathUnits.end());
+    metadb_handle_ptr handle = metadb::get()->handle_create(url.c_str(), 0);
+    if (!handle || handle->get_subsong_index() != 0)
+        throw std::runtime_error("Stale metadata host handle unavailable.");
+    metadb_handle_list targets;
+    targets.add_item(handle);
+    auto manager = std::make_shared<file_info_manager>(targets);
+    if (!manager->read_infos())
+        throw std::runtime_error("Cannot read disposable original MP3 tags.");
+    manager->invalidate_all();
+    manager->get_item(0).meta_set("DISCOGGER_QA_STALE", "MUST_NOT_COMMIT");
+    manager->validate_item(0);
+
+    // Simulate an independent tag editor changing the file AFTER Discogger
+    // captured its snapshot but BEFORE Discogger schedules a write.
+    abort_callback_dummy abort;
+    service_ptr_t<input_info_writer> other_editor;
+    input_entry::g_open_for_info_write(other_editor, nullptr, url.c_str(), abort);
+    file_info_impl external_tags;
+    other_editor->get_info(0, external_tags, abort);
+    external_tags.meta_set("DISCOGGER_QA_EXTERNAL_CHANGE", "PRESERVE");
+    other_editor->set_info(0, external_tags, abort);
+    other_editor->commit(abort);
+    other_editor.release();
+
+    auto read_file = [&mp3]() {
+        std::ifstream stream(mp3, std::ios::binary);
+        if (!stream) throw std::runtime_error("Stale QA failed to open synthetic MP3.");
+        return std::string(std::istreambuf_iterator<char>(stream),
+                           std::istreambuf_iterator<char>());
+    };
+    const auto expected_bytes = read_file();
+    const auto expected_mtime = std::filesystem::last_write_time(mp3);
+    bool stale_rejected = false;
+    try {
+        auto lease = discogger_write_safety::acquire_physical_write_lease();
+        if (!lease) throw std::runtime_error("Stale metadata write lease unavailable.");
+        manager->write_infos({}, std::move(lease), false);
+    } catch (const foo_discogs_exception&) {
+        stale_rejected = true;
+    }
+    if (!stale_rejected ||
+        expected_bytes != read_file() ||
+        expected_mtime != std::filesystem::last_write_time(mp3))
+        throw std::runtime_error("Outdated physical snapshot reached metadata writer.");
+    service_ptr_t<input_info_reader> verify_reader;
+    input_entry::g_open_for_info_read(verify_reader, nullptr, url.c_str(), abort);
+    file_info_impl after;
+    verify_reader->get_info(0, after, abort);
+    if (after.meta_get_count_by_name("DISCOGGER_QA_EXTERNAL_CHANGE") != 1 ||
+        after.meta_get_count_by_name("DISCOGGER_QA_STALE") != 0)
+        throw std::runtime_error("Fresh external edits or stale write rejection were lost.");
+    const auto marker = folder / "qa-stale-disk-rejected.txt";
+    if (std::filesystem::exists(marker))
+        throw std::runtime_error("Stale QA evidence unexpectedly pre-existing.");
+    std::ofstream out(marker);
+    if (!out) throw std::runtime_error("Cannot record stale-physical rejection.");
+    out << "STALE=REJECTED\\nEXTERNAL=RETAINED\\n";
+    out.flush();
+    if (!out) throw std::runtime_error("Cannot flush stale-physical rejection.");
+}
+
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
-    t_uint32 get_command_count() override { return 5; }
+    t_uint32 get_command_count() override { return 6; }
     GUID get_command(t_uint32 index) override {
-        return index == 0 ? qa_mp3_command : (index == 1 ? qa_flac_command : (index == 2 ? qa_targets_command : (index == 3 ? qa_batch_command : qa_populated_gui_command)));
+        return index == 0 ? qa_mp3_command : (index == 1 ? qa_flac_command : (index == 2 ? qa_targets_command : (index == 3 ? qa_batch_command : (index == 4 ? qa_populated_gui_command : qa_stale_disk_command))));
     }
     void get_name(t_uint32 index, pfc::string_base& out) override {
         out = index == 0 ? "Discogger QA MP3 write" :
-            (index == 1 ? "Discogger QA FLAC write" : (index == 2 ? "Discogger QA unsafe targets" : (index == 3 ? "Discogger QA incomplete batch" : "Discogger QA populated GUI")));
+            (index == 1 ? "Discogger QA FLAC write" : (index == 2 ? "Discogger QA unsafe targets" : (index == 3 ? "Discogger QA incomplete batch" : (index == 4 ? "Discogger QA populated GUI" : "Discogger QA stale disk"))));
     }
     bool get_description(t_uint32, pfc::string_base& out) override {
         out = "Test-only physical metadata writer for disposable GitHub runner media.";
@@ -283,8 +365,9 @@ public:
     GUID get_parent() override { return mainmenu_groups::file; }
     void execute(t_uint32 index, service_ptr_t<service_base>) override {
         try {
-            if (index > 4) throw std::runtime_error("Invalid synthetic QA action.");
-            if (index == 4) run_populated_search_gui_qa();
+            if (index > 5) throw std::runtime_error("Invalid synthetic QA action.");
+            if (index == 5) run_disposable_stale_disk_qa();
+            else if (index == 4) run_populated_search_gui_qa();
             else if (index == 3) run_disposable_incomplete_batch_qa();
             else if (index == 2) run_disposable_target_rejection_qa();
             else run_disposable_media_writer_qa(index);

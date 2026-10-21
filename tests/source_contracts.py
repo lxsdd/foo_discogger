@@ -1604,3 +1604,15 @@ assert 'IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED' in gui_
 assert "run_populated_search_gui_qa()" in runner_commands
 assert "DISCOGGER_GUI_POPULATED_SYNTHETIC_RELEASES_" in gui_host
 print("PASS: runner-only real populated GUI artist/release path is wired.")
+
+# An independent physical file edit between preview and asynchronous commit
+# must cause the entire selected batch to be rejected before any write.
+manager_source = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
+qa_source = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+qa_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "Tagging stopped: physical tags changed since preview" in manager_source
+assert "input_entry::g_open_for_info_read(reader, nullptr, path, abort);" in manager_source
+assert "run_disposable_stale_disk_qa()" in qa_source
+assert 'other_editor->commit(abort);' in qa_source
+assert "DISCOGGER_PHYSICAL_STALE_DISK_REJECTION_" in qa_host
+print("PASS: stale external physical metadata edits reject pending SDK writes.")

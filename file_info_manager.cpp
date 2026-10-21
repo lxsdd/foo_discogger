@@ -95,6 +95,37 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 	case discogger_write_safety::snapshot_batch_decision::reject_missing_snapshot:
 		throw foo_discogs_exception("Tagging stopped: original physical metadata snapshot is missing.");
 	}
+    // Freshness guard against an external tag editor changing a selected file
+    // between Discogger's initial snapshot and its async commit. Check ALL
+    // selected physical targets before staging even the first write. A failed
+    // SDK read or mismatched metadata must reject the entire batch.
+    for (size_t i = 0; i < count; ++i) {
+        if (!info_wrappers[i]->mask) continue;
+        try {
+            const char* path = items[i]->get_path();
+            if (!path || !*path)
+                throw foo_discogs_exception("Tagging stopped: missing physical path.");
+            abort_callback_dummy abort;
+            service_ptr_t<input_info_reader> reader;
+            input_entry::g_open_for_info_read(reader, nullptr, path, abort);
+            file_info_impl current_physical;
+            // The actual file-level tags live at physical subsong 0, including
+            // when the input also exposes virtual tracks from an embedded CUE.
+            reader->get_info(0, current_physical, abort);
+            if (!file_info::g_is_meta_equal(
+                    current_physical, info_wrappers[i]->original_info) ||
+                !replaygain_info::g_equal(
+                    current_physical.get_replaygain(),
+                    info_wrappers[i]->original_info.get_replaygain()))
+                throw foo_discogs_exception(
+                    "Tagging stopped: physical tags changed since preview; reload before writing.");
+        } catch (const foo_discogs_exception&) {
+            throw;
+        } catch (...) {
+            throw foo_discogs_exception(
+                "Tagging stopped: could not verify current physical file tags; reload before writing.");
+        }
+    }
     // Borrowed SDK arrays and their file_info payloads must survive the entire
     // async operation, even if a preview changes its working wrappers meanwhile.
     auto payload = std::make_shared<discogger_async_tag_payload>();

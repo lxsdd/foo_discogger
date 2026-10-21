@@ -726,6 +726,30 @@ FILE "synthetic-side-b.wav" WAVE
         }
     }
     Write-Host "DISCOGGER_PHYSICAL_BATCH_PREFLIGHT_ATOMIC_$Architecture=PASS"
+
+    # A simulated external tag editor modifies a disposable MP3 after
+    # Discogger's snapshot. The real writer must fail closed without changing
+    # that external edit or the physical file's bytes and mtime.
+    $staleMarker=Join-Path $dir 'qa-stale-disk-rejected.txt'
+    if(Test-Path -LiteralPath $staleMarker){throw 'Stale QA marker unexpectedly exists.'}
+    $staleProcess=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA stale disk"' -PassThru
+    if(-not $staleProcess.WaitForExit(15000) -or $staleProcess.ExitCode -ne 0) {
+        throw 'Could not dispatch actual SDK stale physical metadata QA.'
+    }
+    $staleDone=$false
+    for($i=0;$i -lt 60;$i++){
+        Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $staleMarker -PathType Leaf){
+            $proof=Get-Content -LiteralPath $staleMarker -Raw
+            if($proof.Contains('STALE=REJECTED') -and $proof.Contains('EXTERNAL=RETAINED')){
+                $staleDone=$true;break
+            }
+        }
+        $proc.Refresh()
+        if($proc.HasExited){throw 'Foobar exited during external-edit race test.'}
+    }
+    if(-not $staleDone){throw 'Missing actual foobar physical stale-snapshot rejection.'}
+    Write-Host "DISCOGGER_PHYSICAL_STALE_DISK_REJECTION_$Architecture=PASS"
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
