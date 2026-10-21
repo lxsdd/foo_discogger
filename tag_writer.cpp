@@ -5,6 +5,7 @@
 
 #include "tag_writer.h"
 #include "tag_deletion_preflight.h"
+#include "discogger_duration_match.h"
 
 TagWriter::TagWriter(file_info_manager_ptr finfo_manager, Release_ptr release) : m_finfo_manager(finfo_manager), release(release), tag_results_mask_mode(PreView::Undef) {
 
@@ -181,75 +182,49 @@ void copy(size_t **s, size_t **d, size_t n) {
 }
 
 int TagWriter::order_tracks_by_duration(track_mappings_list_type &mappings) {
-	if (!CONF.match_tracks_using_duration) {
-		return MATCH_NA;
-	}
+    if (!CONF.match_tracks_using_duration) return MATCH_NA;
+    if (!release || !release->has_tracklengths()) return MATCH_NA;
 
-	const size_t citems = m_finfo_manager->items.get_count();
-	// first try to match tracks on nearest track length if the release has lengths
-	metadb_handle_ptr item;
+    const size_t citems = m_finfo_manager->items.get_count();
+    const size_t ctracks = release->get_total_track_count();
+    if (citems == 0 || citems != ctracks) return MATCH_FAIL;
+    const size_t max_delta = citems * 5;
+    size_t total_delta = 0;
+    std::vector<bool> claimed(ctracks, false);
 
-	if (release && release->has_tracklengths()) {
-		// max delta of 5 seconds per track
-		const unsigned MAX_DELTA = citems * 5;
-		unsigned total_delta = 0;
-
-		// for every selected item,
-		// find the discogs track that most closely matches its duration
-		// 
-
-		std::map<int, bool> used_indexes;
-
-		for (size_t i = 0; i < citems; i++) {
-			item = m_finfo_manager->items.get_item(i);
-			int min_delta = 0xFFFFFF;
-			int bad_min_delta = 0xFFFFFF;
-
-			int min_delta_index = 0;
-			int min_delta_disc = 0;
-			int min_delta_track = 0;
-
-			int cnum = 0;
-			for (size_t d = 0; d < release->discs.get_size(); d++) {
-				ReleaseDisc_ptr &disc = release->discs[d];
-				for (size_t j = 0; j < disc->tracks.get_size(); j++) {
-					ReleaseTrack_ptr &track = disc->tracks[j];
-					int file_length = (int)round(item->get_length());
-					int discogs_length = track->discogs_duration_seconds + track->discogs_hidden_duration_seconds;
-					int delta = abs(file_length - discogs_length);
-					if (delta < min_delta) {
-						if (used_indexes[cnum]) {
-							bad_min_delta = delta;
-						}
-						else {
-							min_delta = delta;
-							min_delta_index = cnum;
-							min_delta_disc = d;
-							min_delta_track = j;
-						}
-					}
-					cnum++;
-				}
-			}
-
-			// give up if the same track is the best match twice
-			if (bad_min_delta < min_delta) {
-				return MATCH_FAIL;
-			}
-			total_delta += min_delta;
-			if (total_delta > MAX_DELTA) {
-				return MATCH_FAIL;
-			}
-			used_indexes[min_delta_index] = true;
-			mappings[i].enabled = true;
-			mappings[i].discogs_disc = min_delta_disc;
-			mappings[i].discogs_track = min_delta_track;
-		}
-	}
-	else {
-		return MATCH_NA;
-	}
-	return MATCH_SUCCESS;
+    for (size_t i = 0; i < citems; ++i) {
+        const metadb_handle_ptr item = m_finfo_manager->items.get_item(i);
+        if (!item) return MATCH_FAIL;
+        const int file_length = static_cast<int>(round(item->get_length()));
+        std::vector<int> deltas;
+        std::vector<std::pair<size_t, size_t>> positions;
+        deltas.reserve(ctracks);
+        positions.reserve(ctracks);
+        for (size_t d = 0; d < release->discs.get_size(); ++d) {
+            const ReleaseDisc_ptr& disc = release->discs[d];
+            if (!disc) return MATCH_FAIL;
+            for (size_t j = 0; j < disc->tracks.get_size(); ++j) {
+                const ReleaseTrack_ptr& track = disc->tracks[j];
+                if (!track) return MATCH_FAIL;
+                const int discogs_length = track->discogs_duration_seconds +
+                    track->discogs_hidden_duration_seconds;
+                deltas.push_back(abs(file_length - discogs_length));
+                positions.emplace_back(d, j);
+            }
+        }
+        const size_t selected = discogger_matching::unique_nearest_unclaimed(deltas, claimed);
+        // Equal durations, an already claimed equally good candidate, or
+        // malformed/missing tracks must never be auto-assigned by list order.
+        if (selected == static_cast<size_t>(-1) || selected >= positions.size())
+            return MATCH_FAIL;
+        total_delta += static_cast<size_t>(deltas[selected]);
+        if (total_delta > max_delta) return MATCH_FAIL;
+        claimed[selected] = true;
+        mappings[i].enabled = true;
+        mappings[i].discogs_disc = positions[selected].first;
+        mappings[i].discogs_track = positions[selected].second;
+    }
+    return MATCH_SUCCESS;
 }
 
 int TagWriter::order_tracks_by_number(track_mappings_list_type &mappings) {

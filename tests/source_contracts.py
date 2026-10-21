@@ -1339,3 +1339,21 @@ _native_discogs = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 assert '#include "discogger_cache_pages.h"' in _native_discogs
 assert 'discogger_cache::valid_cache_payload_count(' in _native_discogs
 print("PASS: release-page completeness guard is declared in the native translation unit.")
+
+# A duration tie or equally good already claimed Discogs track must not be
+# silently mapped according to source row order. Route to manual matching.
+duration_helper = (root / "discogger_duration_match.h").read_text(encoding="utf-8-sig")
+tag_writer = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+duration_route = tag_writer[tag_writer.index("int TagWriter::order_tracks_by_duration("):
+                            tag_writer.index("int TagWriter::order_tracks_by_number(")]
+assert '#include "discogger_duration_match.h"' in tag_writer
+assert "unique_nearest_unclaimed(deltas, claimed)" in duration_route
+assert "if (selected == static_cast<size_t>(-1)" in duration_route
+assert "claimed[selected] = true" in duration_route
+assert "return MATCH_FAIL;" in duration_route
+assert "deltas[i] == best" in duration_helper
+assert "claimed[i] && deltas[i] <= best" in duration_helper
+for unit_runner in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
+    assert "duration_match_test.cpp" in (root / unit_runner).read_text(encoding="utf-8-sig")
+assert "- work/portable-build-properties-20261018" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+print("PASS: conservative duration tie handling and exact-branch CI trigger guards.")

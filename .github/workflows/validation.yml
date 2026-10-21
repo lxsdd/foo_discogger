@@ -1,11 +1,13 @@
 name: Discogger modernization validation
 
-# Open work branches are always checked through draft PRs; their push events
-# would otherwise run the same expensive Win32/x64 link CI a second time.
+# API-driven branch updates may not synchronize the GitHub PR head promptly.
+# Validate the real draft work branch on push as well as PR events; shared
+# concurrency cancels superseded attempts. Never change protected master.
 on:
   push:
     branches:
       - master
+      - work/portable-build-properties-20261018
   pull_request:
     branches:
       - master
@@ -44,6 +46,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_visibility_test.cpp -o /tmp/discogger-search-visibility && /tmp/discogger-search-visibility
       - name: Compile and run artist double-click selection regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_activation_test.cpp -o /tmp/discogger-artist-activate && /tmp/discogger-artist-activate
+      - name: Reject ambiguous or already claimed duration matches
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/duration_match_test.cpp -o /tmp/discogger-duration-match && /tmp/discogger-duration-match
       - name: Compile and run empty/shortened tag preview selection regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/preview_selection_test.cpp -o /tmp/discogger-preview-selection && /tmp/discogger-preview-selection
       - name: Guard original-to-leading-tag preview restoration
