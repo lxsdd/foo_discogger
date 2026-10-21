@@ -1,13 +1,11 @@
 name: Discogger modernization validation
 
-# API-driven branch updates may not synchronize the GitHub PR head promptly.
-# Validate the real draft work branch on push as well as PR events; shared
-# concurrency cancels superseded attempts. Never change protected master.
+# Draft work branches are validated by pull_request. Do not duplicate the
+# expensive Win32/x64 SDK and host matrix on both push and PR events.
 on:
   push:
     branches:
       - master
-      - work/portable-build-properties-20261018
   pull_request:
     branches:
       - master
