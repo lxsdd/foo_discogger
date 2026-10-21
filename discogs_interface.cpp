@@ -719,22 +719,18 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             original_artist, release_title, original_track);
         for (const auto& candidate : plans) {
             p_abort.check();
-            pfc::string8 fallback_expression;
-            fallback_expression << "q=" << candidate.q.c_str();
-            if (!candidate.title.empty())
-                fallback_expression << " & title=" << candidate.title.c_str();
-            QueryDefMap fallback_map;
-            std::pair<std::string, std::string> fallback_query;
-            if (!search_query::TextToMap(fallback_expression, fallback_map) ||
-                !search_query::MapToText(fallback_map, fallback_query, false) ||
-                fallback_query.second.empty())
-                continue;
+            // Do not round-trip untrusted release titles/artist names through
+            // TextToMap: e.g. "Love & title=Mix" contains a literal field
+            // delimiter, not another user-selected Discogs filter.
+            const std::string fallback_query =
+                discogger_search::encode_fallback_query(candidate);
+            if (fallback_query.empty()) continue;
 
             pfc::string8 status("No exact result: ");
             status << candidate.label.c_str();
             p_status.set_item(status);
             pfc::string8 fallback_url("https://api.discogs.com/database/search");
-            pfc::string8 fallback_params(fallback_query.second.c_str());
+            pfc::string8 fallback_params(fallback_query.c_str());
             size_t fallback_max = HIWORD(CONF.query_max);
             pfc::array_t<JSONParser_ptr> fallback_pages =
                 get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,

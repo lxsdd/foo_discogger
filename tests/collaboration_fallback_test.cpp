@@ -34,6 +34,20 @@ int main() {
         assert(plan.back().q == example.title && plan.back().title.empty());
         assert(std::string(example.id).size() >= 8);
     }
+    // Encode untrusted UTF-8 values before composing fixed query fields:
+    // a literal " & title=" must never become an injected filter.
+    assert(encode_fallback_query({"partner", "Maywave", "1000 Years"}) ==
+           "q=%22Maywave%22&title=1000%20Years");
+    assert(encode_fallback_query({"title", "Only You", ""}) ==
+           "q=%22Only%20You%22");
+    assert(encode_fallback_query({"injection", "Guest & title=Injected", "True & artist=Other"}) ==
+           "q=%22Guest%20%26%20title%3DInjected%22&title=True%20%26%20artist%3DOther");
+    assert(encode_fallback_query({"symbols", "Don't + Stop #1", "A/B? C%D"}) ==
+           "q=%22Don%27t%20%2B%20Stop%20%231%22&title=A%2FB%3F%20C%25D");
+    assert(percent_encode_search_value("Ä") == "%C3%84");
+    assert(encode_fallback_query({"empty", "", "Do Not Search"}).empty());
+    assert(encode_fallback_query({"q-only", "Via Balearia", ""}) ==
+           "q=%22Via%20Balearia%22");
     auto collab = build_fallback_plan("Kyau & Albert X Maywave", "1000 Years", "1000 Years (DJ Version)");
     assert(collab.size() == 2);
     assert(collab[0].q == "Maywave" && collab[0].title == "1000 Years");

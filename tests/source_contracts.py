@@ -131,7 +131,10 @@ assert "inline std::string trailing_collaborator(" in (root / "discogger_search_
 assert "discogger_search::build_fallback_plan(" in search
 assert "for (const auto& candidate : plans)" in search
 assert "get_all_pages(fallback_url, fallback_params" in search
-assert "search_query::TextToMap(fallback_expression, fallback_map)" in search
+assert "discogger_search::encode_fallback_query(candidate)" in search
+assert "search_query::TextToMap(fallback_expression, fallback_map)" not in search
+assert "fallback_params(fallback_query.c_str())" in search
+assert "percent_encode_search_value" in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
 assert "if (fallback_max > max_to_abort)" in search
 assert 'presentation_query["artist="].first.clear();' in search
 assert "used_broad_fallback = true;" in search

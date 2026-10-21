@@ -59,6 +59,42 @@ struct fallback_candidate {
     std::string q;
     std::string title;
 };
+
+// Build URL parameters from *separate values*, never by parsing a string
+// containing untrusted artist/title metadata as a query-field expression.
+// UTF-8 bytes are percent encoded directly; only fixed field names form
+// parameter delimiters. Preserve the previous exact quoted-q semantics.
+inline std::string percent_encode_search_value(std::string_view value) {
+    constexpr char hex[] = "0123456789ABCDEF";
+    std::string encoded;
+    encoded.reserve(value.size() * 3);
+    for (unsigned char ch : value) {
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+            (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' ||
+            ch == '.' || ch == '~') {
+            encoded.push_back(static_cast<char>(ch));
+        } else {
+            encoded.push_back('%');
+            encoded.push_back(hex[ch >> 4]);
+            encoded.push_back(hex[ch & 15]);
+        }
+    }
+    return encoded;
+}
+inline std::string encode_fallback_query(const fallback_candidate& candidate) {
+    if (candidate.q.empty()) return {};
+    std::string quoted_q;
+    quoted_q.reserve(candidate.q.size() + 2);
+    quoted_q.push_back('"');
+    quoted_q.append(candidate.q);
+    quoted_q.push_back('"');
+    std::string params = "q=" + percent_encode_search_value(quoted_q);
+    if (!candidate.title.empty()) {
+        params += "&title=";
+        params += percent_encode_search_value(candidate.title);
+    }
+    return params;
+}
 // At most two extra database/search requests, only after an empty initial
 // query. No unqualified short/empty title or broad artist-only search.
 inline std::vector<fallback_candidate> build_fallback_plan(
