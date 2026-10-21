@@ -121,8 +121,11 @@ void file_info_manager::write_infos(std::function<void()> after_success,
         }
     }
     else if (after_success) {
-        // No tag writer was scheduled; an explicitly requested artwork action
-        // may still proceed. Artwork no-op detection remains a separate gate.
+        // There was no metadata write, but embedded artwork may still change
+        // the physical file. Invalidate stale original-tag snapshots before
+        // the artwork worker can run; only a complete fresh physical read
+        // may authorize another tag commit.
+        begin_physical_read();
         after_success();
     }
 }
@@ -132,6 +135,10 @@ void write_tags_completion::on_completion(unsigned p_code) {
     const bool success = p_code == metadb_io::update_info_success;
     try {
         m_gate.finish(success, [this]() {
+            // An SDK success commits physical bytes. Never leave the old
+            // pre-write snapshot eligible for a second metadata operation.
+            // Revoke before dependent artwork starts or a callback throws.
+            if (m_finfo_manager) m_finfo_manager->begin_physical_read();
             if (m_after_success) {
                 auto action = std::move(m_after_success);
                 action();

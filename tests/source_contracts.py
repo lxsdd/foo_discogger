@@ -714,6 +714,17 @@ assert "artwork_lease" in tasks
 for path in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "async_write_lease_test.cpp" in (root / path).read_text(encoding="utf-8-sig")
 print("PASS: async write/physical artwork operation lease contracts.")
+# A successful async physical tag commit invalidates prior file_info snapshots
+# before optional artwork, and even artwork-only writes revoke stale snapshots.
+write_manager = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
+write_callback = write_manager.split("void write_tags_completion::on_completion(unsigned p_code)", 1)[1].split(
+    "void read_tags_completion::on_completion", 1
+)[0]
+assert write_callback.index("if (m_finfo_manager) m_finfo_manager->begin_physical_read();") < write_callback.index("if (m_after_success)")
+artwork_only = write_manager.split("else if (after_success) {", 1)[1].split("\n    }", 1)[0]
+assert artwork_only.index("begin_physical_read();") < artwork_only.index("after_success();")
+print("PASS: successful metadata and artwork-only writes revoke stale physical snapshots.")
+
 
 # Real artwork idempotence and atomic sidecar overwrite contracts.
 artwork_source = (root / "foo_discogs.cpp").read_text(encoding="utf-8-sig")

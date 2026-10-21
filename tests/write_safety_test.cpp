@@ -73,6 +73,15 @@ int main() {
     assert(!initial_read.ready());
     assert(!initial_read.finish(false, 0, 0));
     assert(initial_read.finish(true, 0, 0));
+    // A completed physical write invalidates the old read permission before
+    // dependent artwork is dispatched. A fresh full read is required.
+    discogger_write_safety::initial_metadata_read post_commit;
+    assert(post_commit.finish(true, 1, 1) && post_commit.ready());
+    post_commit.begin();
+    assert(!post_commit.ready());
+    assert(!post_commit.finish(true, 2, 1));
+    assert(!post_commit.ready());
+    assert(post_commit.finish(true, 2, 2) && post_commit.ready());
     const std::array<unsigned, 3> physical = {0, 0, 0};
     const std::array<unsigned, 3> mixed = {0, 7, 0};
     const std::array<unsigned, 2> virtual_only = {1, 2};
