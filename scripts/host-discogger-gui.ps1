@@ -284,6 +284,39 @@ FILE "synthetic-silence.wav" WAVE
     $cueSize=$cueBefore.Length
     $cueTicks=$cueBefore.LastWriteTimeUtc.Ticks
 
+    # Synthetic silence with ID3v2, generated once and SHA-256 pinned.
+    # Encoded payload is locally generated audio, never any user content.
+    $mp3=Join-Path $dir 'synthetic-metadata.mp3'
+    & python (Join-Path $PSScriptRoot '../tests/create-synthetic-mp3.py') $mp3
+    if($LASTEXITCODE -ne 0){throw 'Synthetic MP3 generator failed'}
+    $flac=Join-Path $dir 'synthetic-embedded.flac'
+    $flacGenerator=Join-Path (Get-Location) 'external/discogger-rich-fixtures/.github/actions/foobar-host-smoke/synthetic-embedded-flac.py'
+    if(-not (Test-Path -LiteralPath $flacGenerator -PathType Leaf)){throw 'Pinned FLAC generator unavailable'}
+    & python $flacGenerator $flac
+    if($LASTEXITCODE -ne 0){throw 'Pinned embedded CUE FLAC generator failed'}
+    $sideB=Join-Path $dir 'synthetic-side-b.wav'
+    Copy-Item -LiteralPath $wav -Destination $sideB
+    $multiCue=Join-Path $dir 'synthetic-multifile.cue'
+    $multiCueBody=@'
+PERFORMER "Discogger Synthetic Artist"
+TITLE "Runner Multi-File Release"
+FILE "synthetic-silence.wav" WAVE
+  TRACK 01 AUDIO
+    TITLE "Runner First"
+    INDEX 01 00:00:00
+FILE "synthetic-side-b.wav" WAVE
+  TRACK 02 AUDIO
+    TITLE "Runner Second"
+    INDEX 01 00:00:00
+'@
+    [IO.File]::WriteAllText($multiCue,$multiCueBody,[Text.Encoding]::ASCII)
+    $moreMedia=@($mp3,$flac,$sideB,$multiCue)
+    $moreBefore=@{}
+    foreach($path in $moreMedia) {
+        $item=Get-Item -LiteralPath $path
+        $moreBefore[$path]=@{ hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash;
+            size=$item.Length; ticks=$item.LastWriteTimeUtc.Ticks }
+    }
     $proc=Start-Process -FilePath $exe -WorkingDirectory $hostDir -PassThru
     Start-Sleep -Seconds 5
     $proc.Refresh()
@@ -465,6 +498,54 @@ FILE "synthetic-silence.wav" WAVE
        $after.Length -ne $wavSize -or $after.LastWriteTimeUtc.Ticks -ne $wavTicks){
         throw 'Synthetic audio was modified by opening the native dialog.'
     }
+    # Three additional REAL foobar contexts with throwaway physical media.
+    # Test invokes only read-only Find Releases, never any write UI action.
+    $activeDialog=$cueDialog
+    foreach($testCase in @(
+        @{Name='MP3';Path=$mp3},
+        @{Name='FLAC_EMBEDDED_CUE';Path=$flac},
+        @{Name='MULTIFILE_CUE';Path=$multiCue}
+    )) {
+        if(-not [DiscoggerWindowTest]::PostMessageW($activeDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+            throw 'Cannot close read-only Discogger fixture dialog'
+        }
+        $closedCase=$false
+        for($n=0;$n -lt 35;$n++){
+            Start-Sleep -Milliseconds 200
+            if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){
+                $closedCase=$true; break
+            }
+        }
+        if(-not $closedCase){throw 'Previous read-only Discogger fixture dialog stayed open'}
+        $argsCase='/context_command:"'+$chosenContextRoute+'" "'+$testCase.Path+'"'
+        $launched=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $argsCase -PassThru
+        if(-not $launched.WaitForExit(15000) -or $launched.ExitCode -ne 0){
+            throw "Read-only context launch failed for $($testCase.Name)"
+        }
+        $opened=[IntPtr]::Zero
+        for($n=0;$n -lt 35;$n++){
+            Start-Sleep -Milliseconds 300
+            $proc.Refresh()
+            if($proc.HasExited){throw "Host exited for $($testCase.Name)"}
+            $matches=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+            if($matches.Length -gt 1){throw 'Unexpected duplicate Find Releases dialogs'}
+            if($matches.Length -eq 1){$opened=$matches[0];break}
+        }
+        if($opened -eq [IntPtr]::Zero -or -not [DiscoggerWindowTest]::Responsive($opened)){
+            throw "Read-only Find Releases window failed for $($testCase.Name)"
+        }
+        $activeDialog=$opened
+        Write-Host ("DISCOGGER_GUI_READONLY_"+$testCase.Name+"_"+$Architecture+"=PASS")
+    }
+    foreach($path in $moreMedia){
+        $original=$moreBefore[$path]
+        $after=Get-Item -LiteralPath $path
+        if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $original.hash -or
+            $after.Length -ne $original.size -or $after.LastWriteTimeUtc.Ticks -ne $original.ticks){
+            throw "Read-only native context altered fixture: $([IO.Path]::GetFileName($path))"
+        }
+    }
+    Write-Host "DISCOGGER_GUI_MP3_FLAC_CUE_READONLY_$Architecture=PASS"
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"

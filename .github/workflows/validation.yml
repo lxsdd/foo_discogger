@@ -166,6 +166,13 @@ jobs:
         with:
           architecture: x64
           component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll
+      - name: Stage exact shared synthetic FLAC fixture generator
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 35369054c56f4c6ccb2f802944e9675852fd35ec
+          path: external/discogger-rich-fixtures
+          persist-credentials: false
       - name: HARD GATE - Discogger first-run SQLite configuration and Win32 native GUI
         shell: pwsh
         run: ./scripts/host-discogger-gui.ps1 -Architecture Win32 -ComponentDll "$env:RUNNER_TEMP/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll"

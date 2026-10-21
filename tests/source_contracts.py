@@ -1451,3 +1451,16 @@ preview_commands = preview_code.split("bool CPreviewTagsDialog::context_menu_swi
 assert "current->artists.get_count()" in preview_commands
 assert "static_cast<size_t>(cmd - ID_URL_ARTISTS) < vartists.size()" in preview_commands
 print("PASS: empty artists and stale previews do not enable context menu writes.")
+
+# Expanded real Win32/x64 host covers synthetic MP3, embedded FLAC CUE and
+# multi-file external CUE. These are READ-ONLY gates, NOT physical writes.
+host_test = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+host_workflow = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+mp3_fixture = (root / "tests/create-synthetic-mp3.py").read_text(encoding="utf-8-sig")
+assert "DISCOGGER_GUI_MP3_FLAC_CUE_READONLY_" in host_test
+assert "MEDIA_WRITE_SAFETY_" in host_test and "=NOT_TESTED" in host_test
+assert "synthetic-embedded-flac.py" in host_test
+assert "synthetic-multifile.cue" in host_test
+assert "35369054c56f4c6ccb2f802944e9675852fd35ec" in host_workflow
+assert "b430229832fb8a1e7824716b1fefb34e5706ea89593dd73ddf7133c17ae8bec0" in mp3_fixture
+print("PASS: pinned synthetic MP3/FLAC/CUE native read-only media matrix wired.")
