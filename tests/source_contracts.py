@@ -1578,3 +1578,15 @@ assert 'Counter(before_fields.get(field, []))' in phys_verify
 assert "id3_audio_payload(before) != id3_audio_payload(after)" in phys_verify
 assert "tests/enrich-synthetic-flac.py" in host_media
 print("PASS: runner actual MP3/FLAC writer preserves embedded pictures, multivalues and audio.")
+
+# Real SDK host must reject an entire two-file write selection with a stale
+# original snapshot before touching either physical medium. This does not
+# claim rollback if the SDK fails *after* partially completing I/O.
+batch_source = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+batch_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "run_disposable_incomplete_batch_qa()" in batch_source
+assert "manager->info_wrappers[1]->original_captured = false;" in batch_source
+assert "qa-incomplete-batch-rejected.txt" in batch_source
+assert "DISCOGGER_PHYSICAL_BATCH_PREFLIGHT_ATOMIC_" in batch_host
+assert "BATCH=REJECTED_BEFORE_IO" in batch_host
+print("PASS: actual host two-file write preflight rejection is wired.")

@@ -666,6 +666,38 @@ FILE "synthetic-side-b.wav" WAVE
         }
     }
     Write-Host "DISCOGGER_PHYSICAL_VIRTUAL_DUPLICATE_DENIAL_$Architecture=PASS"
+
+    # Actual SDK batch must reject a missing/stale physical snapshot before
+    # touching either disposable MP3 or FLAC (no partial preflight commit).
+    $beforeBatch=@{}
+    foreach($path in @($mp3,$flac)){
+        $beforeBatch[$path]=@{ Hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash;
+          Ticks=(Get-Item -LiteralPath $path).LastWriteTimeUtc.Ticks }
+    }
+    $batchMarker=Join-Path $dir 'qa-incomplete-batch-rejected.txt'
+    if(Test-Path -LiteralPath $batchMarker){throw 'Batch preflight marker already exists.'}
+    $batchCommand=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA incomplete batch"' -PassThru
+    if(-not $batchCommand.WaitForExit(15000) -or $batchCommand.ExitCode -ne 0){
+        throw 'Unable to dispatch native incomplete-batch QA.'
+    }
+    $batchObserved=$false
+    for($n=0;$n -lt 60;$n++){
+        Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $batchMarker -PathType Leaf){
+            $data=(Get-Content -LiteralPath $batchMarker -Raw).Trim()
+            if($data -ceq 'BATCH=REJECTED_BEFORE_IO'){$batchObserved=$true;break}
+        }
+        $proc.Refresh()
+        if($proc.HasExited){throw 'Foobar exited during physical batch preflight QA.'}
+    }
+    if(-not $batchObserved){throw 'No native incomplete-batch preflight evidence.'}
+    foreach($path in @($mp3,$flac)){
+        if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $beforeBatch[$path].Hash -or
+          (Get-Item -LiteralPath $path).LastWriteTimeUtc.Ticks -ne $beforeBatch[$path].Ticks) {
+            throw "Incomplete-batch preflight modified physical media: $path"
+        }
+    }
+    Write-Host "DISCOGGER_PHYSICAL_BATCH_PREFLIGHT_ATOMIC_$Architecture=PASS"
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
