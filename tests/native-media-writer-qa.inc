@@ -46,8 +46,13 @@ void run_disposable_media_writer_qa(t_uint32 format) {
         throw std::runtime_error("QA complete physical metadata read failed.");
     manager->invalidate_all();
     auto& info = manager->get_item(0);
-    info.meta_set("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED");
-    manager->validate_item(0);
+    const size_t oldCount = info.meta_get_count_by_name("DISCOGGER_QA_RUNNER");
+    if (!discogger_write_safety::unchanged_single_value(
+            oldCount, oldCount ? info.meta_get("DISCOGGER_QA_RUNNER", 0) : nullptr,
+            "RUNNER-VERIFIED")) {
+        info.meta_set("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED");
+        manager->validate_item(0);
+    }
     auto lease = discogger_write_safety::acquire_physical_write_lease();
     if (!lease) throw std::runtime_error("QA physical writer lease unavailable.");
     // A write is not accepted merely because foobar's command launcher

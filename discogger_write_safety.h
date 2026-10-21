@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <set>
 #include <string>
@@ -9,6 +10,15 @@
 // Pure, SDK-independent preflight used by both the task and the final writer.
 // A mixed selection is rejected atomically before any asynchronous tag writes.
 namespace discogger_write_safety {
+// Avoid touching file_info when the requested single-value edit would not
+// change metadata. Even an equal meta_set can reorder FLAC comments, causing
+// an unnecessary physical rewrite despite unchanged logical tag values.
+inline bool unchanged_single_value(std::size_t count,
+    const char* existing, const char* desired) noexcept {
+    if (!desired) return false;
+    if (!*desired) return count == 0;
+    return count == 1 && existing && std::strcmp(existing, desired) == 0;
+}
 // Fail closed on unsafe handles before any SDK dereference or file write.
  // Reads may legitimately contain virtual CUE tracks or duplicate physical
  // locations; writes must reject them atomically. The comparison callback

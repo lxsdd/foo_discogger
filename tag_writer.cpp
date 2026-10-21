@@ -906,6 +906,9 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 	} //..log
 
 	size_t cexist = info.meta_get_count_by_name(entry.tag_name);
+    if (discogger_write_safety::unchanged_single_value(
+            cexist, cexist ? info.meta_get(entry.tag_name, 0) : nullptr,
+            tag_value.get_ptr())) return;
 
 	if (cexist > 1 && tag_value.get_length()) {
 

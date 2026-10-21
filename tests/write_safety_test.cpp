@@ -6,6 +6,15 @@
 #include <string>
 
 int main() {
+    using discogger_write_safety::unchanged_single_value;
+    assert(unchanged_single_value(0, nullptr, ""));
+    assert(!unchanged_single_value(0, nullptr, "New"));
+    assert(unchanged_single_value(1, "RUNNER-VERIFIED", "RUNNER-VERIFIED"));
+    assert(!unchanged_single_value(1, "Old", "New"));
+    assert(!unchanged_single_value(2, "RUNNER-VERIFIED", "RUNNER-VERIFIED"));
+    assert(!unchanged_single_value(1, "Value", ""));
+    assert(!unchanged_single_value(1, nullptr, "Value"));
+    assert(!unchanged_single_value(0, nullptr, nullptr));
     // Pure target validation: no filesystem access and no host writes.
     using target = discogger_write_safety::target_batch_decision;
     struct input { bool handle; const char* path; unsigned subsong; };

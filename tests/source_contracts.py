@@ -1512,3 +1512,14 @@ assert 'tags = id3_txxx_values(after)' in media_verifier
 assert '("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED") not in tags' in media_verifier
 assert "--selftest" in media_verifier
 print("PASS: physical MP3 QA reads semantic ID3v2 TXXX values including UTF-16.")
+
+# Avoid mutating file_info at all when tag value did not change. This guards
+# against FLAC comment reorder on redundant meta_set and protects mtime.
+tag_writer_src = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+qa_media_src = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+write_header = (root / "discogger_write_safety.h").read_text(encoding="utf-8-sig")
+assert "inline bool unchanged_single_value(" in write_header
+assert "discogger_write_safety::unchanged_single_value(" in tag_writer_src
+assert "discogger_write_safety::unchanged_single_value(" in qa_media_src
+assert "if (!discogger_write_safety::unchanged_single_value(" in qa_media_src
+print("PASS: single-value unchanged metadata does not call meta_set or physical write.")
