@@ -1,0 +1,173 @@
+name: Discogger authorized read-only Discogs lookup
+
+# Minimal default-branch bootstrap. Intentionally NOT a component build.
+# GitHub's manual Run workflow control requires a default-branch workflow.
+# Never expose credentials to pull_request events or uploaded artifacts.
+on:
+  workflow_dispatch:
+  # Required master checks run only when this workflow file itself changes.
+  # No token or secret is made available to these pull_request checks.
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/discogs-authorized-live.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  authorized-discogs-live:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - name: Probe known Discogs releases (official HTTPS, no response logging)
+        shell: bash
+        env:
+          DISCOGS_QA_AUTH: ${{ secrets.FB2K_DISCOGS_QA_TOKEN || secrets.DISCOGS_QA_TOKEN || secrets.DISCOGS_TOKEN || secrets.DISCOGS_API_TOKEN || secrets.DISCOGS_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import http.client, json, os, re
+          from urllib.parse import urlencode
+          if (os.getenv('GITHUB_EVENT_NAME') != 'workflow_dispatch' or
+              os.getenv('GITHUB_REPOSITORY') != 'lxsdd/foo_discogger' or
+              os.getenv('GITHUB_REF') != 'refs/heads/master'):
+              raise SystemExit('DISCOGS_LIVE=BLOCKED: unauthorized runner context')
+          token = os.getenv('DISCOGS_QA_AUTH', '')
+          if not re.fullmatch(r'[A-Za-z0-9_-]{8,256}', token):
+              raise SystemExit('DISCOGS_LIVE=BLOCKED: no eligible Actions secret; no token printed')
+          releases = [
+              ('38012673','Estiva','Via Balearia',None),
+              ('37332711','Kyau & Albert x Maywave','1000 Years','Maywave'),
+              ('36397609','Matt Fax','Only You',None),
+              ('36819730','Matt Fax','Till You Let Go',None),
+          ]
+          headers = {
+              'User-Agent':'Discogger-Draft-ReadOnly-QA/1.0',
+              'Authorization':'Discogs token=' + token,
+              'Accept':'application/vnd.discogs.v2+json',
+          }
+          def fetch(path):
+              # Fixed official TLS host; http.client never follows redirects.
+              conn = http.client.HTTPSConnection('api.discogs.com', timeout=18)
+              try:
+                  conn.request('GET', path, headers=headers)
+                  response = conn.getresponse()
+                  data = response.read(1000001)
+                  if len(data) > 1000000:
+                      raise RuntimeError('Discogs payload too large')
+                  if response.status != 200:
+                      raise RuntimeError('Discogs HTTP status ' + str(response.status))
+                  return json.loads(data)
+              finally:
+                  conn.close()
+          def results(params):
+              query = '/database/search?' + urlencode(dict(params, type='release', per_page=100, page=1))
+              data = fetch(query)
+              return {str(x.get('id')) for x in data.get('results', []) if x.get('type') == 'release'}
+          found = 0
+          for release_id, artist, title, partner in releases:
+              release = fetch('/releases/' + release_id)
+              if str(release.get('id')) != release_id:
+                  raise RuntimeError('Incorrect release identity ' + release_id)
+              if title.casefold() not in str(release.get('title', '')).casefold():
+                  raise RuntimeError('Incorrect release title ' + release_id)
+              if not release.get('tracklist') or not release.get('artists'):
+                  raise RuntimeError('Missing public release tracklist ' + release_id)
+              print('DISCOGS_DIRECT_' + release_id + '=PASS')
+              if release_id in results({'artist':artist,'title':title}):
+                  print('DISCOGS_SEARCH_' + release_id + '=EXACT')
+              elif partner and release_id in results({'q':'"' + partner + '"','title':title}):
+                  print('DISCOGS_SEARCH_' + release_id + '=PARTNER_REVIEW_REQUIRED')
+              elif release_id in results({'q':'"' + title + '"'}):
+                  print('DISCOGS_SEARCH_' + release_id + '=TITLE_REVIEW_REQUIRED')
+              else:
+                  print('DISCOGS_SEARCH_' + release_id + '=MISSING_BOUNDED_RESULTS')
+                  continue
+              found += 1
+          if found != 4:
+              raise SystemExit('DISCOGS_LIVE_DISCOVERY=FAIL: one or more releases absent')
+          print('DISCOGS_LIVE_DISCOVERY=PASS: 4/4 (fallback requires identity review)')
+          PY
+
+  # No placeholder check successes: run actual portable/MSVC unit binaries
+  # from the previously verified exact Discogger development commit.
+  portable-core:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate manual-only secret access on this workflow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/discogs-authorized-live.yml').read_text()
+          assert '  workflow_dispatch:\n' in p and '  pull_request:\n' in p
+          assert '    branches: [master]\n' in p
+          assert "      - '.github/workflows/discogs-authorized-live.yml'\n" in p
+          assert "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'" in p
+          assert 'secrets.FB2K_DISCOGS_QA_TOKEN' in p
+          assert "http.client.HTTPSConnection('api.discogs.com', timeout=18)" in p
+          assert not any(line.startswith('  pull_request_target:') for line in p.splitlines())
+          assert not any(line.lstrip().startswith('uses: actions/' + 'upload-artifact') for line in p.splitlines())
+          print('PASS: manual-only Discogs access is restricted.')
+          PY
+      - name: Checkout previously verified exact Discogger unit sources
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foo_discogger
+          ref: ae82b3f38a0380f885d9e0ec8397acf1b4a33389
+          path: source-tests
+          persist-credentials: false
+      - name: Execute real portable source regression contracts
+        run: python3 source-tests/tests/source_contracts.py
+      - name: Build and execute real portable C++17 safety tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for unit in write_safety_test.cpp collaboration_fallback_test.cpp result_alignment_test.cpp; do
+            g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 "source-tests/tests/$unit" -o "$RUNNER_TEMP/$unit.out"
+            "$RUNNER_TEMP/$unit.out"
+          done
+          echo 'PASS: Discogger portable safety and matching tests.'
+
+  windows-native-unit:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check read-only manual-token guard on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $text=Get-Content -LiteralPath '.github/workflows/discogs-authorized-live.yml' -Raw
+          if(-not $text.Contains("github.event_name == 'workflow_dispatch'") -or
+             -not $text.Contains("github.ref == 'refs/heads/master'") -or
+             -not $text.Contains("secrets.FB2K_DISCOGS_QA_TOKEN")) {
+            throw 'Manual-only authentication gate missing.'
+          }
+          Write-Host 'PASS: Windows manual-only authentication checks.'
+      - name: Checkout previously verified exact Discogger MSVC unit sources
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foo_discogger
+          ref: ae82b3f38a0380f885d9e0ec8397acf1b4a33389
+          path: source-tests
+          persist-credentials: false
+      - name: Compile and run real Discogger MSVC C++17 regression suite
+        shell: pwsh
+        run: ./source-tests/scripts/run-msvc-unit-tests.ps1 -Architecture '${{ matrix.architecture }}'
