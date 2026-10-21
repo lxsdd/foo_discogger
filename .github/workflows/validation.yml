@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Source contract regression checks
         run: python3 tests/source_contracts.py
+      - name: Selftest physical ID3v2 TXXX UTF-8 and UTF-16 verifier
+        run: python3 tests/verify-runner-physical-tags.py --selftest
       - name: Compile and run portable query-history CRC32 regression
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/crc32_test.cpp -o /tmp/discogger-crc32-test && /tmp/discogger-crc32-test
       - name: Compile and run mapping lifetime regression

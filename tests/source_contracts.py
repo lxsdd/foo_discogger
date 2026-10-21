@@ -1503,3 +1503,12 @@ assert qa_source.count("target->write_infos({}, std::move(lease), false);") == 2
 assert "DISCOGGER_PHYSICAL_VIRTUAL_DUPLICATE_DENIAL_" in host_test
 assert "qa-unsafe-targets-rejected.txt" in host_test
 print("PASS: host preflight rejects virtual CUE and duplicate metadata writes.")
+
+# ID3v2 custom tags are often serialized as UTF-16 TXXX, never use only
+# raw ASCII substring searches to accept/reject a physical MP3 write.
+media_verifier = (root / "tests/verify-runner-physical-tags.py").read_text(encoding="utf-8-sig")
+assert "def id3_txxx_values(content):" in media_verifier
+assert 'tags = id3_txxx_values(after)' in media_verifier
+assert '("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED") not in tags' in media_verifier
+assert "--selftest" in media_verifier
+print("PASS: physical MP3 QA reads semantic ID3v2 TXXX values including UTF-16.")
