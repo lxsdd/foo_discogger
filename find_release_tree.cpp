@@ -2432,9 +2432,40 @@ LRESULT CFindReleaseTree::OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lParam,
 
 void CFindReleaseTree::context_menu(size_t param_mr, POINT screen_pos) {
 
-	bool empty_sel = (param_mr == -1);
+    mounted_param myparam(param_mr);
+    // Popup menus are modal: an artist refresh or another UI action may
+    // evict the currently displayed tree nodes while this menu is open.
+    // Capture a checked, shared ownership snapshot before offering any
+    // release-specific command, then use only these snapshot values.
+    Artist_ptr artist_snapshot = m_find_release_artist;
+    MasterRelease_ptr master_snapshot;
+    Release_ptr release_snapshot;
+    if (artist_snapshot && (myparam.is_master() || myparam.is_release()) &&
+        myparam.master_ndx < artist_snapshot->master_releases.get_count()) {
+        master_snapshot = artist_snapshot->master_releases[myparam.master_ndx];
+    }
+    if (master_snapshot && myparam.is_release() &&
+        myparam.release_ndx < master_snapshot->sub_releases.get_count()) {
+        release_snapshot = master_snapshot->sub_releases[myparam.release_ndx];
+    } else if (artist_snapshot && myparam.is_nmrelease() &&
+               myparam.release_ndx < artist_snapshot->releases.get_count()) {
+        release_snapshot = artist_snapshot->releases[myparam.release_ndx];
+    }
+    const bool empty_sel = !(myparam.is_master() && master_snapshot) &&
+                           !release_snapshot;
+    pfc::string8 context_id;
+    pfc::string8 context_title;
+    if (!empty_sel) {
+        if (myparam.is_master()) {
+            context_id = master_snapshot->id;
+            context_title = master_snapshot->title;
+        } else {
+            context_id = release_snapshot->id;
+            context_title = release_snapshot->title;
+        }
+    }
+    const pfc::string8 artist_id = artist_snapshot ? artist_snapshot->id : pfc::string8();
 
-	mounted_param myparam(param_mr);
 
 	pfc::string8 sourcepage = myparam.brelease ? "Web &release page" : "Web mas&ter release page";
 	pfc::string8 copytitle = "Copy t&itle";
@@ -2455,17 +2486,12 @@ void CFindReleaseTree::context_menu(size_t param_mr, POINT screen_pos) {
 		bool enabled_rolemain = !rolemainAT && (cfg.find_release_filter_flag & FilterFlag::RoleMain);
 		bool enabled_filter = uGetDlgItemText(m_dlg->m_hWnd, IDC_EDIT_FILTER).get_length();
 
-		pfc::string8 release_id;
-		if (myparam.is_release()) {
-			release_id = m_find_release_artist->master_releases[myparam.master_ndx]->sub_releases[myparam.release_ndx]->id;
-		}
-		else if (myparam.is_nmrelease()) {
-			release_id = m_find_release_artist->releases[myparam.release_ndx]->id;
-		}
+        const pfc::string8 release_id = !empty_sel && !myparam.is_master()
+            ? context_id : pfc::string8();
 
 		bool boffExists = false;
 		if (release_id.get_length()) {
-			pfc::string8 parent_path = ol::get_offline_path(m_find_release_artist->id, ol::GetFrom::Release, release_id, true);
+			pfc::string8 parent_path = ol::get_offline_path(artist_id, ol::GetFrom::Release, release_id, true);
 			std::filesystem::path os_path = std::filesystem::u8path(parent_path.c_str());
 			boffExists = fs::exists(os_path);
 		}
@@ -2509,39 +2535,20 @@ void CFindReleaseTree::context_menu(size_t param_mr, POINT screen_pos) {
 			dlg->OnButtonNext(0, 0, NULL, bDummy);
 			break;
 		}
-		case ID_VIEW_PAGE:
-		{
-			pfc::string8 url;
-			if (myparam.is_release()) {
-				url << "https://www.discogs.com/release/" << m_find_release_artist->master_releases[myparam.master_ndx]->sub_releases[myparam.release_ndx]->id;
-			}
-			else if (myparam.bmaster) {
-				url << "https://www.discogs.com/master/" << m_find_release_artist->master_releases[myparam.master_ndx]->id;
-			}
-			else {
-				url << "https://www.discogs.com/release/" << m_find_release_artist->releases[myparam.release_ndx]->id;
-			}
-
-			if (url.get_length()) display_url(url);
-
-			break;
-		}
-		case ID_CLP_COPY_TITLE:
-		{
-			pfc::string8 buffer;
-
-			if (myparam.is_release()) {
-
-				buffer << m_find_release_artist->master_releases[myparam.master_ndx]->sub_releases[myparam.release_ndx]->title;
-			}
-			else if (myparam.bmaster) {
-				buffer << m_find_release_artist->master_releases[myparam.master_ndx]->title;
-			}
-			else {
-				buffer << m_find_release_artist->releases[myparam.release_ndx]->title;
-			}
-
-			if (buffer.get_length()) {
+        case ID_VIEW_PAGE: {
+            if (empty_sel || !context_id.get_length()) break;
+            pfc::string8 url;
+            url << (myparam.is_master() ? "https://www.discogs.com/master/" :
+                                          "https://www.discogs.com/release/");
+            url << context_id;
+            display_url(url);
+            break;
+        }
+        case ID_CLP_COPY_TITLE:
+        {
+            if (empty_sel) break;
+            pfc::string8 buffer = context_title;
+            if (buffer.get_length()) {
 
 				ClipboardHelper::OpenScope scope;
 				scope.Open(core_api::get_main_window());
@@ -2554,7 +2561,9 @@ void CFindReleaseTree::context_menu(size_t param_mr, POINT screen_pos) {
 		{
 			pfc::string8 buffer;
 			row_col_data rcd_out;
-			/*bool bres =*/ m_rt_cache.get_cached_find_release_node(myparam.lparam(), buffer, rcd_out);
+            if (empty_sel ||
+                !m_rt_cache.get_cached_find_release_node(myparam.lparam(), buffer, rcd_out))
+                break;
 			ClipboardHelper::OpenScope scope;
 			scope.Open(core_api::get_main_window());
 			ClipboardHelper::SetString(trim(buffer).get_ptr());
@@ -2569,7 +2578,8 @@ void CFindReleaseTree::context_menu(size_t param_mr, POINT screen_pos) {
 		}
 		case ID_DLG_CLEAR_REL_CACHE:
 		{
-			discogs_interface->delete_artist_cache(m_find_release_artist->id, release_id);
+			if (!empty_sel && artist_id.get_length() && release_id.get_length())
+                discogs_interface->delete_artist_cache(artist_id, release_id);
 			break;
 		}
 		case ID_DLG_FILTER_TOGGLE:

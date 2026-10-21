@@ -1067,6 +1067,21 @@ assert "if (kind == discogger_tree::row_kind::standalone &&" in tree_hooks
 assert "main_release->id" not in tree_hooks
 assert "row_data.id = -1;" in tree_hooks
 assert "row_data.col_data_list.emplace_back(0, label);" in tree_hooks
+tree_menu = tree_source[tree_source.index("void CFindReleaseTree::context_menu("):
+                        tree_source.index("//public serves find-rel dlg")]
+assert "Artist_ptr artist_snapshot = m_find_release_artist;" in tree_menu
+assert "MasterRelease_ptr master_snapshot;" in tree_menu
+assert "Release_ptr release_snapshot;" in tree_menu
+assert "myparam.master_ndx < artist_snapshot->master_releases.get_count()" in tree_menu
+assert "myparam.release_ndx < master_snapshot->sub_releases.get_count()" in tree_menu
+assert "myparam.release_ndx < artist_snapshot->releases.get_count()" in tree_menu
+assert "const bool empty_sel =" in tree_menu
+assert "context_title = release_snapshot->title;" in tree_menu
+assert "if (empty_sel || !context_id.get_length()) break;" in tree_menu
+assert "if (empty_sel ||" in tree_menu
+assert "delete_artist_cache(artist_id, release_id)" in tree_menu
+assert "m_find_release_artist->" not in tree_menu
+
 tree_id = tree_source[tree_source.index("pfc::string8 CFindReleaseTree::get_param_id("):
                       tree_source.index("int release_tree_cache::get_src_param(", tree_source.index("pfc::string8 CFindReleaseTree::get_param_id("))]
 assert "if (!m_find_release_artist) return id;" in tree_id
