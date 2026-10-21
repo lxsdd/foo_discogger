@@ -72,7 +72,41 @@ generate_tags_task::~generate_tags_task() {
 	//..
 }
 
+// No stale, destroyed, or replaced dialog may receive an old generation
+// callback or authorize a tag write for its prior file selection.
+bool generate_tags_task::origin_is_current() const {
+    if (!m_owner_window || !g_discogs || !::IsWindow(m_owner_window))
+        return false;
+    if (m_preview_dialog)
+        return g_discogs->preview_tags_dialog == m_preview_dialog &&
+               g_discogs->preview_tags_dialog->m_hWnd == m_owner_window;
+    if (m_track_matching_dialog)
+        return g_discogs->track_matching_dialog == m_track_matching_dialog &&
+               g_discogs->track_matching_dialog->m_hWnd == m_owner_window;
+    // Legacy credit-dialog worker only exposes an opaque dialog pointer here.
+    // Require that the original credit instance is still current; do not
+    // dereference an incomplete or potentially freed CTagCreditDialog.
+    if (m_credits_dialog)
+        return g_discogs->tag_credit_dialog == m_credits_dialog &&
+               m_owner_window == core_api::get_main_window();
+    return false;
+}
+
 void generate_tags_task::start() {
+    // Start() is invoked from the originating dialog's UI thread.
+    if (g_discogs) {
+        if (m_preview_dialog && g_discogs->preview_tags_dialog == m_preview_dialog)
+            m_owner_window = m_preview_dialog->m_hWnd;
+        else if (m_track_matching_dialog &&
+                 g_discogs->track_matching_dialog == m_track_matching_dialog)
+            m_owner_window = m_track_matching_dialog->m_hWnd;
+        else if (m_credits_dialog && g_discogs->tag_credit_dialog == m_credits_dialog)
+            m_owner_window = core_api::get_main_window();
+    }
+    if (!origin_is_current()) {
+        log_msg("Tag generation refused: originating dialog is not live.");
+        return;
+    }
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_abort |
@@ -86,6 +120,11 @@ void generate_tags_task::start() {
 
 void generate_tags_task::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
 
+    // Dialogs can close after the modeless task is launched.
+    if (!origin_is_current()) {
+        m_quick_abort = true; // No generation mutex has been acquired.
+        return;
+    }
 	{
 		std::lock_guard<std::mutex> guard(g_discogs->locked_tag_generation_rw_mutex);
 		if (g_discogs->locked_tag_generation) {
@@ -98,12 +137,10 @@ void generate_tags_task::safe_run(threaded_process_status& p_status, abort_callb
 		}
 	}
 
-	if (m_track_matching_dialog) {
-		m_track_matching_dialog->enable(false);
-	}
-	else if (m_preview_dialog)  {
-		m_preview_dialog->enable(false, true);
-	}
+    if (m_track_matching_dialog && origin_is_current())
+        g_discogs->track_matching_dialog->enable(false);
+    else if (m_preview_dialog && origin_is_current())
+        g_discogs->preview_tags_dialog->enable(false, true);
 
 	m_tag_writer->generate_tags(m_alt_mappings, p_status, p_abort);
 }
@@ -113,6 +150,12 @@ void generate_tags_task::on_success(HWND p_wnd) {
 	if (m_quick_abort) {
 		return;
 	}
+    // A completed task must not silently fall through from a closed preview
+    // into the legacy "write tags" branch targeting another matching dialog.
+    if (!origin_is_current()) {
+        on_error(p_wnd); // Drop in-memory changes; revoke the generation lock.
+        return;
+    }
 
 	if (m_preview_dialog && m_preview_dialog->IsWindow()) {
 
@@ -248,12 +291,12 @@ void generate_tags_task::on_error(HWND p_wnd) {
 	m_tag_writer->ResetMask();
 	//orphan $prompt modal dialog closed?
 	//todo: global mutexes form global dialogs
-	if (m_preview_dialog && m_preview_dialog->IsWindow()) {
+	if (origin_is_current() && m_preview_dialog) {
 
 		m_preview_dialog->enable(true, true);
 	}
 	else {
-		if (m_track_matching_dialog && m_track_matching_dialog->IsWindow()) {
+		if (origin_is_current() && m_track_matching_dialog) {
 			m_track_matching_dialog->enable(true);
 			m_track_matching_dialog->show();
 		}

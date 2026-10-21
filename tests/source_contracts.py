@@ -630,6 +630,29 @@ assert "m_tag_writer->tag_results[new_sel]" not in preview_success
 assert "curr_sel - 1 < 0" not in preview_success
 for filepath in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "preview_selection_test.cpp" in (root / filepath).read_text(encoding="utf-8-sig")
+# The asynchronous tag generation callback can outlive a modeless preview.
+# A closed preview must not fall through to Write Tags using a newer dialog.
+generation_source = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+generation_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
+generation_class = generation_header[generation_header.index("class generate_tags_task :"):
+    generation_header.index("class write_tags_task :")]
+assert "HWND m_owner_window = nullptr;" in generation_class
+assert "bool origin_is_current() const;" in generation_class
+assert "bool generate_tags_task::origin_is_current() const" in generation_source
+assert "g_discogs->preview_tags_dialog == m_preview_dialog" in generation_source
+assert "g_discogs->track_matching_dialog == m_track_matching_dialog" in generation_source
+assert "g_discogs->tag_credit_dialog == m_credits_dialog" in generation_source
+generation_start = generation_source[generation_source.index("void generate_tags_task::start()"):
+    generation_source.index("void generate_tags_task::safe_run(")]
+assert "if (!origin_is_current())" in generation_start
+generation_success = generation_source[generation_source.index("void generate_tags_task::on_success("):
+    generation_source.index("void generate_tags_task::on_abort(")]
+assert "if (!origin_is_current()) {\n        on_error(p_wnd);" in generation_success
+assert generation_success.index("if (!origin_is_current())") < generation_success.index("if (m_preview_dialog && m_preview_dialog->IsWindow())")
+generation_error = generation_source[generation_source.index("void generate_tags_task::on_error("):
+    generation_source.index("void write_tags_task::start()")]
+assert "if (origin_is_current() && m_preview_dialog)" in generation_error
+assert "if (origin_is_current() && m_track_matching_dialog)" in generation_error
 print("PASS: native compile-cluster source regressions (tag write lock, C++20, UI and CRC32).")
 
 # C++20 / SDK cfg_objList mapping ownership and pointer lifetime contracts.

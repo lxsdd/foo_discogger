@@ -85,6 +85,8 @@ private:
 	CPreviewTagsDialog *m_preview_dialog = nullptr;
 	CTrackMatchingDialog *m_track_matching_dialog = nullptr;
 	CTagCreditDialog *m_credits_dialog = nullptr;
+    HWND m_owner_window = nullptr; // Captured once before the modeless worker.
+    bool origin_is_current() const;
 
 	bool m_show_preview_dialog;
 	bool m_quick_abort = false;
