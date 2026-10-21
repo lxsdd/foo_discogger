@@ -56,6 +56,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/cache_lru_test.cpp -o /tmp/discogger-cache-test && /tmp/discogger-cache-test
       - name: Compile and run online artist-refresh concurrency and retry tests
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/artist_refresh_test.cpp -o /tmp/discogger-artist-refresh && /tmp/discogger-artist-refresh
+      - name: Compile and run multi-artist in-flight ownership regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_load_ownership_test.cpp -o /tmp/discogger-artist-owned && /tmp/discogger-artist-owned
       - name: Compile and run disk-cache TTL boundary regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cache_expiry_test.cpp -o /tmp/discogger-cache-expiry && /tmp/discogger-cache-expiry
       - name: Compile and run disk-cache page integrity regressions

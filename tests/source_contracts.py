@@ -79,6 +79,21 @@ assert "if (!m_artist_load_registered) return;" in artist_checkout
 assert "m_artist_load_registered = false;" in artist_checkout
 assert artist_success.index("check_out();") < artist_success.index("if (m_artist)")
 print("PASS: duplicate artist loads cannot clear another worker's marker; null results release ownership.")
+# The multi-artist callback must release only its own in-flight registrations,
+# and a later duplicate callback must never clear a new worker's marker.
+multi_worker = native_tasks_cpp.split("bool get_multi_artists_process_callback::check_in()", 1)[1].split(
+    "void get_multi_artists_process_callback::safe_run", 1
+)[0]
+assert 'return !m_checked_in_artist_ids.empty();' in multi_worker
+assert 'discogger_async::release_owned_ids(' in multi_worker
+assert 'm_checked_in_artist_ids, g_discogs->vArtistLoadReleasesTasks' in multi_worker
+assert 'for (auto artist_id : m_artist_ids)' not in multi_worker.split(
+    "void get_multi_artists_process_callback::check_out()", 1)[1]
+assert '#include "discogger_artist_load_ownership.h"' in native_tasks_cpp
+for test_runner in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
+    assert "artist_load_ownership_test.cpp" in (root / test_runner).read_text(encoding="utf-8-sig")
+print("PASS: multi-artist in-flight markers are owned and released once.")
+
 
 
 

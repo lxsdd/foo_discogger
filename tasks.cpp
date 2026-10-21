@@ -12,6 +12,7 @@
 #include "configuration_dialog.h"
 #include "crc.h"
 #include "tasks.h"
+#include "discogger_artist_load_ownership.h"
 #include "discogger_write_safety.h"
 #include "discogger_physical_targets.h"
 
@@ -1081,24 +1082,19 @@ bool get_multi_artists_process_callback::check_in() {
 			g_discogs->vArtistLoadReleasesTasks.emplace_back(std::move(walk_str_id));
 		}
 	}
-	return true;
+	return !m_checked_in_artist_ids.empty();
 }
 
 void get_multi_artists_process_callback::check_out() {
-	std::lock_guard lg(g_discogs->mx_vArtistLoadReleasesTasks);
-	for (auto artist_id : m_artist_ids) {
-
-		pfc::string8 walk_str_id; walk_str_id << artist_id;
-		auto found_it = std::find_if(g_discogs->vArtistLoadReleasesTasks.begin(), g_discogs->vArtistLoadReleasesTasks.end(), [&](const pfc::string8& e) {
-				return e.equals(walk_str_id); });
-		auto found_local_it = std::find_if(m_checked_in_artist_ids.begin(), m_checked_in_artist_ids.end(), [&](const pfc::string8& e) {
-                return e.equals(walk_str_id/*str_artist_id*/); });
-		bool found = found_it != std::end(g_discogs->vArtistLoadReleasesTasks);
-		found &= found_local_it != std::end(m_checked_in_artist_ids);
-		if (found) {
-			g_discogs->vArtistLoadReleasesTasks.erase(found_it);
-		}
-	}
+    // A completion and a later abort/error may both arrive. Only remove
+    // markers this particular task still owns, and consume that ownership
+    // exactly once while the shared registry mutex is held.
+    std::lock_guard lg(g_discogs->mx_vArtistLoadReleasesTasks);
+    discogger_async::release_owned_ids(
+        m_checked_in_artist_ids, g_discogs->vArtistLoadReleasesTasks,
+        [](const pfc::string8& owned, const pfc::string8& registered) {
+            return owned.equals(registered);
+        });
 }
 
 void get_multi_artists_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {

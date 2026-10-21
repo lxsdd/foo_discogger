@@ -35,6 +35,7 @@ $Sources = @(
     'cache_lru_test.cpp',
     'cache_expiry_test.cpp',
     'artist_refresh_test.cpp',
+    'artist_load_ownership_test.cpp',
     'cache_pages_test.cpp',
     'atomic_cache_file_test.cpp',
     'directory_cache_transaction_test.cpp',
