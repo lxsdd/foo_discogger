@@ -1494,3 +1494,12 @@ print("PASS: test-only physical commit success and genuine no-op callback gates.
 assert "const std::string utf8path(utf8_units.begin(), utf8_units.end());" in qa_source
 assert "const std::string logical = \"file://\" + utf8path;" in qa_source
 print("PASS: runner-only native QA accepts MSVC char8_t UTF-8 file paths.")
+
+# Actual native host rejects virtual CUE subsongs and duplicate target paths.
+assert "run_disposable_target_rejection_qa()" in qa_source
+assert "virtualTrack->get_subsong_index() != 1" in qa_source
+assert "duplicates.add_item(physicalTrack);" in qa_source
+assert qa_source.count("target->write_infos({}, std::move(lease), false);") == 2
+assert "DISCOGGER_PHYSICAL_VIRTUAL_DUPLICATE_DENIAL_" in host_test
+assert "qa-unsafe-targets-rejected.txt" in host_test
+print("PASS: host preflight rejects virtual CUE and duplicate metadata writes.")

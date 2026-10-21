@@ -603,6 +603,39 @@ FILE "synthetic-side-b.wav" WAVE
         }
         Write-Host ("DISCOGGER_PHYSICAL_TAG_WRITE_NOOP_"+$qa.Name+"_"+$Architecture+"=PASS")
     }
+    # Real foobar SDK must refuse virtual CUE and duplicate physical targets
+    # atomically. Check exact bytes and timestamps on disposable fixtures.
+    $guardBefore=@{}
+    foreach($path in @($mp3,$flac)){
+        $guardBefore[$path]=@{ Hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash;
+          Ticks=(Get-Item -LiteralPath $path).LastWriteTimeUtc.Ticks }
+    }
+    $denial=Join-Path $dir 'qa-unsafe-targets-rejected.txt'
+    if(Test-Path -LiteralPath $denial){throw 'Unsafe target evidence unexpectedly pre-exists'}
+    $guardCommand=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA unsafe targets"' -PassThru
+    if(-not $guardCommand.WaitForExit(15000) -or $guardCommand.ExitCode -ne 0) {
+        throw 'Could not dispatch native physical target rejection QA.'
+    }
+    $guardEvidence=$false
+    for($n=0;$n -lt 60;$n++){
+        Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $denial -PathType Leaf) {
+            $evidence=Get-Content -LiteralPath $denial -Raw
+            if($evidence.Contains('VIRTUAL=REJECTED') -and $evidence.Contains('DUPLICATE=REJECTED')){
+                $guardEvidence=$true;break
+            }
+        }
+        $proc.Refresh()
+        if($proc.HasExited){throw 'Host died during unsafe-target write rejection'}
+    }
+    if(-not $guardEvidence){throw 'Native virtual/duplicate write denial not confirmed'}
+    foreach($path in @($mp3,$flac)){
+        if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $guardBefore[$path].Hash -or
+           (Get-Item -LiteralPath $path).LastWriteTimeUtc.Ticks -ne $guardBefore[$path].Ticks) {
+            throw "Physical target changed after rejected write: $path"
+        }
+    }
+    Write-Host "DISCOGGER_PHYSICAL_VIRTUAL_DUPLICATE_DENIAL_$Architecture=PASS"
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
