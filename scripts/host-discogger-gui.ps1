@@ -597,6 +597,19 @@ FILE "synthetic-side-b.wav" WAVE
         if(-not $secondConfirmed){
             throw "QA $($qa.Name) identical second tag command lacked success/no-op callback."
         }
+        if($qa.Name -eq 'FLAC'){
+            $stage=Join-Path $dir 'qa-flac-stage-evidence.txt'
+            if(-not (Test-Path -LiteralPath $stage -PathType Leaf)){
+                throw 'Missing FLAC physical readback evidence.'
+            }
+            $observed=@(Get-Content -LiteralPath $stage)
+            if($observed.Count -ne 2 -or
+               $observed[0] -cne 'count=0 unchanged=0' -or
+               $observed[1] -cne 'count=1 unchanged=1'){
+                throw ('FLAC physical metadata readback did not expose the unchanged tag: '+($observed -join '|'))
+            }
+            Write-Host "DISCOGGER_FLAC_PHYSICAL_SDK_READBACK_$Architecture=PASS"
+        }
         $bytesChanged=(Get-FileHash -LiteralPath $qa.File -Algorithm SHA256).Hash -ne $stableHash
         $timeChanged=(Get-Item -LiteralPath $qa.File).LastWriteTimeUtc.Ticks -ne $stableTicks
         if($bytesChanged -or $timeChanged){

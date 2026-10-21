@@ -3,6 +3,8 @@
 #include "file_info_manager.h"
 #include "discogger_write_safety.h"
 #include "discogger_physical_targets.h"
+#include "SDK/input.h"
+#include <cstring>
 #include <exception>
 #include <utility>
 
@@ -19,13 +21,37 @@ bool file_info_manager::read_infos() {
 	}
 	const size_t m = items.get_count();
 	size_t loaded_count = 0;
-	for (size_t n = 0; n < m; n++) {
-		bool val = items[n]->get_info(info_wrappers[n]->info);
-		if (val) {
-			loaded_count++;
-		}
-		info_wrappers[n]->mask = val;
-	}
+    for (size_t n = 0; n < m; n++) {
+        bool val = items[n]->get_info(info_wrappers[n]->info);
+        // With an embedded FLAC CUE, the metadb cache can project the first
+        // logical track instead of physical Vorbis comments even on subsong 0.
+        // After a genuine write this stale projection can hide the just-written
+        // field and cause an identical second edit to touch the physical mtime.
+        // Always use the host's READ-ONLY input decoder for multi-subsong FLAC
+        // and only replace the snapshot with its explicit physical track 0.
+        if (val && items[n]->get_subsong_index() == 0) {
+            const char* path = items[n]->get_path();
+            const size_t length = path ? std::strlen(path) : 0;
+            if (length >= 5 && _stricmp(path + length - 5, ".flac") == 0) {
+                try {
+                    abort_callback_dummy abort;
+                    service_ptr_t<input_info_reader> reader;
+                    input_entry::g_open_for_info_read(reader, nullptr, path, abort);
+                    if (reader->get_subsong_count() > 1) {
+                        file_info_impl physical;
+                        reader->get_info(0, physical, abort);
+                        info_wrappers[n]->info = physical;
+                    }
+                } catch (...) {
+                    // A failed authoritative physical read must never fall
+                    // back to potentially stale, cue-projected host metadata.
+                    val = false;
+                }
+            }
+        }
+        if (val) ++loaded_count;
+        info_wrappers[n]->mask = val;
+    }
     const bool complete = m_initial_read.finish(true, m, loaded_count);
     if (!complete) begin_physical_read(); // no partially loaded batch stays selected
     return complete;

@@ -1550,3 +1550,15 @@ assert 'after_fields.get("DISCOGGER_QA_RUNNER") != [b"RUNNER-VERIFIED"]' in veri
 assert 'before_fields["CUESHEET"] != after_fields.get("CUESHEET")' in verification_code
 assert "selftest_flac_vorbis()" in verification_code
 print("PASS: FLAC physical metadata preservation checks exact semantic fields.")
+
+# Physical metadata for embedded FLAC cue must be re-read through the SDK
+# input_info_reader, never replaced by an old metadb cached track projection.
+manager_code = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
+host_code = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert 'input_entry::g_open_for_info_read(reader, nullptr, path, abort);' in manager_code
+assert 'reader->get_subsong_count() > 1' in manager_code
+assert 'reader->get_info(0, physical, abort);' in manager_code
+assert 'info_wrappers[n]->info = physical;' in manager_code
+assert 'DISCOGGER_FLAC_PHYSICAL_SDK_READBACK_' in host_code
+assert 'count=1 unchanged=1' in host_code
+print("PASS: multi-subsong FLAC physical metadata overrides stale cue projection.")
