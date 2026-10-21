@@ -1247,3 +1247,10 @@ assert "repository: lxsdd/foobar2000_component_template" in sdk_workflow
 assert "ref: 31a35947a7527826c2199491692802e3ce3d8bd7" in sdk_workflow
 assert "path: external/sdk-template" in sdk_workflow
 
+
+# Native actor/load path must include the declaration for the same paginated
+# payload completeness predicate already covered in portable cache tests.
+_native_discogs = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+assert '#include "discogger_cache_pages.h"' in _native_discogs
+assert 'discogger_cache::valid_cache_payload_count(' in _native_discogs
+print("PASS: release-page completeness guard is declared in the native translation unit.")
