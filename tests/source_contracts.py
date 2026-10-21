@@ -1391,3 +1391,16 @@ assert "m_vstats.emplace_back(preview_stats{});" in stats_block
 assert stats_block.count("if (walk_tag >= m_vstats.size()) m_vstats.resize(walk_tag + 1);") >= 2
 assert stats_block.index("valid_result_shape(") < stats_block.index("const tag_mapping_entry* entry = res->tag_entry;")
 print("PASS: preview statistics reject stale tag rows and retain stable vector indices.")
+
+# Discogs' pagination header is not proof that the JSON response actually
+# included the expected number of release/search/collection objects.
+network_pages = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+pagination_code = network_pages[network_pages.index("pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages("):
+                                network_pages.index("DiscogsInterface::get_all_pages_offline_cache(")]
+assert pagination_code.count("discogger_cache::valid_online_payload_count(") == 2
+assert pagination_code.count('json_object_get(jp->root, "results")') == 2
+assert pagination_code.count('json_object_get(jp->root, "releases")') == 2
+assert pagination_code.count('json_object_get(jp->root, "versions")') == 2
+assert pagination_code.count("json_is_array(page_entries)") == 2
+assert "valid_online_payload_count(" in (root / "tests/cache_pages_test.cpp").read_text(encoding="utf-8-sig")
+print("PASS: online search and artist pagination checks validate actual JSON array payload counts.")

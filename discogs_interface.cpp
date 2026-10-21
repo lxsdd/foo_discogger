@@ -819,6 +819,32 @@ pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8 &url, 
         if (!discogger_cache::valid_online_page(page, returned_page, returned_pages,
                 per_page, items, last, first_per_page, first_items))
             throw foo_discogs_exception("Discogs returned invalid or changing pagination; refresh and retry.");
+        // Search, artist releases, collection and master-version endpoints
+        // return one of these known paginated arrays. A truncated/missing
+        // array with a plausible count must never be shown as a complete
+        // search result or overwrite the last good cache.
+        const json_t* page_entries = json_object_get(jp->root, "results");
+        if (!page_entries) page_entries = json_object_get(jp->root, "releases");
+        if (!page_entries) page_entries = json_object_get(jp->root, "versions");
+        if (!json_is_array(page_entries) ||
+            !discogger_cache::valid_online_payload_count(
+                page, returned_pages, per_page, items, json_array_size(page_entries)))
+            throw foo_discogs_exception(
+                "Discogs returned a missing or incomplete result page; refresh and retry.");
+
+        // Search, artist releases, collection and master-version endpoints
+        // return one of these known paginated arrays. A truncated/missing
+        // array with a plausible count must never be shown as a complete
+        // search result or overwrite the last good cache.
+        const json_t* page_entries = json_object_get(jp->root, "results");
+        if (!page_entries) page_entries = json_object_get(jp->root, "releases");
+        if (!page_entries) page_entries = json_object_get(jp->root, "versions");
+        if (!json_is_array(page_entries) ||
+            !discogger_cache::valid_online_payload_count(
+                page, returned_pages, per_page, items, json_array_size(page_entries)))
+            throw foo_discogs_exception(
+                "Discogs returned a missing or incomplete result page; refresh and retry.");
+
         if (page == 1) {
             last = returned_pages;
             first_items = items;
