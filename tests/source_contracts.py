@@ -1067,6 +1067,22 @@ assert "if (kind == discogger_tree::row_kind::standalone &&" in tree_hooks
 assert "main_release->id" not in tree_hooks
 assert "row_data.id = -1;" in tree_hooks
 assert "row_data.col_data_list.emplace_back(0, label);" in tree_hooks
+master_selected_frag = tree_source[tree_source.index("void CFindReleaseTree::on_release_selected("):
+                                   tree_source.index("LRESULT CFindReleaseTree::apply_filter(")]
+assert "myparam.master_ndx >= m_find_release_artist->master_releases.get_count()" in master_selected_frag
+assert "MasterRelease_ptr master_release = m_find_release_artist->master_releases[myparam.master_ndx];" in master_selected_frag
+assert "m_dlg->call_expand_master_service(master_release, selection_index);" in master_selected_frag
+autofill_frag = tree_source[tree_source.index("size_t CFindReleaseTree::get_autofill_release_id("):
+                             tree_source.index("size_t CFindReleaseTree::test_getselected(")]
+assert "return get_param_id(myparam).get_length() ? some_id" in autofill_frag
+assert "if (!master) return ~size_t(0);" in autofill_frag
+assert "if (child && is_number(child->id.c_str())" in autofill_frag
+assert "master->sub_releases[j]->id" not in autofill_frag
+selection_changed_frag = tree_source[tree_source.index("LRESULT CFindReleaseTree::OnReleaseTreeSelChanged("):
+                                      tree_source.index("size_t CFindReleaseTree::get_autofill_release_id(")]
+assert "!hdr || hdr->hwndFrom != m_hwndTreeView" in selection_changed_frag
+assert "if (!TreeView_GetItem(m_hwndTreeView, &pItemMaster)) return FALSE;" in selection_changed_frag
+
 tree_menu = tree_source[tree_source.index("void CFindReleaseTree::context_menu("):
                         tree_source.index("//public serves find-rel dlg")]
 assert "Artist_ptr artist_snapshot = m_find_release_artist;" in tree_menu
