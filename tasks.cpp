@@ -1111,9 +1111,23 @@ void get_multi_artists_process_callback::safe_run(threaded_process_status& p_sta
 		pfc::string8 status_title("Get multi-artists... ");
 		status_title << (PFC_string_formatter() << count + 1 << " of " << m_artist_ids.size()).c_str();
 		p_status.set_title(status_title);
-		//load releases on first artist
-		Artist_ptr artist = discogs_interface->get_artist(std::to_string(artist_id).c_str(), !count++ ? m_cupdsrc.extended : m_bload_releases, p_status, p_abort,
-			false, false, m_cupdsrc != updRelSrc::ArtistProfile && m_bload_releases);
+        // Preserve every artist in the selection, but do not launch a second
+        // release download for an ID already owned by another worker.
+        // check_in() registered only IDs present in m_checked_in_artist_ids.
+        pfc::string8 registry_id;
+        registry_id << artist_id;
+        const bool owns_release_id = !m_bload_releases ||
+            discogger_async::owns_id(m_checked_in_artist_ids, registry_id,
+                [](const pfc::string8& owned, const pfc::string8& wanted) {
+                    return owned.equals(wanted);
+                });
+        const bool first = count++ == 0;
+        const bool release_requested = first ? m_cupdsrc.extended : m_bload_releases;
+        const bool fetch_releases = discogger_async::should_load_owned_releases(
+            release_requested, owns_release_id);
+        Artist_ptr artist = discogs_interface->get_artist(
+            std::to_string(artist_id).c_str(), fetch_releases, p_status, p_abort,
+            false, false, m_cupdsrc != updRelSrc::ArtistProfile && m_bload_releases);
 
 		m_artists.add_item(std::move(artist));
 	}

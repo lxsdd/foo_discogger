@@ -87,6 +87,9 @@ multi_worker = native_tasks_cpp.split("bool get_multi_artists_process_callback::
 assert 'return !m_checked_in_artist_ids.empty();' in multi_worker
 assert 'discogger_async::release_owned_ids(' in multi_worker
 assert 'discogger_async::unique_artist_ids(artist_ids)' in native_tasks_h
+assert "discogger_async::owns_id(m_checked_in_artist_ids, registry_id" in native_tasks_cpp
+assert "discogger_async::should_load_owned_releases(" in native_tasks_cpp
+assert "std::to_string(artist_id).c_str(), fetch_releases, p_status, p_abort" in native_tasks_cpp
 assert 'm_checked_in_artist_ids, g_discogs->vArtistLoadReleasesTasks' in multi_worker
 assert 'for (auto artist_id : m_artist_ids)' not in multi_worker.split(
     "void get_multi_artists_process_callback::check_out()", 1)[1]

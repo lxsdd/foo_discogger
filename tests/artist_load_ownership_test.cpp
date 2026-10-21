@@ -9,6 +9,14 @@ int main() {
     assert(discogger_async::unique_artist_ids(std::vector<std::size_t>{}).empty());
 
     auto equal = [](const std::string& a, const std::string& b) { return a == b; };
+    const std::vector<std::string> acquired{"12","35"};
+    assert(discogger_async::owns_id(acquired, std::string("12"), equal));
+    assert(!discogger_async::owns_id(acquired, std::string("13"), equal));
+    assert(!discogger_async::owns_id(std::vector<std::string>{}, std::string("12"), equal));
+    assert(discogger_async::should_load_owned_releases(true, true));
+    assert(!discogger_async::should_load_owned_releases(true, false));
+    assert(!discogger_async::should_load_owned_releases(false, true));
+    assert(!discogger_async::should_load_owned_releases(false, false));
     std::vector<std::string> active{"other", "mine-1", "mine-2"};
     std::vector<std::string> mine{"mine-1", "mine-2"};
     std::vector<std::string> skipped; // "other" belonged to another task.

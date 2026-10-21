@@ -18,6 +18,17 @@ std::vector<Id> unique_artist_ids(const std::vector<Id>& ids) {
     return result;
 }
 
+// Only the worker owning the registry ID may fetch its releases. Another
+// concurrent worker can still display the cached artist profile.
+template <typename Owned, typename Id, typename Equal>
+bool owns_id(const Owned& owned, const Id& id, Equal equal) {
+    return std::find_if(owned.begin(), owned.end(),
+        [&](const auto& candidate) { return equal(candidate, id); }) != owned.end();
+}
+inline bool should_load_owned_releases(bool requested, bool owned) noexcept {
+    return requested && owned;
+}
+
 template <typename Owned, typename Registry, typename Equal>
 std::size_t release_owned_ids(Owned& owned, Registry& active, Equal equal) {
     std::size_t released = 0;
