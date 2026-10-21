@@ -1180,17 +1180,37 @@ rppair_t release_tree_cache::init_filter(const Artist_ptr artist, pfc::string8 f
 
 pfc::string8 CFindReleaseTree::get_param_id(mounted_param myparam) {
 
-	pfc::string8 res_selected_id;
-	if (myparam.is_master())
-		res_selected_id = m_find_release_artist->master_releases[myparam.master_ndx]->main_release_id;
-	else
-		if (myparam.is_release()) {
-			MasterRelease_ptr dbugmasrel = m_find_release_artist->master_releases[myparam.master_ndx];
-			res_selected_id = m_find_release_artist->master_releases[myparam.master_ndx]->sub_releases[myparam.release_ndx]->id;
-		}
-		else
-			res_selected_id = m_find_release_artist->releases[myparam.release_ndx]->id;
-	return res_selected_id;
+    pfc::string8 id;
+    if (!m_find_release_artist) return id;
+
+    const auto kind = myparam.is_master() ? discogger_tree::row_kind::master :
+        myparam.is_release() ? discogger_tree::row_kind::subrelease :
+        myparam.is_nmrelease() ? discogger_tree::row_kind::standalone :
+                                discogger_tree::row_kind::invalid;
+    if (kind == discogger_tree::row_kind::invalid) return id;
+
+    MasterRelease_ptr master;
+    if (kind == discogger_tree::row_kind::master ||
+        kind == discogger_tree::row_kind::subrelease) {
+        if (myparam.master_ndx >= m_find_release_artist->master_releases.get_count())
+            return id;
+        master = m_find_release_artist->master_releases[myparam.master_ndx];
+        if (!master) return id;
+    }
+    const size_t child_count = master ? master->sub_releases.get_count() : 0;
+    if (!discogger_tree::valid_row_indices(kind, myparam.master_ndx,
+            myparam.release_ndx, m_find_release_artist->master_releases.get_count(),
+            child_count, m_find_release_artist->releases.get_count()))
+        return id;
+
+    if (kind == discogger_tree::row_kind::master)
+        return master->main_release_id;
+    if (kind == discogger_tree::row_kind::subrelease) {
+        const auto& child = master->sub_releases[myparam.release_ndx];
+        return child ? child->id : id;
+    }
+    const auto& release = m_find_release_artist->releases[myparam.release_ndx];
+    return release ? release->id : id;
 }
 
 int release_tree_cache::get_src_param(updRelSrc updsrc, id_tracer* tracer_p) {
@@ -2289,8 +2309,9 @@ void CFindReleaseTree::hit_test_release_proceed() {
 		if (!myparam.is_master()) {
 
 			pfc::string8 release_id = get_param_id(myparam);
-
-			m_dlg->trigger_release(release_id);
+            // A stale tree node is not a valid release to open.
+            if (release_id.get_length())
+                m_dlg->trigger_release(release_id);
 		}
 	}
 }
@@ -2309,8 +2330,9 @@ void CFindReleaseTree::vkreturn_test_master_expand_release() {
 		if (!myparam.is_master()) {
 
 			pfc::string8 release_id = get_param_id(myparam);
-
-			m_dlg->trigger_release(release_id);
+            // A stale tree node is not a valid release to open.
+            if (release_id.get_length())
+                m_dlg->trigger_release(release_id);
 		}
 		else {
 

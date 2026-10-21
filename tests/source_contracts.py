@@ -1067,6 +1067,15 @@ assert "if (kind == discogger_tree::row_kind::standalone &&" in tree_hooks
 assert "main_release->id" not in tree_hooks
 assert "row_data.id = -1;" in tree_hooks
 assert "row_data.col_data_list.emplace_back(0, label);" in tree_hooks
+tree_id = tree_source[tree_source.index("pfc::string8 CFindReleaseTree::get_param_id("):
+                      tree_source.index("int release_tree_cache::get_src_param(", tree_source.index("pfc::string8 CFindReleaseTree::get_param_id("))]
+assert "if (!m_find_release_artist) return id;" in tree_id
+assert "discogger_tree::valid_row_indices(kind" in tree_id
+assert "if (!master) return id;" in tree_id
+assert "return child ? child->id : id;" in tree_id
+assert "return release ? release->id : id;" in tree_id
+assert "MasterRelease_ptr dbugmasrel" not in tree_id
+assert tree_source.count("if (release_id.get_length())") >= 2
 assert "myparam.master_ndx >= m_find_release_artist->master_releases.get_count()" in tree_source
 assert "test_getatcursor(p, tvi, true)" in tree_source
 assert "(tvhitinfo.flags & TVHT_ONITEM)" in tree_source
