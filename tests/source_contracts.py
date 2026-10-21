@@ -1521,7 +1521,8 @@ write_header = (root / "discogger_write_safety.h").read_text(encoding="utf-8-sig
 assert "inline bool unchanged_single_value(" in write_header
 assert "discogger_write_safety::unchanged_single_value(" in tag_writer_src
 assert "discogger_write_safety::unchanged_single_value(" in qa_media_src
-assert "if (!discogger_write_safety::unchanged_single_value(" in qa_media_src
+assert "const bool unchanged = discogger_write_safety::unchanged_single_value(" in qa_media_src
+assert "if (!unchanged) {" in qa_media_src
 print("PASS: single-value unchanged metadata does not call meta_set or physical write.")
 
 # Real FLAC no-op failures must identify whether the original readback matches
