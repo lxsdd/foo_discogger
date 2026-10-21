@@ -3,6 +3,7 @@
 #include "file_info_manager.h"
 #include "discogger_async_write_lease.h"
 #include "SDK/menu.h"
+#include "SDK/input.h"
 #include <fstream>
 #include <cstdlib>
 #include <filesystem>
@@ -50,6 +51,40 @@ void run_disposable_media_writer_qa(t_uint32 format) {
     const bool unchanged = discogger_write_safety::unchanged_single_value(
         oldCount, oldCount ? info.meta_get("DISCOGGER_QA_RUNNER", 0) : nullptr,
         "RUNNER-VERIFIED");
+    // SDK-only, read-only diagnostic: an embedded CUE can project a different
+    // logical track view from the physical FLAC tags. No raw tags are logged.
+    if (format == 1) {
+        unsigned rawCount = 0, firstCount = 0, songCount = 0;
+        bool rawRead = false, firstRead = false;
+        try {
+            abort_callback_dummy abort;
+            service_ptr_t<input_info_reader> reader;
+            input_entry::g_open_for_info_read(reader, nullptr, logical.c_str(), abort);
+            songCount = reader->get_subsong_count();
+            try {
+                file_info_impl raw;
+                reader->get_info(0, raw, abort);
+                rawCount = static_cast<unsigned>(raw.meta_get_count_by_name("DISCOGGER_QA_RUNNER"));
+                rawRead = true;
+            } catch (const std::exception&) {}
+            if (songCount > 0) {
+                try {
+                    file_info_impl first;
+                    reader->get_info(reader->get_subsong(0), first, abort);
+                    firstCount = static_cast<unsigned>(first.meta_get_count_by_name("DISCOGGER_QA_RUNNER"));
+                    firstRead = true;
+                } catch (const std::exception&) {}
+            }
+        } catch (const std::exception&) {}
+        std::ofstream probe(folder / "qa-flac-input-reader-evidence.txt", std::ios::app);
+        if (!probe) throw std::runtime_error("Missing SDK FLAC reader diagnostic stream.");
+        probe << "projectedCount=" << oldCount << " subsongs=" << songCount
+              << " raw0Read=" << (rawRead ? 1 : 0) << " raw0Count=" << rawCount
+              << " firstRead=" << (firstRead ? 1 : 0)
+              << " firstCount=" << firstCount << '\n';
+        probe.flush();
+        if (!probe) throw std::runtime_error("Could not flush SDK FLAC reader diagnostic.");
+    }
     // Isolated diagnostics only: no values, no personal paths, no host token.
     if (format == 1) {
         std::ofstream diagnostic(folder / "qa-flac-stage-evidence.txt", std::ios::app);

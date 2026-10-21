@@ -604,6 +604,10 @@ FILE "synthetic-side-b.wav" WAVE
                 $stage=Join-Path $dir 'qa-flac-stage-evidence.txt'
                 if(Test-Path -LiteralPath $stage -PathType Leaf){
                     Write-Host ('DISCOGGER_QA_FLAC_STAGES='+((Get-Content -LiteralPath $stage) -join '|'))
+                    $reader=Join-Path $dir 'qa-flac-input-reader-evidence.txt'
+                    if(Test-Path -LiteralPath $reader -PathType Leaf){
+                        Write-Host ('DISCOGGER_QA_FLAC_SDK_READ='+((Get-Content -LiteralPath $reader) -join '|'))
+                    }
                 }
             }
             Write-Host ("DISCOGGER_QA_NOOP_DIAGNOSTIC="+$qa.Name+

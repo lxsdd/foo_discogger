@@ -1533,3 +1533,10 @@ assert 'qa-flac-stage-evidence.txt' in qa_source
 assert 'qa-flac-stage-evidence.txt' in qa_host
 assert 'DISCOGGER_QA_NOOP_DIAGNOSTIC=' in qa_host
 print("PASS: synthetic FLAC readback and byte/mtime diagnostics are wired.")
+
+# Runner-only SDK diagnostic checks physical FLAC versus embedded-CUE virtual
+# projection without logging tag contents or touching user media.
+assert "input_entry::g_open_for_info_read(reader, nullptr, logical.c_str(), abort);" in qa_source
+assert "qa-flac-input-reader-evidence.txt" in qa_source
+assert "reader->get_info(0, raw, abort);" in qa_source
+print("PASS: native FLAC physical-versus-CUE read-only diagnostic compiled into runner QA.")
