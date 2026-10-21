@@ -33,9 +33,9 @@ size_t ILOD_preview_leading::listGetItemCount(ctx_t ctx) {
 // fb2k lib - get subitems
 
 pfc::string8 ILOD_preview_leading::listGetSubItemText(ctx_t ctx, size_t item, size_t subItem) {
-	if (item >= ilo_get_finfo_count()) {
-		return "";
-	}
+    if (!m_ptag_result || item >= ilo_get_vtracks_desc().size()) {
+        return "";
+    }
 
 	if (subItem == 0) {
 
@@ -65,7 +65,10 @@ pfc::string8 ILOD_preview_leading::listGetSubItemText(ctx_t ctx, size_t item, si
 		}
 
 		//need to split (no edits) or already multi
-		size_t moditem = item >= arr_sea_val->get_count() ? 0 : item;
+        const size_t visible = ilo_get_vtracks_desc().size();
+        const size_t moditem = discogger_preview::safe_value_index(
+            item, arr_sea_val->get_count(), visible);
+        if (moditem == static_cast<size_t>(-1)) return "";
 
 		pfc::string8 buffer;
 		pfc::string8 cmp_old_buffer;
@@ -76,7 +79,9 @@ pfc::string8 ILOD_preview_leading::listGetSubItemText(ctx_t ctx, size_t item, si
 		if (get_mode() == PreView::Diff) {
 
 			if (cmp_old_sea_val) {
-				size_t moditem_cmp = item >= cmp_old_sea_val->get_count() ? 0 : item;
+                const size_t moditem_cmp = discogger_preview::safe_value_index(
+                    item, cmp_old_sea_val->get_count(), visible);
+                if (moditem_cmp == static_cast<size_t>(-1)) return "";
 				cmp_old_buffer = (*cmp_old_sea_val)[moditem_cmp].print();
 
 				if (STR_EQUAL(buffer, cmp_old_buffer)) {
@@ -104,6 +109,8 @@ void ILOD_preview_leading::listItemAction(ctx_t ctx, size_t item) {
 
 void ILOD_preview_leading::listSubItemClicked(ctx_t ctx, size_t item, size_t subItem) {
 
+    if (item >= ilo_get_vtracks_desc().size() || !m_ptag_result ||
+        !m_ptag_result->tag_entry) return;
 	if (listIsColumnEditable(ctx, subItem)) {
 
 		if (!m_ptag_result->tag_entry->freeze_tag_name) {
@@ -138,43 +145,39 @@ pfc::string8 ILOD_preview_leading::listGetEditField(ctx_t ctx, size_t item, size
 // set edit field
 
 void ILOD_preview_leading::listSetEditField(ctx_t ctx, size_t item, size_t subItem, const char* val) {
+    (void)ctx;
+    if (!m_ptag_result || !val || subItem != kDataCol) return;
+    const size_t visible_tracks = ilo_get_vtracks_desc().size();
+    auto& values = m_ptag_result->value;
+    const size_t current_index = discogger_preview::safe_value_index(
+        item, values.get_count(), visible_tracks);
+    if (current_index == static_cast<size_t>(-1)) return;
 
-	string_encoded_array sea_val;
-	string_encoded_array* value = &(m_ptag_result->value[0]);
+    string_encoded_array sea_val;
+    const auto& initial = values[current_index];
+    if (initial.has_array()) {
+        std::vector<pfc::string8> parts;
+        split(val, ";", 0, parts);
+        for (auto part : parts)
+            sea_val.append_item(part.trim(' '));
+        sea_val.encode();
+    } else {
+        sea_val = val;
+    }
 
-	if (value->has_array()) {
-
-		std::vector<pfc::string8>vsplit;
-		split(val, ";", 0, vsplit);
-		for (auto w : vsplit) {
-			sea_val.append_item(w.trim(' '));
-		}
-		sea_val.encode();
-	}
-	else {
-		sea_val = val;
-	}
-	if (m_ptag_result->value.get_count() == 1) {
-
-		//src common to all tracks ?
-
-		if (!STR_EQUAL(sea_val.print(), m_ptag_result->value[0].print())) {
-
-			//build per track values
-
-			size_t newcount = ilo_get_uilist()->GetItemCount();
-
-			string_encoded_array previtem = m_ptag_result->value[0];
-
-			m_ptag_result->value.force_reset();
-
-			for (size_t it = 0; it < newcount; it++) {
-				m_ptag_result->value.add_item(previtem);
-			}
-		}
-	}
-	m_ptag_result->value[item] = sea_val;
-
+    if (values.get_count() == 1 && visible_tracks > 1 &&
+        !STR_EQUAL(sea_val.print(), values[0].print())) {
+        // Clone the shared preview into per-track slots *before* assigning
+        // the edited row. Do not destroy current values on allocation errors.
+        pfc::array_t<string_encoded_array> expanded;
+        for (size_t i = 0; i < visible_tracks; ++i)
+            expanded.append_single(values[0]);
+        values = std::move(expanded);
+    }
+    const size_t target = discogger_preview::safe_value_index(
+        item, values.get_count(), visible_tracks);
+    if (target != static_cast<size_t>(-1))
+        values[target] = sea_val;
 }
 
 // column editable

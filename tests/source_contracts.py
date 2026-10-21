@@ -1242,6 +1242,13 @@ copy_restore = preview_ilo[preview_ilo.index("void ILOD_preview_leading::CopyFro
 assert "discogger_preview::restore_original_values(" in copy_restore
 assert "m_ptag_result->value, m_ptag_result->old_value, visible_tracks" in copy_restore
 assert "arr_sea_val[w] = cmp_old_sea_val[w]" not in copy_restore
+assert "safe_value_index(" in (root / "discogger_preview_restore.h").read_text(encoding="utf-8-sig")
+assert preview_ilo.count("discogger_preview::safe_value_index(") >= 4
+assert "item >= ilo_get_vtracks_desc().size()" in preview_ilo
+assert "if (!m_ptag_result || !val || subItem != kDataCol) return;" in preview_ilo
+assert "pfc::array_t<string_encoded_array> expanded;" in preview_ilo
+assert "values = std::move(expanded);" in preview_ilo
+assert "string_encoded_array* value = &(m_ptag_result->value[0]);" not in preview_ilo
 assert "UpdateItemsAll();" in copy_restore
 for runner_path in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "preview_restore_test.cpp" in (root / runner_path).read_text(encoding="utf-8-sig")

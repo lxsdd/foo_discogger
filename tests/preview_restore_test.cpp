@@ -14,6 +14,16 @@ struct synthetic_values {
 
 int main() {
     using discogger_preview::restore_original_values;
+    using discogger_preview::safe_value_index;
+    const std::size_t bad = static_cast<std::size_t>(-1);
+    assert(safe_value_index(0, 1, 1) == 0);
+    assert(safe_value_index(3, 1, 4) == 0);
+    assert(safe_value_index(2, 4, 4) == 2);
+    assert(safe_value_index(0, 0, 4) == bad);
+    assert(safe_value_index(3, 3, 4) == bad);
+    assert(safe_value_index(4, 4, 4) == bad);
+    assert(safe_value_index(0, 1, 0) == bad);
+    assert(safe_value_index(bad, 1, 1) == bad);
     synthetic_values lead{{"Modified", "Other"}};
     const synthetic_values originals{{"Old Genre", "Existing Custom"}};
     assert(restore_original_values(lead, originals, 2));
