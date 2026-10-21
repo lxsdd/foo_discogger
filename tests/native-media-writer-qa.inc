@@ -14,6 +14,7 @@ static const GUID qa_mp3_command = {0x4a1d5a11,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8
 static const GUID qa_flac_command = {0x4a1d5a12,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_targets_command = {0x4a1d5a13,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_batch_command = {0x4a1d5a14,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
+static const GUID qa_populated_gui_command = {0x4a1d5a15,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 
 void run_disposable_media_writer_qa(t_uint32 format) {
     const char* github = std::getenv("GITHUB_ACTIONS");
@@ -236,15 +237,44 @@ void run_disposable_incomplete_batch_qa() {
     if (!output) throw std::runtime_error("Cannot flush incomplete-batch preflight evidence.");
 }
 
+
+void run_populated_search_gui_qa() {
+    const char* actions = std::getenv("GITHUB_ACTIONS");
+    const char* runner = std::getenv("RUNNER_TEMP");
+    const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+    if (!actions || std::string(actions) != "true" || !runner || !location)
+        throw std::runtime_error("Synthetic GUI model allowed only in ephemeral runner.");
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+    const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+    const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+    if (folder.native().size() <= prefix.size() ||
+        _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+        !std::filesystem::is_directory(folder))
+        throw std::runtime_error("Synthetic GUI evidence must remain under runner temp.");
+    if (!g_discogs || !g_discogs->find_release_dialog)
+        throw std::runtime_error("Native Discogger Find Releases is not open.");
+    const auto counts = g_discogs->find_release_dialog->runner_qa_populated_search_rows();
+    if (counts.first != 1 || counts.second != 4)
+        throw std::runtime_error("Native GUI did not populate one artist and four releases.");
+    const auto evidence = folder / "qa-populated-gui.txt";
+    if (std::filesystem::exists(evidence))
+        throw std::runtime_error("Synthetic GUI evidence already existed.");
+    std::ofstream out(evidence);
+    if (!out) throw std::runtime_error("Could not write synthetic GUI evidence.");
+    out << "ARTISTS=1\\nRELEASES=4\\n";
+    out.flush();
+    if (!out) throw std::runtime_error("Could not flush synthetic GUI evidence.");
+}
+
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
-    t_uint32 get_command_count() override { return 4; }
+    t_uint32 get_command_count() override { return 5; }
     GUID get_command(t_uint32 index) override {
-        return index == 0 ? qa_mp3_command : (index == 1 ? qa_flac_command : (index == 2 ? qa_targets_command : qa_batch_command));
+        return index == 0 ? qa_mp3_command : (index == 1 ? qa_flac_command : (index == 2 ? qa_targets_command : (index == 3 ? qa_batch_command : qa_populated_gui_command)));
     }
     void get_name(t_uint32 index, pfc::string_base& out) override {
         out = index == 0 ? "Discogger QA MP3 write" :
-            (index == 1 ? "Discogger QA FLAC write" : (index == 2 ? "Discogger QA unsafe targets" : "Discogger QA incomplete batch"));
+            (index == 1 ? "Discogger QA FLAC write" : (index == 2 ? "Discogger QA unsafe targets" : (index == 3 ? "Discogger QA incomplete batch" : "Discogger QA populated GUI")));
     }
     bool get_description(t_uint32, pfc::string_base& out) override {
         out = "Test-only physical metadata writer for disposable GitHub runner media.";
@@ -253,8 +283,9 @@ public:
     GUID get_parent() override { return mainmenu_groups::file; }
     void execute(t_uint32 index, service_ptr_t<service_base>) override {
         try {
-            if (index > 3) throw std::runtime_error("Invalid synthetic QA action.");
-            if (index == 3) run_disposable_incomplete_batch_qa();
+            if (index > 4) throw std::runtime_error("Invalid synthetic QA action.");
+            if (index == 4) run_populated_search_gui_qa();
+            else if (index == 3) run_disposable_incomplete_batch_qa();
             else if (index == 2) run_disposable_target_rejection_qa();
             else run_disposable_media_writer_qa(index);
         } catch (const std::exception& e) {

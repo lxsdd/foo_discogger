@@ -464,6 +464,34 @@ FILE "synthetic-side-b.wav" WAVE
     $reopenedLayoutError=[DiscoggerWindowTest]::CheckFindReleasesGeometry($reopened)
     if($reopenedLayoutError){throw ('Reopened Find Releases layout failed: '+$reopenedLayoutError)}
     Write-Host "DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS"
+
+    # Populate a real native Discogger GUI with four synthetic release objects.
+    # This validates actual artist filtering and release tree rendering, not
+    # authenticated search or metadata commits.
+    $guiEvidence=Join-Path $dir 'qa-populated-gui.txt'
+    if(Test-Path -LiteralPath $guiEvidence){throw 'Populated GUI evidence unexpectedly exists.'}
+    $popCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA populated GUI"' -PassThru
+    if(-not $popCmd.WaitForExit(15000) -or $popCmd.ExitCode -ne 0){
+        throw 'Could not dispatch synthetic populated native GUI QA.'
+    }
+    $populated=$false
+    for($i=0;$i -lt 50;$i++){
+        Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $guiEvidence -PathType Leaf){
+            $evidence=Get-Content -LiteralPath $guiEvidence -Raw
+            if($evidence.Contains('ARTISTS=1') -and $evidence.Contains('RELEASES=4')){
+                $populated=$true;break
+            }
+        }
+        $proc.Refresh()
+        if($proc.HasExited){throw 'Host exited while populating synthetic native releases.'}
+    }
+    if(-not $populated){throw 'No native populated artist/release tree evidence.'}
+    if(-not [DiscoggerWindowTest]::Responsive($reopened)){
+        throw 'Populated native Find Releases GUI became unresponsive.'
+    }
+    Write-Host "DISCOGGER_GUI_POPULATED_SYNTHETIC_RELEASES_$Architecture=PASS"
+
     # Read-only external CUE context route; no tag/CUE writer is activated.
     if(-not [DiscoggerWindowTest]::PostMessageW($reopened,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
         throw 'Cannot close disposable WAV dialog before the CUE context test.'

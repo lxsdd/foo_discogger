@@ -1892,6 +1892,47 @@ void CFindReleaseDialog::UpdateArtistProfile(Artist_ptr artist) {
 	}
 }
 
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() {
+    if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
+        throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
+    // Construct the *real* in-memory Discogger artist and release objects,
+    // without a network call, cache mutation or music-file write. All four
+    // identities were separately confirmed by authorized Discogs API CI.
+    Artist_ptr artist = std::make_shared<Artist>("0"); // search-results bucket
+    artist->name = "Discogger synthetic search results";
+    artist->loaded_preview = true;
+    artist->loaded_releases = true;
+    const std::pair<const char*, const char*> known[] = {
+        {"38012673", "Via Balearia"},
+        {"37332711", "1000 Years"},
+        {"36397609", "Only You"},
+        {"36819730", "Till You Let Go"}
+    };
+    for (const auto& record : known) {
+        Release_ptr release = std::make_shared<Release>(record.first);
+        release->title = record.second;
+        release->loaded_preview = true;
+        artist->releases.append_single(release);
+        artist->search_order_master.append_single(false);
+    }
+    pfc::array_t<Artist_ptr> alternatives, exact;
+    alternatives.append_single(artist);
+    // Exercise the real "no exact artist; show alternatives" handling.
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(exact, alternatives, false);
+    if (m_alist.get_size() != 1 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED)
+        throw std::runtime_error("Native populated alternative artist list/filter failed.");
+    ShowArtistSearchResults(artist);
+    const size_t releases = m_dctree.Get_Size();
+    if (releases != 4)
+        throw std::runtime_error("Native populated release tree did not contain four releases.");
+    return {m_alist.get_size(), releases};
+}
+#endif
+
 void CFindReleaseDialog::ShowArtistSearchResults(Artist_ptr artist) {
 	cupdRelSrc cupdsrc(updRelSrc::ArtistSearchAT);
 	m_dctree.on_get_artist_done(cupdsrc, artist);

@@ -1590,3 +1590,17 @@ assert "qa-incomplete-batch-rejected.txt" in batch_source
 assert "DISCOGGER_PHYSICAL_BATCH_PREFLIGHT_ATOMIC_" in batch_host
 assert "BATCH=REJECTED_BEFORE_IO" in batch_host
 print("PASS: actual host two-file write preflight rejection is wired.")
+
+# Only runner-only foobar DLLs may inject synthetic populated search objects.
+# The real UI model, exact-only checkbox and release tree must be exercised.
+gui_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+gui_source = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+runner_commands = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+gui_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "runner_qa_populated_search_rows()" in gui_header
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in gui_header
+assert "ShowArtistSearchResults(artist);" in gui_source
+assert 'IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED' in gui_source
+assert "run_populated_search_gui_qa()" in runner_commands
+assert "DISCOGGER_GUI_POPULATED_SYNTHETIC_RELEASES_" in gui_host
+print("PASS: runner-only real populated GUI artist/release path is wired.")
