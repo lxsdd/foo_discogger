@@ -40,6 +40,16 @@ def with_synthetic_apic(raw):
     payload = b"\x00image/png\x00\x03\x00" + synthetic_png()
     frame_size = (len(payload).to_bytes(4, "big") if raw[3] == 3 else syncsafe(len(payload)))
     frame = b"APIC" + frame_size + bytes(2) + payload
+    # Original physical custom ID3v2 fields plus ReplayGain must survive an
+    # unrelated metadata write. These are synthetic, disposable test values.
+    for name, value in (
+        ("DISCOGGER_QA_CUSTOM", "Keep original MP3 metadata"),
+        ("REPLAYGAIN_TRACK_GAIN", "-5.00 dB"),
+        ("REPLAYGAIN_TRACK_PEAK", "0.800000"),
+    ):
+        text = bytes((3,)) + name.encode("utf-8") + bytes(1) + value.encode("utf-8")
+        size = len(text).to_bytes(4, "big") if raw[3] == 3 else syncsafe(len(text))
+        frame += b"TXXX" + size + bytes(2) + text
     return (raw[:6] + syncsafe(old_length + len(frame)) + frame +
             raw[10:10 + old_length] + raw[10 + old_length:])
 
