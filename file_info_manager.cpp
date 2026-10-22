@@ -6,7 +6,51 @@
 #include "SDK/input.h"
 #include <cstring>
 #include <exception>
+#include <stdexcept>
+#include <string>
 #include <utility>
+
+discogger_write_safety::failed_write_audit discogger_audit_failed_write(
+    const discogger_async_tag_payload& payload, size_t read_limit) noexcept {
+    using state = discogger_write_safety::failed_write_file_state;
+    discogger_write_safety::failed_write_audit audit;
+    const size_t total = payload.submitted_count;
+    if (payload.items_to_update.get_count() < total ||
+        payload.infos_to_write.get_count() < total ||
+        payload.original_infos.get_count() < total ||
+        payload.staged_infos.size() < total ||
+        payload.original_copies.size() < total) {
+        for (size_t i = 0; i < total; ++i) audit.record(state::unreadable);
+        return audit;
+    }
+    const size_t inspect = (read_limit < total) ? read_limit : total;
+    for (size_t i = 0; i < inspect; ++i) {
+        try {
+            const auto& item = payload.items_to_update[i];
+            if (!item || item->get_subsong_index() != 0 ||
+                !payload.infos_to_write[i] || !payload.original_infos[i])
+                throw std::runtime_error("invalid audit snapshot");
+            const char* path = item->get_path();
+            if (!path || !*path) throw std::runtime_error("missing audit path");
+            abort_callback_dummy abort;
+            service_ptr_t<input_info_reader> reader;
+            input_entry::g_open_for_info_read(reader, nullptr, path, abort);
+            file_info_impl actual;
+            reader->get_info(0, actual, abort);
+            const auto equal = [&actual](const file_info& expected) {
+                return file_info::g_is_meta_equal(actual, expected) &&
+                    replaygain_info::g_equal(actual.get_replaygain(), expected.get_replaygain());
+            };
+            if (equal(*payload.original_infos[i])) audit.record(state::original);
+            else if (equal(*payload.infos_to_write[i])) audit.record(state::requested);
+            else audit.record(state::divergent);
+        } catch (...) {
+            audit.record(state::unreadable);
+        }
+    }
+    for (size_t i = inspect; i < total; ++i) audit.record(state::unreadable);
+    return audit;
+}
 
 bool file_info_manager::read_infos() {
     // Clear previous snapshot permissions before any operation that may fail.
@@ -131,6 +175,7 @@ void file_info_manager::write_infos(std::function<void()> after_success,
     auto payload = std::make_shared<discogger_async_tag_payload>();
     payload->items_to_update.set_size(count);
     payload->infos_to_write.set_size(count);
+    payload->original_infos.set_size(count);
 
 	for (n = 0; n < count; n++) {
 		const auto& wrapper = info_wrappers[n];
@@ -156,9 +201,11 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 		if (decision == discogger_write_safety::metadata_write_decision::skip) continue;
         payload->items_to_update[outptr] = items[n];
         payload->infos_to_write[outptr] = payload->staged_infos.append_copy(wrapper->info);
+        payload->original_infos[outptr] = payload->original_copies.append_copy(wrapper->original_info);
         ++outptr;
 	}
 
+    payload->submitted_count = outptr;
 	if (outptr != 0) {
 		static_api_ptr_t<metadb_io_v2> api;
         // Callback ownership keeps all staged file_info wrappers alive through I/O.
@@ -216,7 +263,20 @@ void write_tags_completion::on_completion(unsigned p_code) {
         return;
     }
     if (!success) {
-        add_error("Writing tags failed; dependent artwork was not started. Verify the physical files before retrying.", true);
+        // A failed callback is not evidence that the host rolled back all files.
+        // The readback is deliberately bounded, non-writing and path-free.
+        const auto audit = m_write_payload
+            ? discogger_audit_failed_write(*m_write_payload)
+            : discogger_write_safety::failed_write_audit{};
+        const std::string message =
+            "Writing tags failed; dependent artwork was not started. "
+            "No rollback or retry was attempted. Physical metadata readback "
+            "(not a byte-integrity proof): unchanged=" + std::to_string(audit.original) +
+            ", requested=" + std::to_string(audit.requested) +
+            ", divergent=" + std::to_string(audit.divergent) +
+            ", unverified=" + std::to_string(audit.unreadable) +
+            ". Reload and inspect affected files before retrying.";
+        add_error(message.c_str(), true);
         display_errors();
     }
 }

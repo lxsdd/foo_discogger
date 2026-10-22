@@ -188,6 +188,18 @@ int main() {
     assert(plan_artwork_write(true, false, false) == art_decision::reject_missing_snapshot);
     assert(plan_artwork_write(true, true, true) == art_decision::skip);
     assert(plan_artwork_write(true, true, false) == art_decision::write);
+    // Failed async status does not imply an atomic rollback. Unknown
+    // readbacks must be counted as unverified, never as unchanged.
+    using failed_state = discogger_write_safety::failed_write_file_state;
+    discogger_write_safety::failed_write_audit audit;
+    assert(audit.count() == 0 && !audit.cannot_confirm_unchanged());
+    audit.record(failed_state::original);
+    assert(audit.count() == 1 && !audit.cannot_confirm_unchanged());
+    audit.record(failed_state::requested);
+    audit.record(failed_state::divergent);
+    audit.record(failed_state::unreadable);
+    assert(audit.count() == 4 && audit.original == 1 && audit.requested == 1 &&
+           audit.divergent == 1 && audit.unreadable == 1 && audit.cannot_confirm_unchanged());
     // Positive, negative, and duplicate-completion regressions.
     int artwork_starts = 0;
     discogger_write_safety::write_completion_gate failed;

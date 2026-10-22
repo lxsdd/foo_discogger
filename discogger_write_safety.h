@@ -133,6 +133,28 @@ public:
     bool ready() const noexcept { return complete_; }
 };
 
+// A failed SDK batch may have written zero, some or all files. No rollback
+// can be inferred from an asynchronous failure status.
+enum class failed_write_file_state { original, requested, divergent, unreadable };
+struct failed_write_audit {
+    std::size_t original = 0;
+    std::size_t requested = 0;
+    std::size_t divergent = 0;
+    std::size_t unreadable = 0;
+    void record(failed_write_file_state state) noexcept {
+        switch (state) {
+        case failed_write_file_state::original: ++original; break;
+        case failed_write_file_state::requested: ++requested; break;
+        case failed_write_file_state::divergent: ++divergent; break;
+        case failed_write_file_state::unreadable: ++unreadable; break;
+        }
+    }
+    std::size_t count() const noexcept { return original + requested + divergent + unreadable; }
+    bool cannot_confirm_unchanged() const noexcept {
+        return requested != 0 || divergent != 0 || unreadable != 0;
+    }
+};
+
 // Single-shot completion gate: never start dependent artwork after a failed
 // physical tag commit, and never dispatch twice on duplicate notifications.
 class write_completion_gate {

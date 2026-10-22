@@ -27,8 +27,16 @@ public:
 struct discogger_async_tag_payload {
     pfc::array_t<metadb_handle_ptr> items_to_update;
     pfc::array_t<file_info *> infos_to_write;
+    pfc::array_t<const file_info *> original_infos;
     discogger_write_safety::stable_write_copies<file_info_impl> staged_infos;
+    discogger_write_safety::stable_write_copies<file_info_impl> original_copies;
+    size_t submitted_count = 0;
 };
+
+// Read back physical metadata after failure, with a bounded I/O budget.
+// Metadata/ReplayGain are checked; this is not a byte-integrity proof.
+discogger_write_safety::failed_write_audit discogger_audit_failed_write(
+    const discogger_async_tag_payload& payload, size_t read_limit = 16) noexcept;
 
 class write_tags_completion : public completion_notify_dummy, public ErrorManager
 {

@@ -907,6 +907,12 @@ assert "if (m_gate.completed()) return;" in manager
 assert "m_finfo_manager->discard_pending_changes();" in manager
 assert "discard_pending_changes();\n            throw;" in manager
 assert "FailureAction&& failure_action" in safety_header
+assert "discogger_audit_failed_write(*m_write_payload)" in manager
+assert "payload->original_infos[outptr] = payload->original_copies.append_copy(wrapper->original_info);" in manager
+assert "payload->submitted_count = outptr;" in manager
+assert "read_limit = 16" in manager_header
+assert "No rollback or retry was attempted." in manager
+assert "failed_write_file_state" in safety_header
 print("PASS: callback-owned metadata lifetime, single-shot async failure reset and synchronous scheduling cleanup.")
 
 # Safe disk-marker TTL, independent artist freshness and legacy config migration.
