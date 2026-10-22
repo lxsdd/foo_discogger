@@ -218,6 +218,7 @@ jobs:
               ('37332711','Kyau & Albert x Maywave','1000 Years','Maywave'),
               ('36397609','Matt Fax','Only You',None),
               ('36819730','Matt Fax','Till You Let Go',None),
+              ('35534398','Quivver','Consciousness EP',None),
           ]
           headers = {
               'User-Agent':'Discogger-Draft-ReadOnly-QA/1.0',
@@ -262,7 +263,7 @@ jobs:
                   print('DISCOGS_SEARCH_' + release_id + '=MISSING_BOUNDED_RESULTS')
                   continue
               found += 1
-          if found != 4:
+          if found != len(releases):
               raise SystemExit('DISCOGS_LIVE_DISCOVERY=FAIL: one or more releases absent')
-          print('DISCOGS_LIVE_DISCOVERY=PASS: 4/4 (fallback requires identity review)')
+          print('DISCOGS_LIVE_DISCOVERY=PASS: 5/5 (fallback requires identity review)')
           PY
