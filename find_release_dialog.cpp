@@ -10,6 +10,7 @@
 #include "find_release_dialog.h"
 #include "discogger_release_id.h"
 #include "discogger_artist_activation.h"
+#include "discogger_artist_refresh.h"
 #include "discogger_search_visibility.h"
 
 namespace ol = Offline;
@@ -1535,6 +1536,17 @@ void CFindReleaseDialog::convey_artist_list_selection(cupdRelSrc cupdsrc) {
 	bool need_data = !(artist->loaded_preview || artist->loaded);
 
 	need_data |= need_releases;
+
+    // Search rows can contain partial results, while the canonical artist
+    // has a pending explicit refresh. Force its worker path before the AT
+    // display-only shortcut, without requiring another artist click.
+    if (cupdsrc == updRelSrc::ArtistList) {
+        const auto canonical_artist = discogs_interface
+            ? discogs_interface->get_artist(artist->id) : nullptr;
+        need_data = discogger_cache::should_fetch_artist(
+            need_data, true,
+            canonical_artist && canonical_artist->release_refresh.pending());
+    }
 
 	if (cupdsrc == updRelSrc::ArtistProfile && conf.auto_load_releases_on_select_ready()) {
 		need_data = true;
