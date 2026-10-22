@@ -222,6 +222,16 @@ assert "return;" not in preflight
 search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
 assert "inline std::string trailing_collaborator(" in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
 assert "discogger_search::build_fallback_plan(" in search
+# A modeless search cancelled during its original page fetch must propagate
+# exception_aborted instead of being mislabeled as an unknown search failure.
+amt_search = search[search.index("rppair_t DiscogsInterface::search_amt_artist("):
+                    search.index("pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(")]
+search_fetch = amt_search[:amt_search.index("const size_t cpages = pages.get_count();")]
+assert "catch (const exception_aborted&) {" in search_fetch
+assert search_fetch.index("catch (const exception_aborted&) {") < search_fetch.index("catch (foo_discogs_exception& e)")
+assert "throw;" in search_fetch[search_fetch.index("catch (const exception_aborted&) {"):
+                               search_fetch.index("catch (foo_discogs_exception& e)")]
+
 assert "for (const auto& candidate : plans)" in search
 assert "get_all_pages(fallback_url, fallback_params" in search
 assert "discogger_search::encode_fallback_query(candidate)" in search

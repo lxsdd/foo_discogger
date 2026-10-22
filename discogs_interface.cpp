@@ -660,6 +660,12 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 		}
 
 	}
+    catch (const exception_aborted&) {
+        // User cancellation is not a search failure. Preserve the SDK's
+        // cancellation signal so no fallback, cache update or UI error is
+        // triggered for a deliberately stopped network request.
+        throw;
+    }
 	catch (foo_discogs_exception& e) {
 
 		pfc::string8 error("Error loading search releases. ");
