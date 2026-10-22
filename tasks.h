@@ -331,6 +331,7 @@ private:
 	pfc::string8 m_strFilter;
 	bool m_force_redraw;
 	bool m_force_rebuild;
+    HWND m_owner_window = nullptr; // Only the originating live dialog may be updated.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;

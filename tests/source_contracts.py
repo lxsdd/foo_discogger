@@ -1892,3 +1892,36 @@ assert master_completion.index("original_rows->size()") < master_completion.inde
 assert "static_cast<size_t>(list_index) >= vec_items->size()" in master_completion
 assert master_completion.index("vec_items->size()") < master_completion.index("vec_items->at(list_index)")
 print("PASS: asynchronous master tree updates guard stale artist and row indices.")
+
+
+# Tree filtering must never call Win32 controls or mutate the live tree from
+# the modeless worker. Main-thread completion must reject stale dialog and
+# edit/search snapshots; cancellation must not dereference a closed dialog.
+filter_parts = async_tasks_source.split(
+    "void tree_apply_filter_process_callback::start(", 1)[1].split(
+    "void on_search_artist_done_process_callback::start(", 1)[0]
+filter_worker = filter_parts.split(
+    "void tree_apply_filter_process_callback::safe_run(", 1)[1].split(
+    "void tree_apply_filter_process_callback::on_success(", 1)[0]
+filter_complete = filter_parts.split(
+    "void tree_apply_filter_process_callback::on_success(", 1)[1].split(
+    "void tree_apply_filter_process_callback::on_abort(", 1)[0]
+filter_abort = filter_parts.split(
+    "void tree_apply_filter_process_callback::on_abort(", 1)[1].split(
+    "void tree_apply_filter_process_callback::on_error(", 1)[0]
+assert "m_owner_window = parent;" in filter_parts
+assert "p_abort.check();" in filter_worker
+assert "apply_filter(" not in filter_worker
+assert "find_release_dialog" not in filter_worker
+assert "PFC_ASSERT(core_api::is_main_thread());" in filter_complete
+assert "::IsWindow(m_owner_window)" in filter_complete
+assert "m_HWnd != m_owner_window" not in filter_complete
+assert "->m_hWnd != m_owner_window" in filter_complete
+assert "GetSearchMode()" in filter_complete
+assert "uGetWindowText(find_dlg->m_edit_filter)" in filter_complete
+assert "find_dlg->apply_filter(" in filter_complete
+assert "fake_threaded_process_status status;" in filter_complete
+assert "PFC_ASSERT(core_api::is_main_thread());" in filter_abort
+assert "::IsWindow(m_owner_window)" in filter_abort
+assert "HWND m_owner_window = nullptr;" in async_tasks_header
+print("PASS: filter tree mutations stay on originating UI thread; stale edit/dialog discarded.")

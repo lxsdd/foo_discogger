@@ -1436,6 +1436,8 @@ void expand_master_release_process_callback::on_error(HWND p_wnd) {
 
 
 void tree_apply_filter_process_callback::start(HWND parent) {
+    // A worker must not operate on a Win32 TreeView or an obsolete dialog.
+    m_owner_window = parent;
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1447,30 +1449,46 @@ void tree_apply_filter_process_callback::start(HWND parent) {
 }
 
 void tree_apply_filter_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
+    // The tree cache, EnableDispInfo and TreeView are UI-owned. Do not
+    // call CFindReleaseDialog::apply_filter from a threaded_process worker.
+    p_abort.check();
 	p_status.set_item(!m_strFilter.get_length() ? "show all" : PFC_string_formatter() << "filter: " << m_strFilter);
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	try {
-		find_dlg->apply_filter(m_strFilter, m_force_redraw, m_force_rebuild, p_status, p_abort);
-	}
-	catch (foo_discogs_exception e) {
-		//..
-	}
 }
 
 void tree_apply_filter_process_callback::on_success(HWND p_wnd) {
-	//todo
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	::ShowWindow(find_dlg->m_release_tree, SW_SHOW);
-	::InvalidateRect(g_discogs->find_release_dialog->m_release_tree, NULL, TRUE);
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        return;
 
+    CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
+    // A delayed filter completion must not replace a newer edit or search.
+    if (find_dlg->GetSearchMode() != static_cast<size_t>(m_query_mode) ||
+        !trim(uGetWindowText(find_dlg->m_edit_filter)).equals(m_strFilter))
+        return;
+
+    fake_threaded_process_status status;
+    abort_callback_dummy abort;
+    try {
+        find_dlg->apply_filter(m_strFilter, m_force_redraw, m_force_rebuild, status, abort);
+    }
+    catch (const foo_discogs_exception& e) {
+        log_msg(e.what());
+    }
+    // apply_filter may have changed the active dialog; validate it again.
+    on_abort(p_wnd);
 }
 
 void tree_apply_filter_process_callback::on_abort(HWND p_wnd) {
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	::ShowWindow(find_dlg->m_release_tree, SW_SHOW);
-	::InvalidateRect(g_discogs->find_release_dialog->m_release_tree, NULL, TRUE);
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        return;
+    CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
+    ::ShowWindow(find_dlg->m_release_tree, SW_SHOW);
+    ::InvalidateRect(find_dlg->m_release_tree, NULL, TRUE);
 }
 
 void tree_apply_filter_process_callback::on_error(HWND p_wnd) {
