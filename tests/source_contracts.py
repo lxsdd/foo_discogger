@@ -951,6 +951,12 @@ assert "fully_requested(std::size_t submitted)" in (root / "discogger_write_safe
 assert "discogger_audit_failed_write(*m_write_payload, submitted)" in write_callback
 assert "audit.fully_requested(submitted)" in write_callback
 assert write_callback.index("audit.fully_requested(submitted)") < write_callback.index("action();")
+# A success code with no configured artwork must still audit the complete
+# physical batch and surface an actionable error for partial/unreadable writes.
+success_callback = write_callback.split("m_gate.finish(success, [this]() {", 1)[1].split("}, [this]() {", 1)[0]
+assert success_callback.index("discogger_audit_failed_write(*m_write_payload, submitted)") < success_callback.index("if (m_after_success)")
+assert success_callback.index("audit.fully_requested(submitted)") < success_callback.index("if (m_after_success)")
+assert "verification or dependent callback failed" in write_callback
 artwork_only = write_manager.split("else if (after_success) {", 1)[1].split("\n    }", 1)[0]
 assert artwork_only.index("begin_physical_read();") < artwork_only.index("after_success();")
 print("PASS: successful metadata and artwork-only writes revoke stale physical snapshots.")
