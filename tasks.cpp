@@ -423,13 +423,21 @@ void write_tags_task::on_success(HWND p_wnd) {
 }
 
 void write_tags_task::on_abort(HWND p_wnd) {
-	m_tag_writer->ResetMask();
-	on_error(p_wnd);
+    // A cancelled modeless task must revoke both independent preview states.
+    on_error(p_wnd);
 }
 
 void write_tags_task::on_error(HWND p_wnd) {
-    m_tag_writer->m_finfo_manager->discard_pending_changes();
-	m_tag_writer->ResetMask();
+    // A metadata restoration may itself throw (for example on allocation).
+    // Always attempt the selection reset as well; never let cleanup escape
+    // the SDK's on_done/on_abort callback and crash the foobar UI thread.
+    const unsigned cleanup_failures = discogger_write_safety::cleanup_failed_preview(
+        [this]() { m_tag_writer->m_finfo_manager->discard_pending_changes(); },
+        [this]() { m_tag_writer->ResetMask(); });
+    if (cleanup_failures) {
+        add_error("Tagging stopped: preview cleanup was incomplete. Reload the physical tags and regenerate the preview before retrying.", true);
+        display_errors();
+    }
 }
 
 

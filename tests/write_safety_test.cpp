@@ -213,6 +213,29 @@ int main() {
         [&]() { restored_without_revocation = !stale_approval[0]; });
     assert(restored_without_revocation);
 
+    // Even if metadata restoration throws, the preview approval mask is
+    // invalidated independently. No cleanup exception escapes the callback.
+    unsigned cleanup_order = 0;
+    using discogger_write_safety::cleanup_failed_preview;
+    assert(cleanup_failed_preview(
+        [&] { cleanup_order = cleanup_order * 10 + 1; },
+        [&] { cleanup_order = cleanup_order * 10 + 2; }) == 0);
+    assert(cleanup_order == 12);
+    cleanup_order = 0;
+    assert(cleanup_failed_preview(
+        [&] { cleanup_order = cleanup_order * 10 + 1; throw std::runtime_error("restore failed"); },
+        [&] { cleanup_order = cleanup_order * 10 + 2; }) == 1u);
+    assert(cleanup_order == 12);
+    cleanup_order = 0;
+    assert(cleanup_failed_preview(
+        [&] { cleanup_order = cleanup_order * 10 + 1; },
+        [&] { cleanup_order = cleanup_order * 10 + 2; throw std::runtime_error("reset failed"); }) == 2u);
+    assert(cleanup_order == 12);
+    cleanup_order = 0;
+    assert(cleanup_failed_preview(
+        [&] { cleanup_order = cleanup_order * 10 + 1; throw std::runtime_error("restore failed"); },
+        [&] { cleanup_order = cleanup_order * 10 + 2; throw std::runtime_error("reset failed"); }) == 3u);
+    assert(cleanup_order == 12);
     // Snapshot/no-op planning: unchanged metadata and ReplayGain never schedule I/O.
     using decision = discogger_write_safety::metadata_write_decision;
     using discogger_write_safety::plan_metadata_write;

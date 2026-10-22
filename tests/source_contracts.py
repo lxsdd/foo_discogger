@@ -223,6 +223,16 @@ assert manager.index("discogger_require_physical_targets(items);") < manager.ind
 assert "discogger_physical_targets.h" in tasks and "discogger_physical_targets.h" in manager
 assert manager.index("discogger_inspect_file_targets(items, false)") < manager.index("api->load_info_multi(")
 assert "Writing tags failed; dependent artwork was not started." in manager
+# Failed/aborted tag generation must revoke metadata and preview authorization,
+# even if physical metadata restoration itself raises an exception.
+error_cleanup = tasks[tasks.index("void write_tags_task::on_error("):tasks.index("class att_vcmp")]
+assert "cleanup_failed_preview(" in error_cleanup
+assert "discard_pending_changes();" in error_cleanup
+assert "m_tag_writer->ResetMask();" in error_cleanup
+assert "if (cleanup_failures)" in error_cleanup
+abort_cleanup = tasks[tasks.index("void write_tags_task::on_abort("):tasks.index("void write_tags_task::on_error(")]
+assert "on_error(p_wnd);" in abort_cleanup
+assert "cleanup_failed_preview(" in (root / "discogger_write_safety.h").read_text(encoding="utf-8-sig")
 assert "display_errors();" in manager[manager.index("void write_tags_completion::on_completion"):manager.index("void read_tags_completion::on_completion")]
 assert "discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);" in tasks
 assert "discogger_inspect_file_targets(m_items, false)" in tasks

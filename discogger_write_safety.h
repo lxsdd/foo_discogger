@@ -98,6 +98,19 @@ template <typename RevokeAt>
 void revoke_snapshot_batch(std::size_t count, RevokeAt revoke_at) {
     for (std::size_t i = 0; i < count; ++i) revoke_at(i);
 }
+// An error callback must attempt both independent in-memory cleanup steps.
+// In particular, a failed physical-snapshot restore must not strand a stale
+// approved preview selection. This helper never touches the filesystem.
+template <typename RestorePhysical, typename ResetSelection>
+unsigned cleanup_failed_preview(RestorePhysical&& restore, ResetSelection&& reset) noexcept {
+    unsigned failures = 0;
+    try { std::forward<RestorePhysical>(restore)(); }
+    catch (...) { failures |= 1u; }
+    try { std::forward<ResetSelection>(reset)(); }
+    catch (...) { failures |= 2u; }
+    return failures;
+}
+
 // Fail closed before scheduling any asynchronous write if the item/wrapper
 // vectors are out of sync, a wrapper is absent, or an edited item has no
 // original physical metadata snapshot. This is intentionally SDK-independent.
