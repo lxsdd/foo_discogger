@@ -240,6 +240,19 @@ void write_tags_completion::on_completion(unsigned p_code) {
             // Revoke before dependent artwork starts or a callback throws.
             if (m_finfo_manager) m_finfo_manager->begin_physical_read();
             if (m_after_success) {
+                // Reopen physical subsong zero on every submitted target
+                // before running a dependent, potentially destructive
+                // artwork operation. Never infer a complete batch commit
+                // solely from an asynchronous SDK success notification.
+                const size_t submitted = m_write_payload ? m_write_payload->submitted_count : 0;
+                const auto audit = m_write_payload
+                    ? discogger_audit_failed_write(*m_write_payload, submitted)
+                    : discogger_write_safety::failed_write_audit{};
+                if (!audit.fully_requested(submitted)) {
+                    throw foo_discogs_exception(
+                        "Dependent artwork withheld: physical tag commit was not fully verified. "
+                        "Reload and inspect the files before another write.");
+                }
                 auto action = std::move(m_after_success);
                 action();
             }
