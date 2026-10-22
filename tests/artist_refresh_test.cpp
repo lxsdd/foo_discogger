@@ -3,6 +3,13 @@
 #include <thread>
 int main() {
     using discogger_cache::skip_coalesced_artist_load;
+    using discogger_cache::should_fetch_artist;
+    // A populated artist search row must never swallow an explicit refresh.
+    assert(should_fetch_artist(false, true, true));
+    assert(should_fetch_artist(true, true, false));
+    assert(should_fetch_artist(true, false, false));
+    assert(!should_fetch_artist(false, true, false));
+    assert(!should_fetch_artist(false, false, true));
     // Another worker's freshly committed list suppresses a redundant fetch,
     // unless a newer, explicit user refresh is pending after that commit.
     assert(skip_coalesced_artist_load(true, 10, 11, false));
