@@ -36,6 +36,14 @@ assert "SM_CXSMICON" in paint and "SM_CYSMICON" in paint
 assert "if (!g_hIcon_quian || item >=" in paint
 assert "std::numeric_limits<int>::max" in artist
 print("PASS: artist list rendering bounds checks and no allocating GDI bitmap probes.")
+# Modal context actions require the original selected artist identity.
+artist_action = artist.split("void CArtistList::Default_Action()", 1)[1].split("// CListControlOwnerData overrides", 1)[0]
+assert "if (!artist || !m_idtracer_p) return;" in artist_action
+artist_context = artist.split("void CArtistList::context_menu(", 1)[1]
+assert "discogger_ui::valid_artist_context_target(" in artist_context
+assert artist_context.index("discogger_ui::valid_artist_context_target(") < artist_context.index("switch (cmd)")
+assert "valid_artist_context_target(std::size_t menu_row" in (root / "discogger_artist_activation.h").read_text(encoding="utf-8-sig")
+print("PASS: null artist rows and stale modal context selection reject actions.")
 
 # Do not retain dialog or artist-list objects in queued main-thread redraw work.
 assert "fb2k::inMainThread([this" not in artist
