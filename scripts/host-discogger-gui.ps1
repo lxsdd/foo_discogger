@@ -779,6 +779,39 @@ FILE "synthetic-side-b.wav" WAVE
         throw 'Unapproved edit changed synthetic FLAC bytes or timestamp.'
     }
     Write-Host "DISCOGGER_PHYSICAL_UNAPPROVED_REMOVAL_DENIAL_$Architecture=PASS"
+    # Inject failure after the first REAL synthetic MP3 commit. The second
+    # FLAC is not written: the production readback must classify 1/1 and
+    # invalidate the snapshots. This does NOT impersonate an SDK failure code.
+    $partialBeforeMp3=(Get-FileHash -LiteralPath $mp3 -Algorithm SHA256).Hash
+    $partialBeforeFlac=@{ Hash=(Get-FileHash -LiteralPath $flac -Algorithm SHA256).Hash;
+        Ticks=(Get-Item -LiteralPath $flac).LastWriteTimeUtc.Ticks }
+    $partialMarker=Join-Path $dir 'qa-injected-partial-audit.txt'
+    if(Test-Path -LiteralPath $partialMarker){throw 'Injected-partial evidence already exists.'}
+    $partialCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA injected partial"' -PassThru
+    if(-not $partialCmd.WaitForExit(15000) -or $partialCmd.ExitCode -ne 0){
+        throw 'Unable to dispatch native injected-partial test.'
+    }
+    $partialObserved=$false
+    for($i=0;$i -lt 60;$i++){
+        Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $partialMarker -PathType Leaf){
+            $proof=Get-Content -LiteralPath $partialMarker -Raw
+            if($proof.Contains('FIRST=REQUESTED') -and $proof.Contains('SECOND=ORIGINAL') -and
+               $proof.Contains('SNAPSHOTS=REVOKED')){$partialObserved=$true;break}
+        }
+        $proc.Refresh()
+        if($proc.HasExited){throw 'Host exited during injected partial-commit test.'}
+    }
+    if(-not $partialObserved){throw 'Native partial-commit physical readback evidence missing.'}
+    if((Get-FileHash -LiteralPath $mp3 -Algorithm SHA256).Hash -eq $partialBeforeMp3){
+        throw 'Injected first-file physical write did not change synthetic MP3.'
+    }
+    if((Get-FileHash -LiteralPath $flac -Algorithm SHA256).Hash -ne $partialBeforeFlac.Hash -or
+       (Get-Item -LiteralPath $flac).LastWriteTimeUtc.Ticks -ne $partialBeforeFlac.Ticks){
+        throw 'Injected partial test unexpectedly modified the second synthetic FLAC.'
+    }
+    Write-Host "DISCOGGER_PHYSICAL_INJECTED_PARTIAL_READBACK_$Architecture=PASS"
+
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"

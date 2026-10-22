@@ -18,6 +18,7 @@ static const GUID qa_batch_command = {0x4a1d5a14,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0
 static const GUID qa_populated_gui_command = {0x4a1d5a15,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_stale_disk_command = {0x4a1d5a16,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_removal_command = {0x4a1d5a17,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
+static const GUID qa_partial_audit_command = {0x4a1d5a18,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 
 void run_disposable_media_writer_qa(t_uint32 format) {
     const char* github = std::getenv("GITHUB_ACTIONS");
@@ -403,15 +404,108 @@ void run_disposable_unapproved_removal_qa() {
     if (!out) throw std::runtime_error("Cannot flush destructive-edit evidence.");
 }
 
+
+void run_disposable_partial_write_audit_qa() {
+    // Inject a second-file failure AFTER a REAL first-file physical commit.
+    // This exercises the production readback on an isolated host; it is not
+    // an induced failure of metadb_io::update_info_async_simple itself.
+    const char* actions = std::getenv("GITHUB_ACTIONS");
+    const char* runner = std::getenv("RUNNER_TEMP");
+    const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+    if (!actions || std::string(actions) != "true" || !runner || !location)
+        throw std::runtime_error("Partial write audit requires isolated Actions runner.");
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+    const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+    const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+    if (folder.native().size() <= prefix.size() ||
+        _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+        !std::filesystem::is_directory(folder))
+        throw std::runtime_error("Unsafe partial write audit directory.");
+
+    const char* filenames[] = {"synthetic-metadata.mp3", "synthetic-embedded.flac"};
+    metadb_handle_list selection;
+    std::string paths[2];
+    for (size_t i = 0; i < 2; ++i) {
+        const auto file = folder / filenames[i];
+        if (!std::filesystem::is_regular_file(file) || std::filesystem::is_symlink(file))
+            throw std::runtime_error("Partial audit synthetic fixture missing or unsafe.");
+        const auto units = file.u8string();
+        paths[i] = "file://" + std::string(units.begin(), units.end());
+        auto handle = metadb::get()->handle_create(paths[i].c_str(), 0);
+        if (!handle || handle->get_subsong_index() != 0)
+            throw std::runtime_error("Could not open safe physical QA target.");
+        selection.add_item(handle);
+    }
+    auto manager = std::make_shared<file_info_manager>(selection);
+    if (!manager->read_infos())
+        throw std::runtime_error("Partial QA could not read original physical metadata.");
+    manager->invalidate_all();
+    discogger_async_tag_payload payload;
+    payload.items_to_update.set_size(2);
+    payload.infos_to_write.set_size(2);
+    payload.original_infos.set_size(2);
+    for (size_t i = 0; i < 2; ++i) {
+        file_info_impl proposed = manager->get_item(i);
+        proposed.meta_set("DISCOGGER_QA_PARTIAL", i == 0 ? "FIRST" : "SECOND");
+        payload.items_to_update[i] = selection[i];
+        payload.original_infos[i] = payload.original_copies.append_copy(manager->get_item(i));
+        payload.infos_to_write[i] = payload.staged_infos.append_copy(proposed);
+    }
+    payload.submitted_count = 2;
+
+    // SDK write only the first synthetic file and inject failure before the
+    // second. Actual, fresh physical input reader classifies both outcomes.
+    abort_callback_dummy abort;
+    service_ptr_t<input_info_writer> writer;
+    input_entry::g_open_for_info_write(writer, nullptr, paths[0].c_str(), abort);
+    file_info_impl edited;
+    writer->get_info(0, edited, abort);
+    edited.meta_set("DISCOGGER_QA_PARTIAL", "FIRST");
+    writer->set_info(0, edited, abort);
+    writer->commit(abort);
+    writer.release();
+    const auto audit = discogger_audit_failed_write(payload);
+    if (audit.count() != 2 || audit.requested != 1 || audit.original != 1 ||
+        audit.divergent != 0 || audit.unreadable != 0 ||
+        !audit.cannot_confirm_unchanged())
+        throw std::runtime_error("Physical partial-commit readback misclassified the two files.");
+    // The failed-write cleanup must revoke old permission and in-memory edits.
+    manager->discard_pending_changes();
+    bool denied = false;
+    try { manager->invalidate_all(); }
+    catch (const foo_discogs_exception&) { denied = true; }
+    if (!denied)
+        throw std::runtime_error("Partial-commit path retained obsolete write approval.");
+
+    const auto marker = folder / "qa-injected-partial-audit.txt";
+    if (std::filesystem::exists(marker))
+        throw std::runtime_error("Partial audit marker unexpectedly exists.");
+    std::ofstream out(marker);
+    if (!out) throw std::runtime_error("Cannot record partial audit marker.");
+    out << "FIRST=REQUESTED\nSECOND=ORIGINAL\nSNAPSHOTS=REVOKED\n";
+    out.flush();
+    if (!out) throw std::runtime_error("Could not flush partial audit evidence.");
+}
+
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
-    t_uint32 get_command_count() override { return 7; }
+    t_uint32 get_command_count() override { return 8; }
     GUID get_command(t_uint32 index) override {
-        return index == 0 ? qa_mp3_command : (index == 1 ? qa_flac_command : (index == 2 ? qa_targets_command : (index == 3 ? qa_batch_command : (index == 4 ? qa_populated_gui_command : (index == 5 ? qa_stale_disk_command : qa_removal_command)))));
+        static const GUID commands[] = {
+            qa_mp3_command, qa_flac_command, qa_targets_command, qa_batch_command,
+            qa_populated_gui_command, qa_stale_disk_command, qa_removal_command,
+            qa_partial_audit_command
+        };
+        return index < 8 ? commands[index] : GUID{};
     }
     void get_name(t_uint32 index, pfc::string_base& out) override {
-        out = index == 0 ? "Discogger QA MP3 write" :
-            (index == 1 ? "Discogger QA FLAC write" : (index == 2 ? "Discogger QA unsafe targets" : (index == 3 ? "Discogger QA incomplete batch" : (index == 4 ? "Discogger QA populated GUI" : (index == 5 ? "Discogger QA stale disk" : "Discogger QA unsafe removals")))));
+        static const char* names[] = {
+            "Discogger QA MP3 write", "Discogger QA FLAC write",
+            "Discogger QA unsafe targets", "Discogger QA incomplete batch",
+            "Discogger QA populated GUI", "Discogger QA stale disk",
+            "Discogger QA unsafe removals", "Discogger QA injected partial"
+        };
+        out = index < 8 ? names[index] : "Invalid Discogger QA command";
     }
     bool get_description(t_uint32, pfc::string_base& out) override {
         out = "Test-only physical metadata writer for disposable GitHub runner media.";
@@ -420,8 +514,9 @@ public:
     GUID get_parent() override { return mainmenu_groups::file; }
     void execute(t_uint32 index, service_ptr_t<service_base>) override {
         try {
-            if (index > 6) throw std::runtime_error("Invalid synthetic QA action.");
-            if (index == 6) run_disposable_unapproved_removal_qa();
+            if (index > 7) throw std::runtime_error("Invalid synthetic QA action.");
+            if (index == 7) run_disposable_partial_write_audit_qa();
+            else if (index == 6) run_disposable_unapproved_removal_qa();
             else if (index == 5) run_disposable_stale_disk_qa();
             else if (index == 4) run_populated_search_gui_qa();
             else if (index == 3) run_disposable_incomplete_batch_qa();

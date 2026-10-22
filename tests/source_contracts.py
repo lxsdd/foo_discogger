@@ -912,6 +912,12 @@ assert "payload->original_infos[outptr] = payload->original_copies.append_copy(w
 assert "payload->submitted_count = outptr;" in manager
 assert "read_limit = 16" in manager_header
 assert "No rollback or retry was attempted." in manager
+qa_partial = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+host_partial = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "run_disposable_partial_write_audit_qa()" in qa_partial
+assert "discogger_audit_failed_write(payload)" in qa_partial
+assert "manager->discard_pending_changes();" in qa_partial
+assert "DISCOGGER_PHYSICAL_INJECTED_PARTIAL_READBACK_" in host_partial
 assert "failed_write_file_state" in safety_header
 print("PASS: callback-owned metadata lifetime, single-shot async failure reset and synchronous scheduling cleanup.")
 
