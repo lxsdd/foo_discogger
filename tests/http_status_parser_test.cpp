@@ -25,6 +25,19 @@ int main() {
     assert(!usable_preview_http_response("HTTP/2 500 Server Error"));
     assert(!usable_preview_http_response("HTTP/2 2000 Invalid"));
     assert(!usable_preview_http_response("garbage"));
+    using discogger_net::should_throttle_discogs_image;
+    assert(should_throttle_discogs_image("https://i.discogs.com/aBcD.jpeg"));
+    assert(should_throttle_discogs_image("https://img.discogs.com/large.png"));
+    assert(should_throttle_discogs_image("https://i.discogs.com/path/h:600/image.jpg"));
+    assert(!should_throttle_discogs_image("https://i.discogs.com/path/h:150/image.jpg"));
+    assert(!should_throttle_discogs_image("https://img.discogs.com/h:150/preview.png"));
+    assert(!should_throttle_discogs_image("https://i.discogs.com/image.jpg?h:150"));
+    assert(!should_throttle_discogs_image("https://i.discogs.com.evil.test/image.jpg"));
+    assert(!should_throttle_discogs_image("https://i.discogs.comevil.test/image.jpg"));
+    assert(!should_throttle_discogs_image("http://i.discogs.com/image.jpg"));
+    assert(!should_throttle_discogs_image("https://api.discogs.com/database/search"));
+    assert(!should_throttle_discogs_image("https://i.discogs.com"));
+    assert(!should_throttle_discogs_image(""));
     // Network response sizes must not overflow through repeated doubling,
     // and hostile gzip trailers must never authorize huge allocations.
     using discogger_net::next_http_buffer_capacity;

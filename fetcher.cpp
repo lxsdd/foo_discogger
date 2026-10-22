@@ -86,9 +86,9 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 	bool use_api = url.find_first("api") != ~0;
 	use_oauth &= use_api;
 
-	bool isImageUrl = url.has_prefix("https://img.discogs.com");
-	isImageUrl |= url.has_prefix("https://i.discogs.com");
-	isImageUrl &= !std::string(url.c_str()).find("h:150"); //ignore img previews
+    // Classify full-resolution artwork, excluding small preview thumbnails.
+    // This must remain separate from the API rate-limit classification.
+    const bool isImageUrl = discogger_net::should_throttle_discogs_image(url.c_str());
 
 	if (isImageUrl) {
 

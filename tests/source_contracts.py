@@ -167,6 +167,13 @@ bad_inflate = simple_zip[simple_zip.index("if (state != Z_OK || destLen != unzip
 assert "buffer.set_size(0);" in bad_inflate
 assert "break;" in bad_inflate
 
+# The image-rate-limit classification must recognize real image hosts,
+# exclude small previews and reject lookalike URLs.
+assert "discogger_net::should_throttle_discogs_image(url.c_str())" in fetcher
+assert '!std::string(url.c_str()).find("h:150")' not in fetcher
+assert "bool isImageUrl = url.has_prefix(" not in fetcher
+assert "should_throttle_discogs_image(std::string_view url)" in (root / "http_status_util.h").read_text(encoding="utf-8-sig")
+
 assert "error_code = 4011" not in fetcher
 # OAuth tokens and signed query strings must not enter debug logs, caught
 # exception messages, or errors passed on to users. A leaked secret cannot

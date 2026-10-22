@@ -18,6 +18,18 @@ inline bool acceptable_http_decoded_size(std::size_t size) noexcept {
     return size != 0 && size <= max_http_response_bytes;
 }
 
+// Full-size Discogs images share the rate limiter with API requests.
+// An old `!url.find("h:150")` predicate always rejected actual HTTPS
+// image URLs because the preview marker never occurs at offset zero.
+// Match the exact HTTPS hosts, not lookalike subdomains or arbitrary URLs.
+inline bool should_throttle_discogs_image(std::string_view url) noexcept {
+    constexpr std::string_view old_host = "https://img.discogs.com/";
+    constexpr std::string_view current_host = "https://i.discogs.com/";
+    const bool trusted_host = url.substr(0, old_host.size()) == old_host ||
+                              url.substr(0, current_host.size()) == current_host;
+    return trusted_host && url.find("h:150") == std::string_view::npos;
+}
+
 inline int parse_http_status_code(std::string_view line) noexcept {
     const auto separator = line.find_first_of(" \t");
     if (separator == std::string_view::npos) return 0;
