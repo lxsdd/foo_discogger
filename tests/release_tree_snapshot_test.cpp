@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <map>
+#include <string>
 #include <vector>
 struct fake_tracks { std::size_t count = 0; std::size_t size() const { return count; } };
 struct fake_disc { fake_tracks tracks; };
@@ -14,6 +16,28 @@ struct fake_release {
     } discs;
 };
 int main() {
+    // A missing, null or half-populated cache row must not dereference
+    // an empty column map or reuse a stale display/selection.
+    struct cached_row {
+        int id = -1;
+        std::map<int, std::string> col_data_list;
+    };
+    using cache_map = std::map<int, std::pair<cached_row, int>>;
+    cache_map cache;
+    cache.emplace(10, std::make_pair(cached_row{}, 0));
+    cache.emplace(11, std::make_pair(
+        cached_row{73, {{0, "Release 73"}, {1, "Additional"}}}, 0));
+    std::string display = "previous display";
+    cached_row selected{91, {{0, "previous row"}}};
+    using discogger_tree::copy_cached_display_row;
+    assert(!copy_cached_display_row(static_cast<const cache_map*>(nullptr), 11, display, selected));
+    assert(!copy_cached_display_row(&cache, 99, display, selected));
+    assert(!copy_cached_display_row(&cache, 10, display, selected));
+    assert(display == "previous display" && selected.id == 91);
+    assert(selected.col_data_list.at(0) == "previous row");
+    assert(copy_cached_display_row(&cache, 11, display, selected));
+    assert(display == "Release 73" && selected.id == 73);
+    assert(selected.col_data_list.size() == 2);
     using discogger_tree::row_kind;
     using discogger_tree::valid_row_indices;
     assert(valid_row_indices(row_kind::master, 0, 9999, 1, 0, 0));

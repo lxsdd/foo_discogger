@@ -146,16 +146,9 @@ void release_tree_cache::vec_PushBack(std::pair<cache_iterator_t, HTREEITEM> ite
 	m_vec_ptr->push_back(item);
 }
 bool release_tree_cache::get_cached_find_release_node(int lparam, pfc::string8& item, row_col_data& row_data) {
-
-	cache_t* cached = &m_cache_ptr->cache;
-	auto it = cached->find(lparam);
-
-	if (it != cached->end()) {
-		item = it->second.first.col_data_list.begin()->second;
-		row_data = it->second.first;
-		return true;
-	}
-	return false;
+    // A missing/partially rebuilt cache row is a miss, not a valid release.
+    return discogger_tree::copy_cached_display_row(
+        m_cache_ptr ? &m_cache_ptr->cache : nullptr, lparam, item, row_data);
 }
 
 bool check_match(pfc::string8 str, pfc::string8 filter, pfc::array_t<pfc::string> filter_words_lowercase) {

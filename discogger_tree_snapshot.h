@@ -35,4 +35,16 @@ std::pair<std::size_t, std::size_t> count_cached_tracks(const ReleasePtr& releas
     }
     return {disc_count, track_count};
 }
+// A cache entry can outlive an interrupted release-tree rebuild and contain
+// no display columns. Never dereference begin() on an empty cached row.
+// On a cache miss/invalid row, preserve caller outputs for safe regeneration.
+template<typename Cache, typename Text, typename Row>
+bool copy_cached_display_row(const Cache* cache, int key, Text& text, Row& row) {
+    if (!cache) return false;
+    const auto it = cache->find(key);
+    if (it == cache->end() || it->second.first.col_data_list.empty()) return false;
+    text = it->second.first.col_data_list.begin()->second;
+    row = it->second.first;
+    return true;
+}
 } // namespace discogger_tree
