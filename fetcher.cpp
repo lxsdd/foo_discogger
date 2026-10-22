@@ -385,6 +385,9 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 
 void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8& params, pfc::string8& html, abort_callback& p_abort, bool throw_abort, const pfc::string8& content_type) {
 
+	// This best-effort request must never hand partial or previously returned
+    // HTTP data to the artwork preview after a size, decode, or network error.
+    html = "";
 	pfc::array_t<t_uint8> buffer;
 
 	pfc::string8 status;
@@ -499,10 +502,12 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 		}
 	}
 	catch (exception_aborted) {
+        buffer.set_size(0);
 		if (throw_abort)
 			throw;
 	}
 	catch (foo_discogs_exception& e) {
+        buffer.set_size(0);
 		e << "(url: " << clean_url << ")";
 		pfc::string8 error_msg;
 		error_msg << "Exception handling: " << clean_url;
@@ -517,6 +522,7 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 		throw ex;
 	}
 	catch (const std::exception& e) {
+        buffer.set_size(0);
 		log_msg(e.what());
 	}
 	catch (...) {

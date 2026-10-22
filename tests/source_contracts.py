@@ -136,6 +136,13 @@ assert "throw http_429_exception();" in fetcher
 # malicious gzip ISIZE before allocating a decoded buffer.
 assert fetcher.count("discogger_net::next_http_buffer_capacity(") == 2
 assert fetcher.count("discogger_net::acceptable_http_decoded_size(") == 2
+simple_log = fetcher[fetcher.index("void Fetcher::fetch_html_simple_log("):fetcher.index("void Fetcher::set_oauth(")]
+assert 'html = "";' in simple_log[:simple_log.index("try {")]
+assert "catch (exception_aborted) {\n        buffer.set_size(0);" in simple_log
+assert "catch (foo_discogs_exception& e) {\n        buffer.set_size(0);" in simple_log
+assert "catch (const std::exception& e) {\n        buffer.set_size(0);" in simple_log
+assert simple_log.index("buffer.set_size(0);") < simple_log.index("html = pfc::string8((char*)buffer.get_ptr()")
+
 assert "out.set_size(out.get_size() << 1)" not in fetcher
 assert "buffer.set_size(buffer.get_size() << 1)" not in fetcher
 assert '#include "http_status_util.h"' in fetcher
