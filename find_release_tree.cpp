@@ -1761,10 +1761,19 @@ void release_tree_cache::expand_releases(const pfc::string8& filter, t_size mast
 // from dlg callback (expand_master_release_process_callback)
 // or from local on_release_selected
 void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort) {
+    // An async release load may complete after the user changes artist, tree
+    // filter, or selection. Do not dereference a stale list position or mutate
+    // the tree until the original row is still in the current snapshot.
+    PFC_ASSERT(core_api::is_main_thread());
+    const auto original_rows = m_rt_cache.get_vec();
+    if (!master_release || !m_find_release_artist || list_index < 0 ||
+        !original_rows || static_cast<size_t>(list_index) >= original_rows->size())
+        return;
 
 	int master_i = -1;
 	for (size_t i = 0; i < m_find_release_artist->master_releases.get_size(); i++) {
-		if (m_find_release_artist->master_releases[i]->id == master_release->id) {
+		if (m_find_release_artist->master_releases[i] &&
+            m_find_release_artist->master_releases[i]->id == master_release->id) {
 			master_i = i;
 			break;
 		}
@@ -1803,6 +1812,10 @@ void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& ma
 	}
 
 	const std::shared_ptr<vec_t> vec_items = m_rt_cache.get_vec();
+    // expand_releases() may rebuild the visible row cache. Verify again
+    // before the former unchecked at(list_index) dereference.
+    if (!vec_items || static_cast<size_t>(list_index) >= vec_items->size())
+        return;
 
 	mounted_param myparam(vec_items->at(list_index).first->first);
 
