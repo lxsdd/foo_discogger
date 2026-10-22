@@ -912,6 +912,16 @@ assert "payload->original_infos[outptr] = payload->original_copies.append_copy(w
 assert "payload->submitted_count = outptr;" in manager
 assert "read_limit = 16" in manager_header
 assert "No rollback or retry was attempted." in manager
+# Failed SDK completion must still audit physical files if preview cleanup throws.
+# A premature return in either catch used to suppress partial-write warnings.
+callback = manager.split("void write_tags_completion::on_completion(unsigned p_code) {", 1)[1].split(
+    "void read_tags_completion::on_completion", 1)[0]
+assert "std::string callback_cleanup_error;" in callback
+assert "Callback cleanup also failed:" in callback
+assert "Physical tag commit reported success, but dependent callback failed:" in callback
+cleanup_catches = callback.split("catch (const std::exception& e)", 1)[1].split("if (!success) {", 1)[0]
+assert "return;" not in cleanup_catches
+assert callback.index("if (!success) {") < callback.index("discogger_audit_failed_write(*m_write_payload)")
 qa_partial = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
 host_partial = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 assert "run_disposable_partial_write_audit_qa()" in qa_partial

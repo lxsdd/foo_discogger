@@ -230,6 +230,9 @@ void file_info_manager::write_infos(std::function<void()> after_success,
 void write_tags_completion::on_completion(unsigned p_code) {
     if (m_gate.completed()) return; // Ignore duplicate SDK notifications.
     const bool success = p_code == metadb_io::update_info_success;
+    // Failure cleanup can throw even after a partial physical SDK commit.
+    // Keep its diagnostic without suppressing the bounded readback below.
+    std::string callback_cleanup_error;
     try {
         m_gate.finish(success, [this]() {
             // An SDK success commits physical bytes. Never leave the old
@@ -246,14 +249,10 @@ void write_tags_completion::on_completion(unsigned p_code) {
         });
     }
     catch (const std::exception& e) {
-        add_error(e.what(), true);
-        display_errors();
-        return;
+        callback_cleanup_error = e.what();
     }
     catch (...) {
-        add_error("Tag write completed, but callback cleanup or dependent artwork failed.", true);
-        display_errors();
-        return;
+        callback_cleanup_error = "Unknown callback cleanup or dependent artwork error";
     }
     if (!success) {
         // A failed callback is not evidence that the host rolled back all files.
@@ -269,6 +268,17 @@ void write_tags_completion::on_completion(unsigned p_code) {
             ", divergent=" + std::to_string(audit.divergent) +
             ", unverified=" + std::to_string(audit.unreadable) +
             ". Reload and inspect affected files before retrying.";
+        if (!callback_cleanup_error.empty()) {
+            message += " Callback cleanup also failed: ";
+            message += callback_cleanup_error;
+            message += ".";
+        }
+        add_error(message.c_str(), true);
+        display_errors();
+    } else if (!callback_cleanup_error.empty()) {
+        const std::string message =
+            "Physical tag commit reported success, but dependent callback failed: " +
+            callback_cleanup_error;
         add_error(message.c_str(), true);
         display_errors();
     }
