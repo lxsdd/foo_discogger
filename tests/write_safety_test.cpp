@@ -264,6 +264,26 @@ int main() {
     audit.record(failed_state::unreadable);
     assert(audit.count() == 4 && audit.original == 1 && audit.requested == 1 &&
            audit.divergent == 1 && audit.unreadable == 1 && audit.cannot_confirm_unchanged());
+    // A callback success cannot authorize dependent artwork without complete
+    // actual physical metadata readback of every submitted file.
+    discogger_write_safety::failed_write_audit confirmed;
+    assert(!confirmed.fully_requested(0));
+    assert(!confirmed.fully_requested(1));
+    confirmed.record(failed_state::requested);
+    confirmed.record(failed_state::requested);
+    assert(confirmed.fully_requested(2));
+    assert(!confirmed.fully_requested(1));
+    assert(!confirmed.fully_requested(3));
+    discogger_write_safety::failed_write_audit incomplete;
+    incomplete.record(failed_state::original);
+    incomplete.record(failed_state::requested);
+    assert(!incomplete.fully_requested(2));
+    incomplete.record(failed_state::unreadable);
+    assert(!incomplete.fully_requested(3));
+    discogger_write_safety::failed_write_audit unexpected;
+    unexpected.record(failed_state::requested);
+    unexpected.record(failed_state::divergent);
+    assert(!unexpected.fully_requested(2));
     // Positive, negative, and duplicate-completion regressions.
     int artwork_starts = 0;
     discogger_write_safety::write_completion_gate failed;
