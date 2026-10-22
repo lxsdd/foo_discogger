@@ -1878,3 +1878,17 @@ assert "fake_threaded_process_status status;" in expand_foreground
 assert "m_owner_window = parent;" in expand_parts
 assert "class expand_master_release_process_callback" in expand_header
 print("PASS: owner-bound main-thread master expansion, background load-only.")
+
+# The completion of a master-release HTTP load may race with a tree/filter
+# change. Its UI callback must reject stale or invalid source and list rows
+# both before mutations and before the subsequent indexed auto-fill lookup.
+tree_source = (root / "find_release_tree.cpp").read_text(encoding="utf-8-sig")
+master_completion = tree_source.split("void CFindReleaseTree::on_expand_master_release_done(", 1)[1].split(
+    "bool CFindReleaseTree::set_node_expanded(", 1)[0]
+assert "PFC_ASSERT(core_api::is_main_thread());" in master_completion
+assert "!master_release || !m_find_release_artist || list_index < 0" in master_completion
+assert "static_cast<size_t>(list_index) >= original_rows->size()" in master_completion
+assert master_completion.index("original_rows->size()") < master_completion.index("m_rt_cache.expand_releases(")
+assert "static_cast<size_t>(list_index) >= vec_items->size()" in master_completion
+assert master_completion.index("vec_items->size()") < master_completion.index("vec_items->at(list_index)")
+print("PASS: asynchronous master tree updates guard stale artist and row indices.")
