@@ -193,6 +193,11 @@ struct failed_write_audit {
     bool cannot_confirm_unchanged() const noexcept {
         return requested != 0 || divergent != 0 || unreadable != 0;
     }
+    // The SDK's success code is not by itself proof of physical persistence.
+    // Dependent artwork requires requested metadata on every submitted file.
+    bool fully_requested(std::size_t submitted) const noexcept {
+        return submitted != 0 && count() == submitted && requested == submitted;
+    }
 };
 
 // Single-shot completion gate: never start dependent artwork after a failed
