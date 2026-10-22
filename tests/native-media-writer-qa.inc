@@ -452,6 +452,13 @@ void run_disposable_partial_write_audit_qa() {
         payload.infos_to_write[i] = payload.staged_infos.append_copy(proposed);
     }
     payload.submitted_count = 2;
+    const auto before_audit = discogger_audit_failed_write(payload);
+    if (before_audit.original != 2 || before_audit.count() != 2)
+        throw std::runtime_error(
+            "Physical baseline mismatch: original=" + std::to_string(before_audit.original) +
+            " requested=" + std::to_string(before_audit.requested) +
+            " divergent=" + std::to_string(before_audit.divergent) +
+            " unreadable=" + std::to_string(before_audit.unreadable));
 
     // SDK write only the first synthetic file and inject failure before the
     // second. Actual, fresh physical input reader classifies both outcomes.
@@ -468,7 +475,11 @@ void run_disposable_partial_write_audit_qa() {
     if (audit.count() != 2 || audit.requested != 1 || audit.original != 1 ||
         audit.divergent != 0 || audit.unreadable != 0 ||
         !audit.cannot_confirm_unchanged())
-        throw std::runtime_error("Physical partial-commit readback misclassified the two files.");
+        throw std::runtime_error(
+            "Physical partial-commit readback: original=" + std::to_string(audit.original) +
+            " requested=" + std::to_string(audit.requested) +
+            " divergent=" + std::to_string(audit.divergent) +
+            " unreadable=" + std::to_string(audit.unreadable));
     // The failed-write cleanup must revoke old permission and in-memory edits.
     manager->discard_pending_changes();
     bool denied = false;
