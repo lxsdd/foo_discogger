@@ -136,17 +136,18 @@ public:
 	}
 
 
-    // Cancelled or failed previews must not become the next "original" tag snapshot.
+    // A failed or cancelled SDK write may have partially committed physical
+    // files. Revoke every snapshot BEFORE copying old preview values back:
+    // file_info_impl assignment can throw, but stale approval must never survive.
     void discard_pending_changes() {
-        for (size_t index = 0; index < info_wrappers.get_count(); ++index) {
-            auto& wrapper = info_wrappers[index];
-            if (!wrapper) continue;
-            if (wrapper->original_captured) wrapper->info = wrapper->original_info;
-            wrapper->mask = false;
-        }
-        // A cancelled/failed write may have partially changed physical files.
-        // Never offer the pre-write snapshot as current without a fresh read.
-        begin_physical_read();
+        discogger_write_safety::revoke_before_restore(
+            [this]() { begin_physical_read(); },
+            [this]() {
+                for (size_t index = 0; index < info_wrappers.get_count(); ++index) {
+                    auto& wrapper = info_wrappers[index];
+                    if (wrapper) wrapper->info = wrapper->original_info;
+                }
+            });
     }
 
 	inline void invalidate_all() {

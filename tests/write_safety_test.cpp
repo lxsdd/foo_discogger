@@ -191,6 +191,28 @@ int main() {
         });
     }
     assert(stage_resets == 2);
+    // A failed physical callback may throw while restoring its preview.
+    // Revocation must already cover EVERY item, including later items.
+    std::array<bool, 3> stale_approval = {true, true, true};
+    std::array<int, 3> preview = {7, 8, 9};
+    bool restoration_failed = false;
+    try {
+        discogger_write_safety::revoke_before_restore(
+            [&]() { for (auto& allowed : stale_approval) allowed = false; },
+            [&]() {
+                for (bool allowed : stale_approval) assert(!allowed);
+                preview[0] = 1;
+                throw std::runtime_error("synthetic file_info assignment failure");
+            });
+    } catch (const std::runtime_error&) { restoration_failed = true; }
+    assert(restoration_failed && preview[0] == 1);
+    for (bool allowed : stale_approval) assert(!allowed);
+    bool restored_without_revocation = false;
+    discogger_write_safety::revoke_before_restore(
+        [&]() { stale_approval[0] = false; },
+        [&]() { restored_without_revocation = !stale_approval[0]; });
+    assert(restored_without_revocation);
+
     // Snapshot/no-op planning: unchanged metadata and ReplayGain never schedule I/O.
     using decision = discogger_write_safety::metadata_write_decision;
     using discogger_write_safety::plan_metadata_write;

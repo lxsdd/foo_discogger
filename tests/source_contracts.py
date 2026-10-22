@@ -876,6 +876,18 @@ assert "result.removed_values += previous_count - next_count;" not in preflight
 assert "if (previous_count <= 1)" in preflight
 assert "removed_fields" in preflight and "removed_values" in preflight
 assert "discard_pending_changes()" in file_manager_h and "original_info" in file_manager_h
+# Failed callbacks revoke all physical snapshots BEFORE any fallible
+# preview restoration, even when the first file_info assignment throws.
+discard_body = file_manager_h.split("void discard_pending_changes() {", 1)[1].split(
+    "inline void invalidate_all()", 1
+)[0]
+assert "discogger_write_safety::revoke_before_restore(" in discard_body
+assert discard_body.index("begin_physical_read();") < discard_body.index("wrapper->info = wrapper->original_info;")
+assert "if (wrapper->original_captured)" not in discard_body
+assert "void revoke_before_restore(Revoke&& revoke, Restore&& restore)" in (
+    root / "discogger_write_safety.h"
+).read_text(encoding="utf-8-sig")
+
 assert "tag_deletions_approved = false" in file_manager_h
 assert 'if (!tag_deletions_approved && (report.removed_fields || report.removed_values))' in manager
 assert 'MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2' in tasks

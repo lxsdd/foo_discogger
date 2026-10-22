@@ -151,6 +151,15 @@ public:
     bool ready() const noexcept { return complete_; }
 };
 
+// A failed callback must revoke *all* write permissions before attempting
+// potentially throwing in-memory file_info restoration. A partial restoration
+// may leave a stale preview, but can never leave an authorized stale snapshot.
+template <typename Revoke, typename Restore>
+void revoke_before_restore(Revoke&& revoke, Restore&& restore) {
+    std::forward<Revoke>(revoke)();
+    std::forward<Restore>(restore)();
+}
+
 // A failed SDK batch may have written zero, some or all files. No rollback
 // can be inferred from an asynchronous failure status.
 enum class failed_write_file_state { original, requested, divergent, unreadable };
