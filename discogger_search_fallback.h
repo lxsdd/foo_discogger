@@ -105,16 +105,22 @@ inline std::vector<fallback_candidate> build_fallback_plan(
     const std::string requested_track = trim_copy(track);
     if (initial_artist.empty() || (requested_title.empty() && requested_track.empty()))
         return plan;
-    const std::string key = requested_title.empty() ? requested_track : requested_title;
+    // A short release title (e.g. "EP") cannot anchor a useful fallback.
+    // Prefer a substantive track title in that case, but NEVER feed it into
+    // Discogs' release-title filter: track and release titles are not the same.
+    const bool using_track_title = requested_title.size() < 3;
+    const std::string key = using_track_title ? requested_track : requested_title;
     if (key.size() < 3) return plan;
     const std::string partner = trailing_collaborator(initial_artist);
-    if (!partner.empty() && partner != initial_artist)
+    if (!using_track_title && !partner.empty() && partner != initial_artist)
         plan.push_back({"collaboration partner and title", partner, key});
-    // Deliberately broaden to a title-only Discogs 'q', keeping the exact
-    // structured query untouched. Low-confidence candidates require review.
+    // Deliberately broaden to a review-only Discogs 'q', keeping the exact
+    // structured query untouched. A track title must not masquerade as the
+    // release title; only the broad text index is queried in that case.
     const std::string broad = without_terminal_mix_suffix(key);
     if (broad.size() >= 3 && (plan.empty() || partner != broad))
-        plan.push_back({"title-only discovery (review required)", broad, ""});
+        plan.push_back({using_track_title ? "track-title discovery (review required)"
+                                          : "title-only discovery (review required)", broad, ""});
     return plan;
 }
 

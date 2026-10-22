@@ -52,6 +52,23 @@ int main() {
     assert(collab.size() == 2);
     assert(collab[0].q == "Maywave" && collab[0].title == "1000 Years");
     assert(collab[1].q == "1000 Years" && collab[1].title.empty());
+    // Short/generic release titles must not suppress a useful track search.
+    // In particular, the Discogs title= filter refers to the RELEASE title,
+    // not to the supplied track title. Such fallbacks must remain review-only.
+    auto short_release = build_fallback_plan(
+        "Kyau & Albert x Maywave", "EP", "1000 Years (DJ Version)");
+    assert(short_release.size() == 1);
+    assert(short_release[0].q == "1000 Years" && short_release[0].title.empty());
+    assert(short_release[0].label == "track-title discovery (review required)");
+    assert(encode_fallback_query(short_release[0]) == "q=%221000%20Years%22");
+    auto track_only = build_fallback_plan("Artist feat. Guest", "", "Only You");
+    assert(track_only.size() == 1 && track_only[0].q == "Only You");
+    assert(track_only[0].title.empty());
+    assert(build_fallback_plan("Artist", "EP", "X").empty());
+    // A substantive release title retains the existing partner + title plan.
+    auto normal_release = build_fallback_plan(
+        "Kyau & Albert x Maywave", "1000 Years", "1000 Years (DJ Version)");
+    assert(normal_release.size() == 2 && normal_release[0].title == "1000 Years");
     auto mix = build_fallback_plan("Matt Fax", "Only You (Extended Mix)", "");
     assert(mix.size() == 1 && mix[0].q == "Only You");
     assert(build_fallback_plan("", "Only You", "").empty());
