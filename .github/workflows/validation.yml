@@ -1,8 +1,9 @@
 name: Discogger modernization validation
 
-# Validate the active draft branch on push even when GitHub's pull ref
-# lags behind Contents API updates. PR validation remains available for other
-# contributors. Both events share one cancellation group per source branch.
+# Validate the active draft branch even when GitHub's pull ref lags.
+# Deduplicate automatic push/PR builds per branch. Keep manual acceptance
+# runs in a separate concurrency group: delayed push notifications for older
+# commits must never cancel an explicitly dispatched current-HEAD host test.
 on:
   push:
     branches:
@@ -17,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: discogger-validation-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: discogger-validation-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
