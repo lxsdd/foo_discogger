@@ -124,7 +124,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lxsdd/foo_discogger
-          ref: 7c4514eb681ca514d77d8404fa1f77f2f042a7c4
+          ref: 980737760de7664448d7f6b2713a2625e4004b3a
           path: source-tests
           persist-credentials: false
       - name: Execute real portable source regression contracts
@@ -166,7 +166,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lxsdd/foo_discogger
-          ref: 7c4514eb681ca514d77d8404fa1f77f2f042a7c4
+          ref: 980737760de7664448d7f6b2713a2625e4004b3a
           path: source-tests
           persist-credentials: false
       - name: Compile and run real Discogger MSVC C++17 regression suite
