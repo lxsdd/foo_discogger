@@ -1,15 +1,11 @@
 name: Discogger modernization validation
 
-# Validate the active Discogger draft branch on push as well: GitHub
-# may lag when updating pull/10/head even after its source ref advances.
-# PR validation remains enabled for other contributors. Share one concurrency
-# group between push and PR runs of the same head branch to avoid duplicate
-# native Win32/x64 host matrices.
+# Draft work branches are validated by pull_request. Do not duplicate the
+# expensive Win32/x64 SDK and host matrix on both push and PR events.
 on:
   push:
     branches:
       - master
-      - work/portable-build-properties-20261018
   pull_request:
     branches:
       - master
@@ -19,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: discogger-validation-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: discogger-validation-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
