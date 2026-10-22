@@ -304,6 +304,7 @@ private:
 	int m_pos;
 	pfc::string8 m_offlineArtist_id;
 	int m_query_mode;
+    HWND m_owner_window = nullptr; // Exact window captured before worker dispatch.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
