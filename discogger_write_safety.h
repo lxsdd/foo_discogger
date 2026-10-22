@@ -76,6 +76,24 @@ public:
     std::size_t size() const noexcept { return copies_.size(); }
 };
 
+// Preview staging is in-memory only; revoke a partially mutated batch if any
+// preview processing step throws. Cleanup never replaces the original error.
+template <typename Reset>
+class staging_rollback_guard {
+    Reset reset_;
+    bool complete_ = false;
+public:
+    explicit staging_rollback_guard(Reset reset) : reset_(std::move(reset)) {}
+    staging_rollback_guard(const staging_rollback_guard&) = delete;
+    staging_rollback_guard& operator=(const staging_rollback_guard&) = delete;
+    ~staging_rollback_guard() noexcept {
+        if (!complete_) {
+            try { reset_(); } catch (...) { /* Keep the original failure. */ }
+        }
+    }
+    void disarm() noexcept { complete_ = true; }
+};
+
 template <typename RevokeAt>
 void revoke_snapshot_batch(std::size_t count, RevokeAt revoke_at) {
     for (std::size_t i = 0; i < count; ++i) revoke_at(i);

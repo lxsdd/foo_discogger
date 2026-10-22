@@ -172,6 +172,25 @@ int main() {
         [&](std::size_t) { ++touched; return true; },
         [&](std::size_t) { ++touched; return true; }) == batch_decision::reject_count_mismatch);
     assert(touched == 0);
+    // Failed preview staging rolls back; completed previews retain staged data.
+    int stage_resets = 0;
+    try {
+        discogger_write_safety::staging_rollback_guard rollback([&] { ++stage_resets; });
+        throw std::runtime_error("synthetic stage failure");
+    } catch (const std::runtime_error&) {}
+    assert(stage_resets == 1);
+    {
+        discogger_write_safety::staging_rollback_guard rollback([&] { ++stage_resets; });
+        rollback.disarm();
+    }
+    assert(stage_resets == 1);
+    {
+        discogger_write_safety::staging_rollback_guard rollback([&] {
+            ++stage_resets;
+            throw std::runtime_error("synthetic reset exception");
+        });
+    }
+    assert(stage_resets == 2);
     // Snapshot/no-op planning: unchanged metadata and ReplayGain never schedule I/O.
     using decision = discogger_write_safety::metadata_write_decision;
     using discogger_write_safety::plan_metadata_write;

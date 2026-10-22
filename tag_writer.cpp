@@ -743,6 +743,13 @@ void TagWriter::write_tags() {
             throw foo_discogs_exception("Tagging stopped: stale or incomplete tag preview rows.");
     }
 
+    // Fail closed if any later row, mapping or tag operation throws after
+    // earlier rows have been mutated. No disk write occurs in this stage.
+    discogger_write_safety::staging_rollback_guard stage_guard(
+        [manager = m_finfo_manager]() {
+            try { manager->discard_pending_changes(); }
+            catch (...) { manager->begin_physical_read(); }
+        });
 	m_finfo_manager->invalidate_all();
 
 	bit_array_bittable info_man_validate_mask(bit_array_false(), m_finfo_manager->items.get_count());
@@ -882,6 +889,7 @@ void TagWriter::write_tags() {
 		}
 
 	}//end tracks loop
+    stage_guard.disarm();
 }
 
 // single vals

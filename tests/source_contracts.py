@@ -1389,6 +1389,11 @@ assert "process_result(item, &info, i /*ndx_track_mappings*/" not in writer_comm
 assert "process_result(item, &info, i, result" not in writer_commit
 assert "std::set<size_t> used_file_indices;" in writer_commit
 assert "tag_results_mask.size() > tag_results.get_count()" in writer_commit
+assert "discogger_write_safety::staging_rollback_guard stage_guard(" in writer_commit
+assert writer_commit.index("staging_rollback_guard stage_guard(") < writer_commit.index("invalidate_all();")
+assert "manager->discard_pending_changes();" in writer_commit
+assert "manager->begin_physical_read();" in writer_commit
+assert writer_commit.index("stage_guard.disarm();") > writer_commit.index("}//end tracks loop")
 assert "Tag generation stopped: Discogs resource missing (HTTP 404)." in writer_source
 for runner in ("scripts/run-msvc-unit-tests.ps1", ".github/workflows/validation.yml"):
     assert "result_alignment_test.cpp" in (root / runner).read_text(encoding="utf-8-sig")
