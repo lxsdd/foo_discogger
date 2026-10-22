@@ -11,6 +11,7 @@ on:
     branches: [master]
     paths:
       - '.github/workflows/discogs-authorized-live.yml'
+      - '.github/workflows/validation.yml'
 
 permissions:
   contents: read
@@ -123,7 +124,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lxsdd/foo_discogger
-          ref: ae82b3f38a0380f885d9e0ec8397acf1b4a33389
+          ref: 7c4514eb681ca514d77d8404fa1f77f2f042a7c4
           path: source-tests
           persist-credentials: false
       - name: Execute real portable source regression contracts
@@ -165,7 +166,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lxsdd/foo_discogger
-          ref: ae82b3f38a0380f885d9e0ec8397acf1b4a33389
+          ref: 7c4514eb681ca514d77d8404fa1f77f2f042a7c4
           path: source-tests
           persist-credentials: false
       - name: Compile and run real Discogger MSVC C++17 regression suite
