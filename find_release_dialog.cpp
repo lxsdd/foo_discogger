@@ -11,6 +11,7 @@
 #include "discogger_release_id.h"
 #include "discogger_artist_activation.h"
 #include "discogger_artist_refresh.h"
+#include "discogs_interface.h"
 #include "discogger_search_visibility.h"
 
 namespace ol = Offline;
