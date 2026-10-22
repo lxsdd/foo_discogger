@@ -111,9 +111,10 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 			else if (Min != m_current_minute) {
 				m_ratelimit_remaining = m_ratelimit_max;
 			}
-			else if (m_ratelimit_remaining < 0) {
-				m_ratelimit_remaining = 0;
-			}
+			else if (m_ratelimit_remaining == 0) {
+                // Keep exhausted counters at zero; never wrap the unsigned value.
+                m_ratelimit_remaining = 0;
+            }
 		}
 		m_current_minute = Min;
 	}
@@ -166,7 +167,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 
 		//apply delta/set cruise mode
 		if (m_ratelimit_cruise ||
-			(m_fetch_wait_rolling_avg < (60/m_ratelimit_max) /*RL_AVG_THRESHOLD*/ /*(0.5)*/ && m_ratelimit_remaining <= m_ratelimit_threshold /*(30)*/)) {
+			(m_fetch_wait_rolling_avg < discogger_net::discogs_rate_interval(m_ratelimit_max) && m_ratelimit_remaining <= m_ratelimit_threshold)) {
 
 			m_ratelimit_cruise = true;
 
@@ -217,21 +218,30 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 				pfc::string8 msg_ratelimits;
 
 				if (r->get_http_header("X-Discogs-Ratelimit", rate_header_buffer)) {
-					m_ratelimit_max = atoi(rate_header_buffer); //currently 60, discoggs may update these rate limits at any time
-					m_ratelimit_threshold = m_ratelimit_max - RL_REMAINING_THRESHOLD; //max - 30
-					msg_ratelimits << "RL: " << rate_header_buffer;
-				}
+                    std::size_t parsed = 0;
+                    if (discogger_net::parse_discogs_rate_header(
+                            rate_header_buffer.c_str(), 600, parsed, false)) {
+                        m_ratelimit_max = parsed;
+                        m_ratelimit_threshold = discogger_net::discogs_rate_threshold(parsed);
+                        if (m_ratelimit_remaining > parsed) m_ratelimit_remaining = parsed;
+                        msg_ratelimits << "RL: " << parsed;
+                    }
+                }
 				if (r->get_http_header("X-Discogs-Ratelimit-Used", rate_header_buffer)) {
 					msg_ratelimits << " - Used: " << rate_header_buffer;
 				}
 				if (r->get_http_header("X-Discogs-Ratelimit-Remaining", rate_header_buffer)) {
-					m_ratelimit_remaining = atoi(rate_header_buffer);
-					msg_ratelimits << " - RMNG: " << rate_header_buffer;
-				}
+                    std::size_t parsed = 0;
+                    if (discogger_net::parse_discogs_rate_header(
+                            rate_header_buffer.c_str(), m_ratelimit_max, parsed)) {
+                        m_ratelimit_remaining = parsed;
+                        msg_ratelimits << " - RMNG: " << parsed;
+                    }
+                }
 
 				if (isImageUrl && !use_api) {
 					m_ratelimit_max = 20;
-					--m_ratelimit_remaining;
+                    m_ratelimit_remaining = discogger_net::consume_discogs_rate(m_ratelimit_remaining);
 					msg_ratelimits << "RL: " << m_ratelimit_max;
 					msg_ratelimits << " - Used: " << m_ratelimit_max - m_ratelimit_remaining;
 					msg_ratelimits << " - RMNG: " << m_ratelimit_remaining;

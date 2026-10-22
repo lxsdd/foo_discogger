@@ -181,6 +181,15 @@ assert '!std::string(url.c_str()).find("h:150")' not in fetcher
 assert "bool isImageUrl = url.has_prefix(" not in fetcher
 assert "should_throttle_discogs_image(std::string_view url)" in (root / "http_status_util.h").read_text(encoding="utf-8-sig")
 
+# Malformed API rate headers may not set zero/negative/overflowed unsigned
+# counters, and image consumption must not underflow at zero.
+assert "discogger_net::parse_discogs_rate_header(" in fetcher
+assert "discogger_net::discogs_rate_threshold(parsed)" in fetcher
+assert "discogger_net::consume_discogs_rate(m_ratelimit_remaining)" in fetcher
+assert "discogger_net::discogs_rate_interval(m_ratelimit_max)" in fetcher
+assert "m_ratelimit_max = atoi(rate_header_buffer)" not in fetcher
+assert "m_ratelimit_remaining = atoi(rate_header_buffer)" not in fetcher
+assert "--m_ratelimit_remaining" not in fetcher
 assert "error_code = 4011" not in fetcher
 # OAuth tokens and signed query strings must not enter debug logs, caught
 # exception messages, or errors passed on to users. A leaked secret cannot

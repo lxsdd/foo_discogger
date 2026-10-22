@@ -18,6 +18,38 @@ inline bool acceptable_http_decoded_size(std::size_t size) noexcept {
     return size != 0 && size <= max_http_response_bytes;
 }
 
+// HTTP rate-limit headers are untrusted. Reject signs, junk, overflow and
+// implausible counts before updating throttling state. A zero remaining count
+// is meaningful; a zero maximum must never authorize division.
+inline bool parse_discogs_rate_header(std::string_view value, std::size_t limit,
+                                      std::size_t& result, bool allow_zero = true) noexcept {
+    if (value.empty() || limit == 0) return false;
+    const auto first = value.find_first_not_of(" \\t");
+    if (first == std::string_view::npos) return false;
+    const auto last = value.find_last_not_of(" \\t");
+    value = value.substr(first, last - first + 1);
+    if (value.empty()) return false;
+    std::size_t parsed = 0;
+    for (char c : value) {
+        if (c < '0' || c > '9') return false;
+        const std::size_t digit = static_cast<std::size_t>(c - '0');
+        if (digit > limit || parsed > (limit - digit) / 10) return false;
+        parsed = parsed * 10 + digit;
+    }
+    if (!allow_zero && parsed == 0) return false;
+    result = parsed;
+    return true;
+}
+inline std::size_t discogs_rate_threshold(std::size_t maximum) noexcept {
+    return maximum > 30 ? maximum - 30 : maximum / 2;
+}
+inline std::size_t consume_discogs_rate(std::size_t remaining) noexcept {
+    return remaining == 0 ? 0 : remaining - 1;
+}
+inline double discogs_rate_interval(std::size_t maximum) noexcept {
+    return 60.0 / static_cast<double>(maximum == 0 ? 1 : maximum);
+}
+
 // OAuth headers may contain signed credentials. Never attach them to
 // untrusted resource URLs merely because their path/query mentions "api".
 // Restrict signing to the exact HTTPS Discogs API origin.

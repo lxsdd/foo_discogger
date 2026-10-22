@@ -51,6 +51,34 @@ int main() {
     assert(!is_discogs_api_url("https://discogs.com/api"));
     assert(!is_discogs_api_url("https://evil.test/path/api.discogs.com"));
     assert(!is_discogs_api_url(""));
+    using discogger_net::parse_discogs_rate_header;
+    using discogger_net::discogs_rate_threshold;
+    using discogger_net::consume_discogs_rate;
+    using discogger_net::discogs_rate_interval;
+    std::size_t parsed_rate = 999;
+    assert(parse_discogs_rate_header("60", 600, parsed_rate, false) && parsed_rate == 60);
+    assert(parse_discogs_rate_header(" 20 ", 600, parsed_rate, false) && parsed_rate == 20);
+    assert(parse_discogs_rate_header("0", 60, parsed_rate) && parsed_rate == 0);
+    assert(!parse_discogs_rate_header("0", 600, parsed_rate, false));
+    assert(!parse_discogs_rate_header("-1", 600, parsed_rate));
+    assert(!parse_discogs_rate_header("+60", 600, parsed_rate));
+    assert(!parse_discogs_rate_header("60junk", 600, parsed_rate));
+    assert(!parse_discogs_rate_header("18446744073709551616", 600, parsed_rate));
+    assert(!parse_discogs_rate_header("601", 600, parsed_rate));
+    assert(!parse_discogs_rate_header("61", 60, parsed_rate));
+    assert(!parse_discogs_rate_header(" ", 60, parsed_rate));
+    assert(!parse_discogs_rate_header("", 60, parsed_rate));
+    assert(parsed_rate == 0); // Invalid headers never mutate the last valid value.
+    assert(discogs_rate_threshold(60) == 30);
+    assert(discogs_rate_threshold(20) == 10);
+    assert(discogs_rate_threshold(1) == 0);
+    assert(discogs_rate_threshold(0) == 0);
+    assert(consume_discogs_rate(0) == 0);
+    assert(consume_discogs_rate(1) == 0);
+    assert(consume_discogs_rate(20) == 19);
+    assert(discogs_rate_interval(60) == 1.0);
+    assert(discogs_rate_interval(120) == 0.5);
+    assert(discogs_rate_interval(0) == 60.0);
     // Network response sizes must not overflow through repeated doubling,
     // and hostile gzip trailers must never authorize huge allocations.
     using discogger_net::next_http_buffer_capacity;
