@@ -1811,3 +1811,23 @@ assert 'const char* removals[] = {"GENRE", "CUESHEET"};' in native_qa
 assert "manager->write_infos({}, std::move(lease), false);" in native_qa
 assert "DISCOGGER_PHYSICAL_UNAPPROVED_REMOVAL_DENIAL_" in native_host
 print("PASS: real synthetic FLAC unapproved GENRE/CUESHEET removals fail closed.")
+
+# Keep the entire five-release, read-only Discogs acceptance cohort wired.
+# Search assertions in this job may run only during an explicitly authorized
+# manual dispatch, never in public PR jobs or arbitrary downloaded binaries.
+live_workflow = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+live_segment = live_workflow.split("  authorized-discogs-live:", 1)[1]
+for release_id, artist, title in (
+    ("38012673", "Estiva", "Via Balearia"),
+    ("37332711", "Kyau & Albert x Maywave", "1000 Years"),
+    ("36397609", "Matt Fax", "Only You"),
+    ("36819730", "Matt Fax", "Till You Let Go"),
+    ("35534398", "Quivver", "Consciousness EP"),
+):
+    assert f"('{release_id}','{artist}','{title}'" in live_segment
+assert "github.event_name == 'workflow_dispatch'" in live_segment
+assert "DISCOGS_LIVE_DISCOVERY=PASS: 5/5" in live_segment
+assert "if found != len(releases):" in live_segment
+assert "conn.request('GET', path, headers=headers)" in live_segment
+assert "return {str(x.get('id'))" in live_segment
+print("PASS: authorized five-release Discogs live regression set remains read-only.")
