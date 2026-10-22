@@ -1,0 +1,28 @@
+name: Discogger modernization validation
+
+# Default-branch registration only. The fully qualified native Win32/x64,
+# foobar host and disposable media tests live in the draft branch's file
+# at this exact path. GitHub exposes "Run workflow" only if a file with
+# workflow_dispatch exists on the default branch. The user must select
+# work/portable-build-properties-20261018 in the branch selector.
+# Never merge the draft product branch to enable a test. No secrets, binary
+# artifacts, audio writes or release steps are defined in this bootstrap.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  default-branch-is-not-a-component-test:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require the Discogger draft work branch
+        shell: bash
+        run: |
+          echo "::error::This master-only bootstrap cannot qualify Discogger."
+          echo "::error::Open Run workflow again and select work/portable-build-properties-20261018."
+          exit 1
+
