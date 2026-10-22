@@ -354,7 +354,7 @@ private:
 	const pfc::array_t<Artist_ptr> m_p_artist_other_matches;
 	bool m_append;
 	std::pair<size_t, size_t> m_out_va_cap;
-
+    HWND m_owner_window = nullptr; // Captured before dispatch, checked at UI completion.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
@@ -374,6 +374,7 @@ private:
 
 	cupdRelSrc m_updsrc;
 	Artist_ptr m_artist;
+    HWND m_owner_window = nullptr; // Do not target a replaced modeless dialog.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
