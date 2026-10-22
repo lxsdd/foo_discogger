@@ -1,0 +1,72 @@
+name: Discogger modernization validation
+
+on:
+  push:
+    branches:
+      - 'work/**'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: discogger-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Source contract regression checks
+        run: python3 tests/source_contracts.py
+      - name: Compile HTTP status parser in C++17
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/http_status_parser_test.cpp -o /tmp/discogger-http-test
+      - name: Run HTTP status regression tests
+        run: /tmp/discogger-http-test
+      - name: Compile collaboration search fallback helper
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
+      - name: Run collaboration search fallback tests
+        run: /tmp/discogger-search-test
+
+  windows-baseline:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Check source contracts on Windows
+        shell: pwsh
+        run: python tests/source_contracts.py
+      - name: Record Visual Studio availability
+        shell: pwsh
+        run: |
+          msbuild -version -nologo
+          Write-Host 'NOTE: This checks MSBuild availability, NOT a full component build.'
+          Write-Host 'A full build needs staged foobar SDK, WTL, libPPUI, Jansson, OAuth, SQLite and zlib dependencies.'
+
+  windows-native-unit:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and execute portable C++17 unit tests using MSVC
+        shell: pwsh
+        run: ./scripts/run-msvc-unit-tests.ps1 -Architecture '${{ matrix.architecture }}'
+
+  official-sdk-probe:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pinned official SDK 2026-10-01 on Windows
+        shell: pwsh
+        run: ./scripts/probe-official-sdk.ps1

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Upstream Discogger issue tracker
+    url: https://github.com/ghDaYuYu/foo_discogger/issues
+    about: For issues in unchanged upstream releases, consider reporting the original bug to upstream as well.

@@ -528,7 +528,7 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 			uAppendMenu(menu, MF_STRING, ID_ARTIST_PROFILE, "&profile panel");
 			uAppendMenu(menu, MF_SEPARATOR, 0, 0);
 			if (isArtistOffline) {
-				uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_ARTIST_DEL_CACHE, "&Delete artist cache");
+				uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_ARTIST_DEL_CACHE, "&Refresh artist releases");
 				uAppendMenu(menu, MF_SEPARATOR, 0, 0);
 			}
 			uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_VIEW_PAGE, sourcepage);
@@ -569,7 +569,14 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 		case ID_ARTIST_DEL_CACHE:
 		{
 			if (discogs_interface->delete_artist_cache(artist->id)) {
+				// Refresh the selected artist immediately. Clearing the cache alone
+				// used to require another artist selection before the release tree
+				// was populated with newly published releases.
 				artist->loaded_releases_offline = false;
+				artist->loaded_releases = false;
+				cupdRelSrc refresh(updRelSrc::ArtistList);
+				refresh.extended = true;
+				dlg->convey_artist_list_selection(refresh);
 			}
 			break;
 		}
