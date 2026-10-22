@@ -168,6 +168,25 @@ assert "buffer.set_size(0);" in bad_inflate
 assert "break;" in bad_inflate
 
 assert "error_code = 4011" not in fetcher
+# OAuth tokens and signed query strings must not enter debug logs, caught
+# exception messages, or errors passed on to users. A leaked secret cannot
+# be made safe by hiding only the first URL log.
+assert 'log_msg(clean_url)' not in fetcher
+assert 'urldecode2(decoded, clean_url)' not in fetcher
+assert '<< clean_url' not in fetcher
+assert 'e.what()' not in fetcher
+assert 'log_msg(e.what())' not in fetcher
+assert 'msg << html' not in fetcher
+assert 'OAuth request response:' not in fetcher
+assert 'OAuth generated response:' not in fetcher
+assert 'OAuth request-token response received (redacted).' in fetcher
+assert 'OAuth access-token response received (redacted).' in fetcher
+assert fetcher.count('log_msg("Discogs HTTP request (URL and query redacted).");') == 2
+network_fetch = fetcher[fetcher.index("void Fetcher::fetch_url("):fetcher.index("void Fetcher::fetch_html_simple_log(")]
+assert 'catch (const std::exception&) {' in network_fetch
+assert 'out.set_size(0);' in network_fetch[network_fetch.index("catch (const std::exception&) {"):]
+assert 'throw network_exception("Discogs request failed; response discarded.");' in network_fetch
+
 
 search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
 assert "inline std::string trailing_collaborator(" in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")

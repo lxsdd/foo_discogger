@@ -124,7 +124,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 	}
 
 	//log: url and oauth status
-	log_msg(clean_url);
+	log_msg("Discogs HTTP request (URL and query redacted).");
 	if (use_oauth) {
 		log_msg("Url OAuth enabled");
 	}
@@ -330,15 +330,14 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 				log_msg(error_msg);
 				discogger_net::interruptible_wait(2000u * tries, p_abort);
 			}
-			catch (foobar2000_io::exception_io &e) {
+			catch (foobar2000_io::exception_io &) {
 
 				if (tries > 5) throw;
 
+				// Host transport errors may contain the fully signed OAuth URL.
+                // Never send raw SDK exception text to diagnostics.
 				pfc::string8 error_msg;
-				error_msg << "Network error";
-				if (!error_msg.has_prefix(pfc::string8(e.what())))
-					error_msg << ": " << e.what();
-				error_msg << ". Retrying: " << tries;
+                error_msg << "Network transport error (URL redacted). Retrying: " << tries;
 
 				log_msg(error_msg);
 
@@ -350,37 +349,27 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 	catch (exception_aborted) {
 		throw;
 	}
-	catch (foo_discogs_exception &e) {
-		char decoded[MAX_PATH];
-		urldecode2(decoded, clean_url);
-
-		e << "url: " << decoded;
-		pfc::string8 error_msg;
-		error_msg << "Exception handling: " << clean_url;
-		log_msg(error_msg);
-		throw;
-	}
-	catch (const foobar2000_io::exception_io &e) {
-		//retries > max retries
-		network_exception ex("Network exception: ");
-		ex << e.what() << " (url: " << clean_url << ")";
-		pfc::string8 error_msg;
-		error_msg << "Network exception fetching url: " << clean_url;
-		log_msg(error_msg);
-		throw ex;
-	}
-	catch (const std::exception& e) {
-		log_msg(e.what());
-	}
+	catch (foo_discogs_exception &) {
+        // No raw query strings, decoded URLs or OAuth signatures in logs/errors.
+        log_msg("Discogs request failed (URL redacted).");
+        throw;
+    }
+	catch (const foobar2000_io::exception_io &) {
+        log_msg("Discogs transport retries exhausted (URL redacted).");
+        throw network_exception("Discogs network transport failed; check connectivity and retry.");
+    }
+	catch (const std::exception&) {
+        // The previous handler swallowed this exception and exposed any
+        // partially downloaded bytes as a successful response.
+        out.set_size(0);
+        log_msg("Discogs request failed unexpectedly (details redacted).");
+        throw network_exception("Discogs request failed; response discarded.");
+    }
 	catch (...) {
-		out.set_size(0);
-		network_exception ex("Unknown network exception: ");
-		ex << "(url: " << clean_url << ")";
-		pfc::string8 error_msg;
-		error_msg << "Unknown network exception handling: " << clean_url;
-		log_msg(error_msg);
-		throw ex;
-	}
+        out.set_size(0);
+        log_msg("Discogs request failed with unknown error (details redacted).");
+        throw network_exception("Unknown Discogs network failure; response discarded.");
+    }
 }
 
 void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8& params, pfc::string8& html, abort_callback& p_abort, bool throw_abort, const pfc::string8& content_type) {
@@ -396,7 +385,7 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 
 	if (params.get_length()) clean_url << "?" << params;
 
-	log_msg(clean_url);
+	log_msg("Discogs HTTP request (URL and query redacted).");
 
 	try {
 		const http_request::ptr request = client->create_request("GET");
@@ -494,15 +483,14 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 
 				break;
 			}
-			catch (foobar2000_io::exception_io& e) {
+			catch (foobar2000_io::exception_io&) {
 
 				if (tries > 5) throw;
 
+				// Host transport errors may contain the fully signed OAuth URL.
+                // Never send raw SDK exception text to diagnostics.
 				pfc::string8 error_msg;
-				error_msg << "Network error";
-				if (!error_msg.has_prefix(pfc::string8(e.what())))
-					error_msg << ": " << e.what();
-				error_msg << ". Retrying: " << tries;
+                error_msg << "Network transport error (URL redacted). Retrying: " << tries;
 				log_msg(error_msg);
 				discogger_net::interruptible_wait(2000u * (tries > 1 ? 2 : 1), p_abort);
 			}
@@ -514,36 +502,23 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 		if (throw_abort)
 			throw;
 	}
-	catch (foo_discogs_exception& e) {
+	catch (foo_discogs_exception&) {
         buffer.set_size(0);
-		e << "(url: " << clean_url << ")";
-		pfc::string8 error_msg;
-		error_msg << "Exception handling: " << clean_url;
-		log_msg(error_msg);
-	}
-	catch (const foobar2000_io::exception_io& e) {
-		//retries > max retries
-		network_exception ex("Network exception: ");
-		ex << e.what() << " (url: " << clean_url << ")";
-		pfc::string8 error_msg = PFC_string_formatter() << "Network exception (simlog fetching url): " << clean_url;
-		log_msg(error_msg);
-		throw ex;
-	}
-	catch (const std::exception& e) {
+        log_msg("Discogs preview request failed (URL redacted).");
+    }
+	catch (const foobar2000_io::exception_io&) {
         buffer.set_size(0);
-		log_msg(e.what());
-	}
+        log_msg("Discogs preview transport retries exhausted (URL redacted).");
+        throw network_exception("Discogs preview network transport failed.");
+    }
+	catch (const std::exception&) {
+        buffer.set_size(0);
+        log_msg("Discogs preview request failed unexpectedly (details redacted).");
+    }
 	catch (...) {
-
-		// fallback for request->run errors
-
-		buffer.set_size(0);
-		network_exception ex("Unknown network exception: ");
-		ex << "(url: " << clean_url << ")";
-		pfc::string8 error_msg;
-		error_msg << "Unknown network exception handling: " << clean_url;
-		log_msg(error_msg);
-	}
+        buffer.set_size(0);
+        log_msg("Unknown Discogs preview request failure (details redacted).");
+    }
 
 	html = pfc::string8((char*)buffer.get_ptr(), buffer.get_size());
 }
@@ -627,9 +602,8 @@ pfc::string8 Fetcher::get_oauth_authorize_url(abort_callback &p_abort) {
 	pfc::string8 html;
 	fetch_html(REQUEST_TOKEN_URL, oauth_query_str, html, p_abort, false);
 
-	pfc::string8 msg("OAuth request response: ");
-	msg << html;
-	log_msg(msg);
+	// Contains oauth_token and oauth_token_secret; never log raw body.
+    log_msg("OAuth request-token response received (redacted).");
 
 	if (request_token != nullptr) {
 		delete request_token;
@@ -656,9 +630,8 @@ OAuth::Token * Fetcher::generate_oauth(pfc::string8 &code, abort_callback &p_abo
 	pfc::string8 html;
 	fetch_html(ACCESS_TOKEN_URL, oauth_query_str, html, p_abort, false);
 
-	pfc::string8 msg("OAuth generated response: ");
-	msg << html;
-	log_msg(msg);
+	// Contains persistent access token and secret; never log raw body.
+    log_msg("OAuth access-token response received (redacted).");
 
 	OAuth::KeyValuePairs access_token_resp_data = OAuth::ParseKeyValuePairs(html.get_ptr());
 	OAuth::Token t = OAuth::Token::extract(access_token_resp_data);
