@@ -186,6 +186,14 @@ network_fetch = fetcher[fetcher.index("void Fetcher::fetch_url("):fetcher.index(
 assert 'catch (const std::exception&) {' in network_fetch
 assert 'out.set_size(0);' in network_fetch[network_fetch.index("catch (const std::exception&) {"):]
 assert 'throw network_exception("Discogs request failed; response discarded.");' in network_fetch
+# An already-aborted request must not pretend success with a reused output
+# array; the normal modeless cancellation path must be reached.
+preflight = network_fetch[:network_fetch.index("pfc::string8 msg_average;")]
+assert "out.set_size(0);" in preflight
+assert preflight.index("out.set_size(0);") < preflight.index("p_abort.check();")
+assert "catch (exception_aborted)" not in preflight
+assert "return;" not in preflight
+
 
 
 search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
