@@ -142,6 +142,14 @@ assert "catch (exception_aborted) {\n        buffer.set_size(0);" in simple_log
 assert "catch (foo_discogs_exception& e) {\n        buffer.set_size(0);" in simple_log
 assert "catch (const std::exception& e) {\n        buffer.set_size(0);" in simple_log
 assert simple_log.index("buffer.set_size(0);") < simple_log.index("html = pfc::string8((char*)buffer.get_ptr()")
+# Do not read HTTP error/partial bodies as successful artwork/preview data.
+assert "usable_preview_http_response(status.c_str())" in simple_log
+assert 'find_first("200")' not in simple_log
+status_guard = simple_log[simple_log.index("if (!discogger_net::usable_preview_http_response("):
+                         simple_log.index("pfc::string8 reply_content_type;")]
+assert "buffer.set_size(0);" in status_guard
+assert "break;" in status_guard
+assert "usable_preview_http_response" in (root / "http_status_util.h").read_text(encoding="utf-8-sig")
 
 assert "out.set_size(out.get_size() << 1)" not in fetcher
 assert "buffer.set_size(buffer.get_size() << 1)" not in fetcher

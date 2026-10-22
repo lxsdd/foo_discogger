@@ -432,12 +432,18 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 
 				// check status (applies only to request->run_ex)
 
-				if (pfc::string8(status).find_first("200") == ~0) {
-
-					pfc::string8 msg_status;
-					msg_status << "HTTP error status: " << status;
-					log_msg(msg_status);
-				}
+                // This best-effort preview path used to merely log a 404,
+                // 429 or partial HTTP response, then expose its body as if
+                // artwork/JSON had been fetched successfully. Reject it before
+                // reading any bytes; do not retry an unchanged bad status.
+                if (!discogger_net::usable_preview_http_response(status.c_str())) {
+                    buffer.set_size(0);
+                    pfc::string8 message;
+                    message << "Preview HTTP response rejected (status "
+                            << discogger_net::parse_http_status_code(status.c_str()) << ").";
+                    log_msg(message);
+                    break;
+                }
 
 				//Sleep(1000);
 

@@ -14,6 +14,17 @@ int main() {
     assert(parse_http_status_code("garbage") == 0);
     assert(parse_http_status_code("HTTP/2 ???") == 0);
     assert(parse_http_status_code("HTTP/2") == 0);
+    using discogger_net::usable_preview_http_response;
+    assert(usable_preview_http_response("HTTP/1.1 200 OK"));
+    assert(usable_preview_http_response("HTTP/2 200"));
+    assert(!usable_preview_http_response("HTTP/1.1 206 Partial Content"));
+    assert(!usable_preview_http_response("HTTP/2 301 Moved Permanently"));
+    assert(!usable_preview_http_response("HTTP/2 401 Unauthorized"));
+    assert(!usable_preview_http_response("HTTP/2 404 Not Found"));
+    assert(!usable_preview_http_response("HTTP/2 429 Too Many Requests"));
+    assert(!usable_preview_http_response("HTTP/2 500 Server Error"));
+    assert(!usable_preview_http_response("HTTP/2 2000 Invalid"));
+    assert(!usable_preview_http_response("garbage"));
     // Network response sizes must not overflow through repeated doubling,
     // and hostile gzip trailers must never authorize huge allocations.
     using discogger_net::next_http_buffer_capacity;

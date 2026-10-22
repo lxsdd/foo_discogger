@@ -28,4 +28,9 @@ inline int parse_http_status_code(std::string_view line) noexcept {
     if (first + 3 < line.size() && line[first + 3] != ' ' && line[first + 3] != '\t') return 0;
     return (a - '0') * 100 + (b - '0') * 10 + (c - '0');
 }
+// Optional preview fetches consume only an unambiguous complete HTTP success,
+// never a 404/429 JSON error document or a 206 partial body.
+inline bool usable_preview_http_response(std::string_view status_line) noexcept {
+    return parse_http_status_code(status_line) == 200;
+}
 }
