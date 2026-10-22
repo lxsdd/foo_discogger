@@ -322,10 +322,17 @@ void write_tags_task::start() {
 
 void write_tags_task::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 
+    // The worker only prepares tags; the physical SDK writer is scheduled by
+    // on_success on the UI thread. Preparation can be non-interruptible, so
+    // check cancellation both before and after it. A cancelled task must not
+    // be promoted into a physical metadata/artwork write.
+    p_abort.check();
     // A virtual/subsong projection, empty path, missing handle or duplicate
     // physical file must never reach the generic metadata tag writer.
     discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);
+    p_abort.check();
 	m_tag_writer->write_tags();
+    p_abort.check();
 
 }
 

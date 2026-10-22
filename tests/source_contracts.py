@@ -1925,3 +1925,21 @@ assert "PFC_ASSERT(core_api::is_main_thread());" in filter_abort
 assert "::IsWindow(m_owner_window)" in filter_abort
 assert "HWND m_owner_window = nullptr;" in async_tasks_header
 print("PASS: filter tree mutations stay on originating UI thread; stale edit/dialog discarded.")
+
+
+# A cancelled tag-preparation worker must never reach the UI-thread commit
+# callback. The underlying TagWriter preparation does not take an abort
+# callback, so the post-preparation check is essential for late cancellation.
+write_worker = async_tasks_source.split(
+    "void write_tags_task::safe_run(", 1)[1].split(
+    "void write_tags_task::on_success(", 1)[0]
+write_commit = async_tasks_source.split(
+    "void write_tags_task::on_success(", 1)[1].split(
+    "void write_tags_task::on_abort(", 1)[0]
+prepare_call = write_worker.index("m_tag_writer->write_tags();")
+checks = [m.start() for m in __import__("re").finditer(r"p_abort\.check\(\);", write_worker)]
+assert len(checks) >= 2 and checks[0] < prepare_call < checks[-1]
+assert "discogger_require_physical_targets(" in write_worker
+assert "write_infos(" not in write_worker
+assert "write_infos(" in write_commit
+print("PASS: cancelled tag preparation cannot enter the physical SDK writer.")
