@@ -63,12 +63,11 @@ void Fetcher::fetch_html(const pfc::string8 &url, const pfc::string8 &params, pf
 
 void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc::array_t<t_uint8> & out, abort_callback &p_abort, bool use_oauth, const pfc::string8 &content_type) {
 
-	try {
-		p_abort.check();
-	}
-	catch (exception_aborted) {
-		return;
-	}
+    // Cancellation is not a successful, empty HTTP response. A caller may
+    // reuse its output buffer, so invalidate it before checking the abort.
+    // Propagate exception_aborted to the modeless task just like later I/O.
+    out.set_size(0);
+    p_abort.check();
 
 	pfc::string8 msg_average;
 	pfc::string8 status;
