@@ -1470,6 +1470,7 @@ void tree_apply_filter_process_callback::on_error(HWND p_wnd) {
 
 
 void on_search_artist_done_process_callback::start(HWND parent) {
+    m_owner_window = parent;
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1481,23 +1482,28 @@ void on_search_artist_done_process_callback::start(HWND parent) {
 }
 
 void on_search_artist_done_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
-	p_status.set_item(PFC_string_formatter() << m_p_artist_exact_matches.get_count() << " exact, " << m_p_artist_other_matches.get_count() << "other matches");
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	try {
-		find_dlg->on_search_artist_done(m_p_artist_exact_matches, m_p_artist_other_matches, m_append, m_out_va_cap);
-	}
-	catch (foo_discogs_exception e) {
-		//..
-	}
+    // No HWND/list/tree access is permitted on the threaded_process worker.
+    p_abort.check();
+    p_status.set_item(PFC_string_formatter() << m_p_artist_exact_matches.get_count()
+        << " exact, " << m_p_artist_other_matches.get_count() << " other matches");
 }
 
 void on_search_artist_done_process_callback::on_success(HWND p_wnd) {
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-
-	find_dlg->ilo_get_uilist()->Invalidate(true);
-	init_scroolbars(find_dlg->ilo_get_uilist()->m_hWnd);
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        return;
+    CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
+    find_dlg->on_search_artist_done(
+        m_p_artist_exact_matches, m_p_artist_other_matches, m_append, m_out_va_cap);
+    // A synchronous display update can close or replace the modeless window.
+    if (!::IsWindow(m_owner_window) || !g_discogs ||
+        !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        return;
+    find_dlg->ilo_get_uilist()->Invalidate(true);
+    init_scroolbars(find_dlg->ilo_get_uilist()->m_hWnd);
 }
 
 void on_search_artist_done_process_callback::on_abort(HWND p_wnd) {
@@ -1509,6 +1515,7 @@ void on_search_artist_done_process_callback::on_error(HWND p_wnd) {
 }
 
 void on_get_artist_done_process_callback::start(HWND parent) {
+    m_owner_window = parent;
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1520,19 +1527,18 @@ void on_get_artist_done_process_callback::start(HWND parent) {
 }
 
 void on_get_artist_done_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
-	p_status.set_item(m_artist.get() ? m_artist->name.get_ptr() : "");
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	try {
-		find_dlg->on_get_artist_done(m_updsrc, m_artist);
-	}
-	catch (foo_discogs_exception e) {
-		//..
-	}
+    // Only prepare non-UI progress on the worker; all tree updates are UI-thread.
+    p_abort.check();
+    p_status.set_item(m_artist.get() ? m_artist->name.get_ptr() : "");
 }
 
 void on_get_artist_done_process_callback::on_success(HWND p_wnd) {
-	//..
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_artist || !m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        return;
+    g_discogs->find_release_dialog->on_get_artist_done(m_updsrc, m_artist);
 }
 
 void on_get_artist_done_process_callback::on_abort(HWND p_wnd) {
