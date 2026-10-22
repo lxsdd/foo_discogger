@@ -14,5 +14,22 @@ int main() {
     assert(parse_http_status_code("garbage") == 0);
     assert(parse_http_status_code("HTTP/2 ???") == 0);
     assert(parse_http_status_code("HTTP/2") == 0);
+    // Network response sizes must not overflow through repeated doubling,
+    // and hostile gzip trailers must never authorize huge allocations.
+    using discogger_net::next_http_buffer_capacity;
+    using discogger_net::acceptable_http_decoded_size;
+    using discogger_net::max_http_response_bytes;
+    assert(max_http_response_bytes == 64u * 1024u * 1024u);
+    assert(next_http_buffer_capacity(0) == 0);
+    assert(next_http_buffer_capacity(1024) == 2048);
+    assert(next_http_buffer_capacity(max_http_response_bytes / 2) == max_http_response_bytes);
+    assert(next_http_buffer_capacity(max_http_response_bytes - 1) == max_http_response_bytes);
+    assert(next_http_buffer_capacity(max_http_response_bytes) == 0);
+    assert(next_http_buffer_capacity(static_cast<std::size_t>(-1)) == 0);
+    assert(!acceptable_http_decoded_size(0));
+    assert(acceptable_http_decoded_size(1));
+    assert(acceptable_http_decoded_size(max_http_response_bytes));
+    assert(!acceptable_http_decoded_size(max_http_response_bytes + 1));
+    assert(!acceptable_http_decoded_size(static_cast<std::size_t>(-1)));
     return 0;
 }

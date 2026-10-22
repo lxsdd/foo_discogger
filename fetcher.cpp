@@ -297,14 +297,20 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 					if (done != delta) {
 						break;
 					}
-					out.set_size(out.get_size() << 1);
+					const size_t next_capacity = discogger_net::next_http_buffer_capacity(out.get_size());
+                    if (!next_capacity)
+                        throw network_exception("Discogs response exceeds the 64 MiB safety limit.");
+                    out.set_size(next_capacity);
 				}
 				out.set_size(bufferUsed);
 
 				// see if we must unzip buffer
 				if (out.get_size() >= 6 && out[0] == 0x1f && out[1] == 0x8b) {
 					pfc::array_t<t_uint8> unzipped;
-					unzipped.set_size(pfc::decode_little_endian<t_uint32>(out.get_ptr() + out.get_size() - 4));
+					const size_t decoded_size = pfc::decode_little_endian<t_uint32>(out.get_ptr() + out.get_size() - 4);
+                    if (!discogger_net::acceptable_http_decoded_size(decoded_size))
+                        throw network_exception("Discogs gzip response exceeds the 64 MiB decoded safety limit.");
+                    unzipped.set_size(decoded_size);
 					uLongf destLen = unzipped.get_size();
 					int state = myUncompress(unzipped.get_ptr(), &destLen, out.get_ptr(), out.get_size());
 					if (state != Z_OK) {
@@ -451,14 +457,20 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 					if (done != delta) {
 						break;
 					}
-					buffer.set_size(buffer.get_size() << 1);
+					const size_t next_capacity = discogger_net::next_http_buffer_capacity(buffer.get_size());
+                    if (!next_capacity)
+                        throw network_exception("Discogs response exceeds the 64 MiB safety limit.");
+                    buffer.set_size(next_capacity);
 				}
 				buffer.set_size(bufferUsed);
 
 				// see if we must unzip buffer
 				if (buffer.get_size() >= 6 && buffer[0] == 0x1f && buffer[1] == 0x8b) {
 					pfc::array_t<t_uint8> unzipped;
-					unzipped.set_size(pfc::decode_little_endian<t_uint32>(buffer.get_ptr() + buffer.get_size() - 4));
+					const size_t decoded_size = pfc::decode_little_endian<t_uint32>(buffer.get_ptr() + buffer.get_size() - 4);
+                    if (!discogger_net::acceptable_http_decoded_size(decoded_size))
+                        throw network_exception("Discogs gzip response exceeds the 64 MiB decoded safety limit.");
+                    unzipped.set_size(decoded_size);
 					uLongf destLen = unzipped.get_size();
 					int state = myUncompress(unzipped.get_ptr(), &destLen, buffer.get_ptr(), buffer.get_size());
 					if (state != Z_OK) {

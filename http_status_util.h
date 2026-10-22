@@ -1,10 +1,23 @@
 #pragma once
 
 #include <string_view>
+#include <cstddef>
 
 // Independent of the foobar2000 SDK so parsing can be tested on every CI host.
 // Returns 0 for an unrecognized / malformed status line.
 namespace discogger_net {
+// Cap both compressed HTTP responses and their declared decoded size.
+// A hostile gzip ISIZE must never allocate an unbounded buffer before inflate.
+inline constexpr std::size_t max_http_response_bytes = 64u * 1024u * 1024u;
+inline std::size_t next_http_buffer_capacity(std::size_t current) noexcept {
+    if (current == 0 || current >= max_http_response_bytes) return 0;
+    return current > max_http_response_bytes / 2
+        ? max_http_response_bytes : current * 2;
+}
+inline bool acceptable_http_decoded_size(std::size_t size) noexcept {
+    return size != 0 && size <= max_http_response_bytes;
+}
+
 inline int parse_http_status_code(std::string_view line) noexcept {
     const auto separator = line.find_first_of(" \t");
     if (separator == std::string_view::npos) return 0;

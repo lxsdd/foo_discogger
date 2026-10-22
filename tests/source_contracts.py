@@ -132,6 +132,14 @@ for name in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps
 assert "if (need_data || cupdsrc == updRelSrc::UndefFast || cupdsrc == updRelSrc::ArtistList)" in dialog
 assert "discogger_net::parse_http_status_code(status.c_str())" in fetcher
 assert "throw http_429_exception();" in fetcher
+# Both fetch entry points must limit compressed stream growth and reject
+# malicious gzip ISIZE before allocating a decoded buffer.
+assert fetcher.count("discogger_net::next_http_buffer_capacity(") == 2
+assert fetcher.count("discogger_net::acceptable_http_decoded_size(") == 2
+assert "out.set_size(out.get_size() << 1)" not in fetcher
+assert "buffer.set_size(buffer.get_size() << 1)" not in fetcher
+assert '#include "http_status_util.h"' in fetcher
+assert "max_http_response_bytes = 64u * 1024u * 1024u" in (root / "http_status_util.h").read_text(encoding="utf-8-sig")
 assert "error_code = 4011" not in fetcher
 
 search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
