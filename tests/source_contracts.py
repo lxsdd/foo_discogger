@@ -1831,3 +1831,29 @@ assert "if found != len(releases):" in live_segment
 assert "conn.request('GET', path, headers=headers)" in live_segment
 assert "return {str(x.get('id'))" in live_segment
 print("PASS: authorized five-release Discogs live regression set remains read-only.")
+
+# The foobar Win32 list/tree must never be mutated by a modeless worker.
+# A completed result is installed only by the SDK main-thread on_success
+# callback, and only for the original, still-open release dialog HWND.
+async_tasks_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
+async_tasks_source = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+for callback_name, ui_function in (
+    ("on_get_artist_done_process_callback", "on_get_artist_done("),
+    ("on_search_artist_done_process_callback", "on_search_artist_done("),
+):
+    begin = async_tasks_source.split(
+        f"void {callback_name}::safe_run(", 1)[1]
+    background = begin.split(f"void {callback_name}::on_success(", 1)[0]
+    foreground = begin.split(f"void {callback_name}::on_success(", 1)[1].split(
+        f"void {callback_name}::on_abort(", 1)[0]
+    assert ui_function not in background, callback_name
+    assert "p_abort.check();" in background, callback_name
+    assert "PFC_ASSERT(core_api::is_main_thread());" in foreground, callback_name
+    assert "::IsWindow(m_owner_window)" in foreground, callback_name
+    assert "g_discogs->find_release_dialog->m_hWnd != m_owner_window" in foreground, callback_name
+    assert ui_function in foreground, callback_name
+    starter = async_tasks_source.split(f"void {callback_name}::start(", 1)[1].split(
+        f"void {callback_name}::safe_run(", 1)[0]
+    assert "m_owner_window = parent;" in starter, callback_name
+assert async_tasks_header.count("HWND m_owner_window = nullptr;") >= 2
+print("PASS: artist and search list/tree updates are guarded main-thread completions.")
