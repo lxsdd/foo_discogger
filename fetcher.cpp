@@ -313,10 +313,10 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
                     unzipped.set_size(decoded_size);
 					uLongf destLen = unzipped.get_size();
 					int state = myUncompress(unzipped.get_ptr(), &destLen, out.get_ptr(), out.get_size());
-					if (state != Z_OK) {
-						throw network_exception("Error unzipping network response.");
-					}
-					PFC_ASSERT(destLen == unzipped.get_size());
+					// The gzip trailer declares the expected decoded size. Do not
+                    // accept a short successful inflate in Release builds.
+                    if (state != Z_OK || destLen != unzipped.get_size())
+                        throw network_exception("Invalid or truncated gzip response.");
 					out = unzipped;
 				}
 				break;
@@ -482,11 +482,13 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
                     unzipped.set_size(decoded_size);
 					uLongf destLen = unzipped.get_size();
 					int state = myUncompress(unzipped.get_ptr(), &destLen, buffer.get_ptr(), buffer.get_size());
-					if (state != Z_OK) {
-						log_msg("Error unzipping network response.");
-						break;
-					}
-					PFC_ASSERT(destLen == unzipped.get_size());
+					// Preview fetches must not return compressed bytes as if they
+                    // were decoded artwork after a failed inflate.
+                    if (state != Z_OK || destLen != unzipped.get_size()) {
+                        buffer.set_size(0);
+                        log_msg("Invalid or truncated gzip preview response.");
+                        break;
+                    }
 					buffer = unzipped;
 				}
 
