@@ -431,6 +431,7 @@ void CArtistList::Default_Action() {
 	if (pos == ~0 || pos >= m_find_release_artists.get_count()) return;
 
 	Artist_ptr artist = m_find_release_artists[pos];
+    if (!artist || !m_idtracer_p) return;
 
 	if (atoi(artist->id) != m_idtracer_p->get_artist_id()) {
 
@@ -541,6 +542,14 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 		DestroyMenu(menu);
 
 		if (!cmd) return;
+
+        // The selected row can change while TrackPopupMenu is open.
+        // Fail closed rather than copy, open, or refresh the wrong artist.
+        const Artist_ptr current_artist = get_selected_artist();
+        if (!discogger_ui::valid_artist_context_target(
+                list_index, GetSingleSel(),
+                artist && current_artist && current_artist->id.equals(artist->id)))
+            return;
 
 		switch (cmd)
 		{
