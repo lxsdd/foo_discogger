@@ -1616,3 +1616,13 @@ assert "run_disposable_stale_disk_qa()" in qa_source
 assert 'other_editor->commit(abort);' in qa_source
 assert "DISCOGGER_PHYSICAL_STALE_DISK_REJECTION_" in qa_host
 print("PASS: stale external physical metadata edits reject pending SDK writes.")
+
+# Runner-only real foobar writer must reject unapproved GENRE removal and
+# flat CUESHEET editing while leaving file bytes and mtime unchanged.
+native_qa = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+native_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "run_disposable_unapproved_removal_qa()" in native_qa
+assert 'const char* removals[] = {"GENRE", "CUESHEET"};' in native_qa
+assert "manager->write_infos({}, std::move(lease), false);" in native_qa
+assert "DISCOGGER_PHYSICAL_UNAPPROVED_REMOVAL_DENIAL_" in native_host
+print("PASS: real synthetic FLAC unapproved GENRE/CUESHEET removals fail closed.")

@@ -17,6 +17,7 @@ static const GUID qa_targets_command = {0x4a1d5a13,0x9b8e,0x43a4,{0xa8,0x33,0x6b
 static const GUID qa_batch_command = {0x4a1d5a14,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_populated_gui_command = {0x4a1d5a15,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_stale_disk_command = {0x4a1d5a16,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
+static const GUID qa_removal_command = {0x4a1d5a17,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 
 void run_disposable_media_writer_qa(t_uint32 format) {
     const char* github = std::getenv("GITHUB_ACTIONS");
@@ -348,15 +349,69 @@ void run_disposable_stale_disk_qa() {
     if (!out) throw std::runtime_error("Cannot flush stale-physical rejection.");
 }
 
+
+void run_disposable_unapproved_removal_qa() {
+    const char* github = std::getenv("GITHUB_ACTIONS");
+    const char* runner = std::getenv("RUNNER_TEMP");
+    const char* directory = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+    if (!github || std::string(github) != "true" || !runner || !directory)
+        throw std::runtime_error("Destructive-edit QA requires isolated Actions runner.");
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+    const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(directory));
+    const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+    if (folder.native().size() <= prefix.size() ||
+        _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+        !std::filesystem::is_directory(folder))
+        throw std::runtime_error("Destructive-edit QA folder lies outside runner temp.");
+    const auto file = folder / "synthetic-embedded.flac";
+    if (!std::filesystem::is_regular_file(file) || std::filesystem::is_symlink(file))
+        throw std::runtime_error("Missing safe synthetic FLAC.");
+    const auto utf = file.u8string();
+    const std::string path(utf.begin(), utf.end());
+    metadb_handle_ptr handle = metadb::get()->handle_create(("file://" + path).c_str(), 0);
+    if (!handle || handle->get_subsong_index() != 0)
+        throw std::runtime_error("Invalid physical synthetic FLAC.");
+    metadb_handle_list selection;
+    selection.add_item(handle);
+    const char* removals[] = {"GENRE", "CUESHEET"};
+    for (const auto field : removals) {
+        auto manager = std::make_shared<file_info_manager>(selection);
+        if (!manager->read_infos())
+            throw std::runtime_error("Cannot read pristine physical FLAC metadata.");
+        manager->invalidate_all();
+        auto& info = manager->get_item(0);
+        if (info.meta_get_count_by_name(field) == 0)
+            throw std::runtime_error("Synthetic FLAC lacks required removal test field.");
+        info.meta_remove_field(field);
+        manager->validate_item(0);
+        bool denied = false;
+        try {
+            auto lease = discogger_write_safety::acquire_physical_write_lease();
+            if (!lease) throw std::runtime_error("Destructive-edit QA write lease unavailable.");
+            manager->write_infos({}, std::move(lease), false);
+        } catch (const foo_discogs_exception&) { denied = true; }
+        if (!denied)
+            throw std::runtime_error("Unapproved physical metadata removal was not denied.");
+    }
+    const auto marker = folder / "qa-unapproved-removal-denied.txt";
+    if (std::filesystem::exists(marker))
+        throw std::runtime_error("Existing destructive-edit QA marker.");
+    std::ofstream out(marker);
+    if (!out) throw std::runtime_error("Cannot record destructive-edit denial.");
+    out << "GENRE=DENIED\nCUESHEET=DENIED\n";
+    out.flush();
+    if (!out) throw std::runtime_error("Cannot flush destructive-edit evidence.");
+}
+
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
-    t_uint32 get_command_count() override { return 6; }
+    t_uint32 get_command_count() override { return 7; }
     GUID get_command(t_uint32 index) override {
-        return index == 0 ? qa_mp3_command : (index == 1 ? qa_flac_command : (index == 2 ? qa_targets_command : (index == 3 ? qa_batch_command : (index == 4 ? qa_populated_gui_command : qa_stale_disk_command))));
+        return index == 0 ? qa_mp3_command : (index == 1 ? qa_flac_command : (index == 2 ? qa_targets_command : (index == 3 ? qa_batch_command : (index == 4 ? qa_populated_gui_command : (index == 5 ? qa_stale_disk_command : qa_removal_command)))));
     }
     void get_name(t_uint32 index, pfc::string_base& out) override {
         out = index == 0 ? "Discogger QA MP3 write" :
-            (index == 1 ? "Discogger QA FLAC write" : (index == 2 ? "Discogger QA unsafe targets" : (index == 3 ? "Discogger QA incomplete batch" : (index == 4 ? "Discogger QA populated GUI" : "Discogger QA stale disk"))));
+            (index == 1 ? "Discogger QA FLAC write" : (index == 2 ? "Discogger QA unsafe targets" : (index == 3 ? "Discogger QA incomplete batch" : (index == 4 ? "Discogger QA populated GUI" : (index == 5 ? "Discogger QA stale disk" : "Discogger QA unsafe removals")))));
     }
     bool get_description(t_uint32, pfc::string_base& out) override {
         out = "Test-only physical metadata writer for disposable GitHub runner media.";
@@ -365,8 +420,9 @@ public:
     GUID get_parent() override { return mainmenu_groups::file; }
     void execute(t_uint32 index, service_ptr_t<service_base>) override {
         try {
-            if (index > 5) throw std::runtime_error("Invalid synthetic QA action.");
-            if (index == 5) run_disposable_stale_disk_qa();
+            if (index > 6) throw std::runtime_error("Invalid synthetic QA action.");
+            if (index == 6) run_disposable_unapproved_removal_qa();
+            else if (index == 5) run_disposable_stale_disk_qa();
             else if (index == 4) run_populated_search_gui_qa();
             else if (index == 3) run_disposable_incomplete_batch_qa();
             else if (index == 2) run_disposable_target_rejection_qa();

@@ -750,6 +750,35 @@ FILE "synthetic-side-b.wav" WAVE
     }
     if(-not $staleDone){throw 'Missing actual foobar physical stale-snapshot rejection.'}
     Write-Host "DISCOGGER_PHYSICAL_STALE_DISK_REJECTION_$Architecture=PASS"
+
+    # A real host must reject even a valid physical FLAC snapshot if the
+    # pending changes remove GENRE without approval or flat-edit CUESHEET.
+    $removalBefore=@{Hash=(Get-FileHash -LiteralPath $flac -Algorithm SHA256).Hash;
+       Ticks=(Get-Item -LiteralPath $flac).LastWriteTimeUtc.Ticks}
+    $removalMarker=Join-Path $dir 'qa-unapproved-removal-denied.txt'
+    if(Test-Path -LiteralPath $removalMarker){throw 'Unexpected destructive-edit marker'}
+    $removalCommand=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA unsafe removals"' -PassThru
+    if(-not $removalCommand.WaitForExit(15000) -or $removalCommand.ExitCode -ne 0){
+        throw 'Could not dispatch native destructive-edit denial QA.'
+    }
+    $removalPassed=$false
+    for($n=0;$n -lt 60;$n++){
+        Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $removalMarker -PathType Leaf){
+            $proof=Get-Content -LiteralPath $removalMarker -Raw
+            if($proof.Contains('GENRE=DENIED') -and $proof.Contains('CUESHEET=DENIED')){
+                $removalPassed=$true;break
+            }
+        }
+        $proc.Refresh()
+        if($proc.HasExited){throw 'Host exited during destructive-edit QA'}
+    }
+    if(-not $removalPassed){throw 'No native destructive-edit denial proof.'}
+    if((Get-FileHash -LiteralPath $flac -Algorithm SHA256).Hash -ne $removalBefore.Hash -or
+      (Get-Item -LiteralPath $flac).LastWriteTimeUtc.Ticks -ne $removalBefore.Ticks){
+        throw 'Unapproved edit changed synthetic FLAC bytes or timestamp.'
+    }
+    Write-Host "DISCOGGER_PHYSICAL_UNAPPROVED_REMOVAL_DENIAL_$Architecture=PASS"
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
