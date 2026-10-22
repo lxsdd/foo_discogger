@@ -21,6 +21,11 @@ void foo_discogs_threaded_process_callback::run(threaded_process_status &p_statu
 	try {
 		safe_run(p_status, p_abort);
 	}
+    catch (const exception_aborted&) {
+        // Cancellation is a normal SDK control signal, not a fatal error.
+        // Let threaded_process mark the worker as aborted and invoke on_abort.
+        throw;
+    }
 	catch (foo_discogs_exception &e) {
 		add_error(e, true);
 	}

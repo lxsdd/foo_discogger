@@ -126,6 +126,14 @@ assert "|| explicit_refresh" in artist_load
 assert artist_load.count("release_refresh.retry_after_failure(explicit_refresh);") == 3
 tasks_callbacks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
 assert "m_artist->release_refresh.pending()" in tasks_callbacks
+# Modeless worker must propagate real SDK cancellation all the way to
+# threaded_process so on_done selects on_abort rather than a fatal error.
+worker_run = tasks_callbacks[tasks_callbacks.index("void foo_discogs_threaded_process_callback::run("):
+                             tasks_callbacks.index("void foo_discogs_threaded_process_callback::on_done(")]
+assert worker_run.index("catch (const exception_aborted&) {") < worker_run.index("catch (foo_discogs_exception &e)")
+assert "throw;" in worker_run[worker_run.index("catch (const exception_aborted&) {"):
+                              worker_run.index("catch (foo_discogs_exception &e)")]
+
 assert "dlg->m_alist.Get_Selected_Id().equals(m_artist->id)" in tasks_callbacks
 for name in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
     assert "artist_refresh_test.cpp" in (root / name).read_text(encoding="utf-8-sig")
