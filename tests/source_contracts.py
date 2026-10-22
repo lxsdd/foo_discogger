@@ -1857,3 +1857,24 @@ for callback_name, ui_function in (
     assert "m_owner_window = parent;" in starter, callback_name
 assert async_tasks_header.count("HWND m_owner_window = nullptr;") >= 2
 print("PASS: artist and search list/tree updates are guarded main-thread completions.")
+
+# Loading release versions may run off-thread; mutating the TreeView may not.
+expand_source = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+expand_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
+expand_parts = expand_source.split("void expand_master_release_process_callback::start(", 1)[1].split(
+    "void tree_apply_filter_process_callback::start(", 1)[0]
+expand_background = expand_parts.split("void expand_master_release_process_callback::safe_run(", 1)[1].split(
+    "void expand_master_release_process_callback::on_success(", 1)[0]
+expand_foreground = expand_parts.split("void expand_master_release_process_callback::on_success(", 1)[1].split(
+    "void expand_master_release_process_callback::on_abort(", 1)[0]
+assert "on_expand_master_release_done(" not in expand_background
+assert "m_master_release->load_releases(" in expand_background
+assert "p_abort.check();" in expand_background
+assert "PFC_ASSERT(core_api::is_main_thread());" in expand_foreground
+assert "::IsWindow(m_owner_window)" in expand_foreground
+assert "g_discogs->find_release_dialog->m_hWnd != m_owner_window" in expand_foreground
+assert "on_expand_master_release_done(" in expand_foreground
+assert "fake_threaded_process_status status;" in expand_foreground
+assert "m_owner_window = parent;" in expand_parts
+assert "class expand_master_release_process_callback" in expand_header
+print("PASS: owner-bound main-thread master expansion, background load-only.")
