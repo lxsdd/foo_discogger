@@ -24,9 +24,9 @@ inline bool acceptable_http_decoded_size(std::size_t size) noexcept {
 inline bool parse_discogs_rate_header(std::string_view value, std::size_t limit,
                                       std::size_t& result, bool allow_zero = true) noexcept {
     if (value.empty() || limit == 0) return false;
-    const auto first = value.find_first_not_of(" \\t");
+    const auto first = value.find_first_not_of(" \t");
     if (first == std::string_view::npos) return false;
-    const auto last = value.find_last_not_of(" \\t");
+    const auto last = value.find_last_not_of(" \t");
     value = value.substr(first, last - first + 1);
     if (value.empty()) return false;
     std::size_t parsed = 0;
