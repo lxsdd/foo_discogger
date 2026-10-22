@@ -121,6 +121,12 @@ assert "if (pos >= current_artists.get_count() || !current_artists[pos]) return;
 artist_load = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 artist_load = artist_load[artist_load.index("void Discogs::Artist::load_releases("):artist_load.index("void Discogs::MasterRelease::load_releases(")]
 assert "const bool explicit_refresh = release_refresh.take();" in artist_load
+# The canonical explicit online refresh must not use the search-result fast path.
+assert '#include "discogger_artist_refresh.h"' in dialog
+assert "canonical_artist->release_refresh.pending()" in dialog
+assert "discogger_cache::should_fetch_artist(" in dialog
+assert dialog.index("discogger_cache::should_fetch_artist(") < dialog.index("//'auto load on artist change'")
+assert "should_fetch_artist(bool needs_data" in (root / "discogger_artist_refresh.h").read_text(encoding="utf-8-sig")
 # Generation-based coalescing must not silently discard a newer explicit
 # artist-release refresh requested while another worker was finishing.
 assert "skip_coalesced_artist_load(" in artist_load
