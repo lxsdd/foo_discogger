@@ -1073,7 +1073,7 @@ callback = manager.split("void write_tags_completion::on_completion(unsigned p_c
     "void read_tags_completion::on_completion", 1)[0]
 assert "std::string callback_cleanup_error;" in callback
 assert "Callback cleanup also failed:" in callback
-assert "Physical tag commit reported success, but dependent callback failed:" in callback
+assert "Physical tag commit reported success, but verification or dependent callback failed:" in callback
 cleanup_catches = callback.split("catch (const std::exception& e)", 1)[1].split("if (!success) {", 1)[0]
 assert "return;" not in cleanup_catches
 assert callback.index("if (!success) {") < callback.index("discogger_audit_failed_write(*m_write_payload)")
