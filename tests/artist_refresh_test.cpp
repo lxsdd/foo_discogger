@@ -2,6 +2,21 @@
 #include <cassert>
 #include <thread>
 int main() {
+    using discogger_cache::skip_coalesced_artist_load;
+    // Another worker's freshly committed list suppresses a redundant fetch,
+    // unless a newer, explicit user refresh is pending after that commit.
+    assert(skip_coalesced_artist_load(true, 10, 11, false));
+    assert(!skip_coalesced_artist_load(true, 10, 11, true));
+    assert(!skip_coalesced_artist_load(true, 10, 10, false));
+    assert(!skip_coalesced_artist_load(false, 10, 11, false));
+    // The pending refresh survives the skipped-in-flight race and will be
+    // consumed by the first worker that actually takes the per-artist lock.
+    discogger_cache::artist_release_refresh queued;
+    queued.request();
+    assert(!skip_coalesced_artist_load(true, 3, 4, queued.pending()));
+    assert(queued.take() && !queued.pending());
+    assert(skip_coalesced_artist_load(true, 3, 4, queued.pending()));
+
     discogger_cache::artist_release_refresh gate;
     assert(!gate.pending() && !gate.take());
     gate.request();

@@ -4,6 +4,16 @@
 // The per-artist mutex coalesces network loads. This gate preserves an
 // explicitly requested online refresh across cache hits and failed loads.
 namespace discogger_cache {
+// A waiting load can skip its duplicate download if another worker has
+// published the same artist in the meantime. A newer explicit refresh
+// request must take precedence over that generation-based coalescing.
+// Call only after acquiring the per-artist load mutex.
+inline bool skip_coalesced_artist_load(bool loaded, unsigned long observed_generation,
+                                      unsigned long current_generation,
+                                      bool explicit_refresh_pending) noexcept {
+    return loaded && observed_generation != current_generation &&
+           !explicit_refresh_pending;
+}
 class artist_release_refresh {
     std::atomic<bool> pending_{false};
 public:

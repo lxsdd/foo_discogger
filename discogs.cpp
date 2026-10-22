@@ -3285,7 +3285,10 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
         p_abort.check();
     }
     p_abort.check();
-    if (loaded_releases && releases_load_generation.load(std::memory_order_acquire) != observed_generation) {
+    if (discogger_cache::skip_coalesced_artist_load(
+            loaded_releases, observed_generation,
+            releases_load_generation.load(std::memory_order_acquire),
+            release_refresh.pending())) {
         return;
     }
     // Only consume the request inside the per-artist lock. Commit the staged
