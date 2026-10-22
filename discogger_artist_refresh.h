@@ -14,6 +14,12 @@ inline bool skip_coalesced_artist_load(bool loaded, unsigned long observed_gener
     return loaded && observed_generation != current_generation &&
            !explicit_refresh_pending;
 }
+// Explicit online refresh must not be swallowed by a populated search row's
+// display-only fast path; the canonical artist must receive a worker load.
+inline bool should_fetch_artist(bool needs_data, bool selecting_releases,
+                                bool explicit_refresh_pending) noexcept {
+    return needs_data || (selecting_releases && explicit_refresh_pending);
+}
 class artist_release_refresh {
     std::atomic<bool> pending_{false};
 public:
