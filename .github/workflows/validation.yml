@@ -1,11 +1,13 @@
 name: Discogger modernization validation
 
-# Draft work branches are validated by pull_request. Do not duplicate the
-# expensive Win32/x64 SDK and host matrix on both push and PR events.
+# Validate the active draft branch on push even when GitHub's pull ref
+# lags behind Contents API updates. PR validation remains available for other
+# contributors. Both events share one cancellation group per source branch.
 on:
   push:
     branches:
       - master
+      - work/portable-build-properties-20261018
   pull_request:
     branches:
       - master
@@ -15,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: discogger-validation-${{ github.workflow }}-${{ github.ref }}
+  group: discogger-validation-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
