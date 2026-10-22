@@ -18,6 +18,16 @@ inline bool acceptable_http_decoded_size(std::size_t size) noexcept {
     return size != 0 && size <= max_http_response_bytes;
 }
 
+// OAuth headers may contain signed credentials. Never attach them to
+// untrusted resource URLs merely because their path/query mentions "api".
+// Restrict signing to the exact HTTPS Discogs API origin.
+inline bool is_discogs_api_url(std::string_view url) noexcept {
+    constexpr std::string_view origin = "https://api.discogs.com";
+    if (url.substr(0, origin.size()) != origin) return false;
+    return url.size() == origin.size() || url[origin.size()] == '/' ||
+           url[origin.size()] == '?';
+}
+
 // Full-size Discogs images share the rate limiter with API requests.
 // An old `!url.find("h:150")` predicate always rejected actual HTTPS
 // image URLs because the preview marker never occurs at offset zero.

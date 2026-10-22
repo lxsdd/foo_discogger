@@ -38,6 +38,19 @@ int main() {
     assert(!should_throttle_discogs_image("https://api.discogs.com/database/search"));
     assert(!should_throttle_discogs_image("https://i.discogs.com"));
     assert(!should_throttle_discogs_image(""));
+    using discogger_net::is_discogs_api_url;
+    assert(is_discogs_api_url("https://api.discogs.com"));
+    assert(is_discogs_api_url("https://api.discogs.com/database/search"));
+    assert(is_discogs_api_url("https://api.discogs.com/oauth/identity"));
+    assert(is_discogs_api_url("https://api.discogs.com?per_page=100"));
+    assert(!is_discogs_api_url("http://api.discogs.com/oauth/identity"));
+    assert(!is_discogs_api_url("https://api.discogs.com.evil.test/database/search"));
+    assert(!is_discogs_api_url("https://api.discogs.com@evil.test/path"));
+    assert(!is_discogs_api_url("https://api.discogs.com:8443/path"));
+    assert(!is_discogs_api_url("https://i.discogs.com/cover.jpg"));
+    assert(!is_discogs_api_url("https://discogs.com/api"));
+    assert(!is_discogs_api_url("https://evil.test/path/api.discogs.com"));
+    assert(!is_discogs_api_url(""));
     // Network response sizes must not overflow through repeated doubling,
     // and hostile gzip trailers must never authorize huge allocations.
     using discogger_net::next_http_buffer_capacity;

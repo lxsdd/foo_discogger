@@ -169,6 +169,13 @@ assert "break;" in bad_inflate
 
 # The image-rate-limit classification must recognize real image hosts,
 # exclude small previews and reject lookalike URLs.
+# A URL substring (including user-supplied resource URLs) must never
+# authorize the OAuth Authorization header for a foreign origin.
+assert "discogger_net::is_discogs_api_url(url.c_str())" in fetcher
+assert 'url.find_first("api")' not in fetcher
+assert "use_oauth &= use_api;" in fetcher
+assert "if (use_oauth) {" in fetcher
+assert "is_discogs_api_url(std::string_view url)" in (root / "http_status_util.h").read_text(encoding="utf-8-sig")
 assert "discogger_net::should_throttle_discogs_image(url.c_str())" in fetcher
 assert '!std::string(url.c_str()).find("h:150")' not in fetcher
 assert "bool isImageUrl = url.has_prefix(" not in fetcher

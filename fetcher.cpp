@@ -83,7 +83,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 	}
 
 	if (params.get_length()) clean_url << "?" << params;
-	bool use_api = url.find_first("api") != ~0;
+    const bool use_api = discogger_net::is_discogs_api_url(url.c_str());
 	use_oauth &= use_api;
 
     // Classify full-resolution artwork, excluding small preview thumbnails.
