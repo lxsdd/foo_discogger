@@ -14,3 +14,24 @@ No secret is passed to an executable, PR checkout, output artifact or logs.
 Official read-only API requests check the four release IDs and bounded strict,
 collaborator and title search. Exact and fallback results are distinguished.
 This does not replace native Discogger host GUI, cache, 429, rollback or legal gates.
+
+## Five known missing-release regression cases
+
+The read-only API acceptance set now includes all five IDs required by the
+project gate: Estiva — Via Balearia (38012673), Kyau & Albert x Maywave —
+1000 Years (37332711), Matt Fax — Only You (36397609), Matt Fax — Till
+You Let Go (36819730), and Quivver — Consciousness EP (35534398).
+
+The test first checks each exact release ID, title and nonempty tracklist,
+then attempts bounded structured search followed by a reviewed partner/title
+fallback. A partner or title-only result is **not** an exact artist/version
+match and must never be tagged automatically without reviewing its identity.
+
+The previous authorized manual run on `980737760de` found the first four
+(4/4) via the live API, with a partner-review fallback for 1000 Years. The
+fifth test was **added later**: it must not be called live-verified before a
+new authorized manual run passes `5/5` on the new exact SHA. Ordinary PR or
+push CI runs skip credentialed live lookups by design. The full Windows host
+QA uses disposable media and synthetic release rows rather than secrets in
+the executable. Neither this test nor the Windows fixtures prove successful
+user-library acceptance or all live authenticated GUI flows.
