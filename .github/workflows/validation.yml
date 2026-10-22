@@ -9,12 +9,17 @@ name: Discogger modernization validation
 # artifacts, audio writes or release steps are defined in this bootstrap.
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/validation.yml'
 
 permissions:
   contents: read
 
 jobs:
   default-branch-is-not-a-component-test:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -24,3 +29,47 @@ jobs:
           echo "::error::This master-only bootstrap cannot qualify Discogger."
           echo "::error::Open Run workflow again and select work/portable-build-properties-20261018."
           exit 1
+
+  # Non-placeholder branch-protection checks for this CI-only PR.
+  # Check the exact Discogger development snapshot using genuine regression
+  # executables; the bootstrap itself must not claim a native DLL/host PASS.
+  portable-core:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact draft source for real portable tests
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foo_discogger
+          ref: 7c4514eb681ca514d77d8404fa1f77f2f042a7c4
+          persist-credentials: false
+      - name: Verify source contracts
+        run: python3 tests/source_contracts.py
+      - name: Compile and execute portable safety regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          for unit in write_safety_test.cpp collaboration_fallback_test.cpp result_alignment_test.cpp; do
+            g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 "tests/$unit" -o "$RUNNER_TEMP/$unit.out"
+            "$RUNNER_TEMP/$unit.out"
+          done
+
+  windows-native-unit:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    steps:
+      - name: Checkout exact draft source for real MSVC tests
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foo_discogger
+          ref: 7c4514eb681ca514d77d8404fa1f77f2f042a7c4
+          persist-credentials: false
+      - name: Compile and execute actual MSVC regression suite
+        shell: pwsh
+        run: ./scripts/run-msvc-unit-tests.ps1 -Architecture '${{ matrix.architecture }}'
