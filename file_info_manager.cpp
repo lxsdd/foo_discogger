@@ -260,7 +260,7 @@ void write_tags_completion::on_completion(unsigned p_code) {
         const auto audit = m_write_payload
             ? discogger_audit_failed_write(*m_write_payload)
             : discogger_write_safety::failed_write_audit{};
-        const std::string message =
+        std::string message =
             "Writing tags failed; dependent artwork was not started. "
             "No rollback or retry was attempted. Physical metadata readback "
             "(not a byte-integrity proof): unchanged=" + std::to_string(audit.original) +
