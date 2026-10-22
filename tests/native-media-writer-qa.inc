@@ -487,6 +487,25 @@ void run_disposable_partial_write_audit_qa() {
     if (!out) throw std::runtime_error("Could not flush partial audit evidence.");
 }
 
+void record_disposable_partial_qa_error(const char* reason) noexcept {
+    try {
+        const char* actions = std::getenv("GITHUB_ACTIONS");
+        const char* runner = std::getenv("RUNNER_TEMP");
+        const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+        if (!actions || std::string(actions) != "true" || !runner || !location)
+            return;
+        const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+        const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+        const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+        if (folder.native().size() <= prefix.size() ||
+            _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+            !std::filesystem::is_directory(folder))
+            return;
+        std::ofstream out(folder / "qa-injected-partial-error.txt");
+        if (out) out << "PARTIAL_QA_FAILED=" << (reason ? reason : "unknown") << '\n';
+    } catch (...) {}
+}
+
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
     t_uint32 get_command_count() override { return 8; }
@@ -523,8 +542,10 @@ public:
             else if (index == 2) run_disposable_target_rejection_qa();
             else run_disposable_media_writer_qa(index);
         } catch (const std::exception& e) {
+            if (index == 7) record_disposable_partial_qa_error(e.what());
             console::printf("DISCOGGER_RUNNER_MEDIA_QA_ERROR: %s", e.what());
         } catch (...) {
+            if (index == 7) record_disposable_partial_qa_error("unknown failure");
             console::print("DISCOGGER_RUNNER_MEDIA_QA_ERROR: unknown failure");
         }
     }

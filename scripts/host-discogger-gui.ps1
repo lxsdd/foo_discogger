@@ -802,7 +802,14 @@ FILE "synthetic-side-b.wav" WAVE
         $proc.Refresh()
         if($proc.HasExited){throw 'Host exited during injected partial-commit test.'}
     }
-    if(-not $partialObserved){throw 'Native partial-commit physical readback evidence missing.'}
+    if(-not $partialObserved){
+        $partialErrorMarker=Join-Path $dir 'qa-injected-partial-error.txt'
+        if(Test-Path -LiteralPath $partialErrorMarker -PathType Leaf){
+            $partialReason=(Get-Content -LiteralPath $partialErrorMarker -Raw).Trim()
+            throw "Native injected-partial QA failed: $partialReason"
+        }
+        throw 'Native partial-commit physical readback evidence missing (command did not run or terminated without evidence).'
+    }
     if((Get-FileHash -LiteralPath $mp3 -Algorithm SHA256).Hash -eq $partialBeforeMp3){
         throw 'Injected first-file physical write did not change synthetic MP3.'
     }

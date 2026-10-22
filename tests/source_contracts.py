@@ -918,6 +918,8 @@ assert "run_disposable_partial_write_audit_qa()" in qa_partial
 assert "discogger_audit_failed_write(payload)" in qa_partial
 assert "manager->discard_pending_changes();" in qa_partial
 assert "DISCOGGER_PHYSICAL_INJECTED_PARTIAL_READBACK_" in host_partial
+assert "record_disposable_partial_qa_error" in qa_partial
+assert "qa-injected-partial-error.txt" in host_partial
 assert "failed_write_file_state" in safety_header
 print("PASS: callback-owned metadata lifetime, single-shot async failure reset and synchronous scheduling cleanup.")
 
