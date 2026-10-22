@@ -1536,8 +1536,9 @@ assert "  pull_request:" in validation_trigger
 assert "  push:" in validation_trigger
 assert "- work/portable-build-properties-20261018" in validation_trigger
 assert "github.head_ref || github.ref_name" in validation_trigger
+assert "github.event_name == 'workflow_dispatch' && 'manual' || 'automatic'" in validation_trigger
 assert "cancel-in-progress: true" in validation_trigger
-print("PASS: conservative duration tie handling and deduplicated draft CI triggers.")
+print("PASS: conservative duration tie handling; manual host runs cannot be cancelled by delayed pushes.")
 
 # The generator stores approval rows only for enabled mapped tracks; the
 # write path must not index those rows with the unfiltered mapping index.
