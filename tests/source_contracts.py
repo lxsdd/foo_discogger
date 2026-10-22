@@ -947,6 +947,10 @@ write_callback = write_manager.split("void write_tags_completion::on_completion(
     "void read_tags_completion::on_completion", 1
 )[0]
 assert write_callback.index("if (m_finfo_manager) m_finfo_manager->begin_physical_read();") < write_callback.index("if (m_after_success)")
+assert "fully_requested(std::size_t submitted)" in (root / "discogger_write_safety.h").read_text(encoding="utf-8-sig")
+assert "discogger_audit_failed_write(*m_write_payload, submitted)" in write_callback
+assert "audit.fully_requested(submitted)" in write_callback
+assert write_callback.index("audit.fully_requested(submitted)") < write_callback.index("action();")
 artwork_only = write_manager.split("else if (after_success) {", 1)[1].split("\n    }", 1)[0]
 assert artwork_only.index("begin_physical_read();") < artwork_only.index("after_success();")
 print("PASS: successful metadata and artwork-only writes revoke stale physical snapshots.")
