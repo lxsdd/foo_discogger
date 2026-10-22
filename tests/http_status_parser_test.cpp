@@ -58,6 +58,8 @@ int main() {
     std::size_t parsed_rate = 999;
     assert(parse_discogs_rate_header("60", 600, parsed_rate, false) && parsed_rate == 60);
     assert(parse_discogs_rate_header(" 20 ", 600, parsed_rate, false) && parsed_rate == 20);
+    assert(parse_discogs_rate_header("\t20\t", 600, parsed_rate, false) && parsed_rate == 20);
+    assert(!parse_discogs_rate_header("20\tjunk", 600, parsed_rate, false));
     assert(parse_discogs_rate_header("0", 60, parsed_rate) && parsed_rate == 0);
     assert(!parse_discogs_rate_header("0", 600, parsed_rate, false));
     assert(!parse_discogs_rate_header("-1", 600, parsed_rate));
