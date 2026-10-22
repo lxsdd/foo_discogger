@@ -1570,7 +1570,8 @@ print("PASS: FLAC physical metadata preservation checks exact semantic fields.")
 manager_code = (root / "file_info_manager.cpp").read_text(encoding="utf-8-sig")
 host_code = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 assert 'input_entry::g_open_for_info_read(reader, nullptr, path, abort);' in manager_code
-assert 'reader->get_subsong_count() > 1' in manager_code
+assert 'if (val && items[n]->get_subsong_index() == 0)' in manager_code
+assert 'reader->get_subsong_count() > 1' not in manager_code
 assert 'reader->get_info(0, physical, abort);' in manager_code
 assert 'info_wrappers[n]->info = physical;' in manager_code
 assert 'DISCOGGER_FLAC_PHYSICAL_SDK_READBACK_' in host_code
