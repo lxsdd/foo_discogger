@@ -26,7 +26,7 @@ int main() {
         {"37332711", "Kyau & Albert x Maywave", "1000 Years"},
         {"36397609", "Matt Fax", "Only You"},
         {"36819730", "Matt Fax", "Till You Let Go"},
-        {"35534398", "Synthetic Artist", "Synthetic Case Five"}
+        {"35534398", "Quivver", "Consciousness EP"}
     };
     for (const auto& example : fixture) {
         const auto plan = build_fallback_plan(example.artist, example.title, "");
