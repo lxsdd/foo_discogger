@@ -122,6 +122,22 @@ def id3_txxx_values(content):
     return decoded
 
 
+def verify_original_mp3_txxx(before, after):
+    """Preserve physical custom TXXX and ReplayGain despite ID3 re-encoding."""
+    def existing(raw):
+        return Counter((name.upper(), value) for name, value in id3_txxx_values(raw)
+                       if name.upper() != "DISCOGGER_QA_RUNNER")
+    original = existing(before)
+    for name, value in (
+        ("DISCOGGER_QA_CUSTOM", "Keep original MP3 metadata"),
+        ("REPLAYGAIN_TRACK_GAIN", "-5.00 dB"),
+        ("REPLAYGAIN_TRACK_PEAK", "0.800000"),
+    ):
+        if original[(name, value)] != 1:
+            raise AssertionError("Synthetic MP3 lacks custom/ReplayGain fixture: " + name)
+    if original != existing(after):
+        raise AssertionError("Physical MP3 custom TXXX/ReplayGain metadata was changed")
+
 def id3_apic_frames(content):
     """Inspect physical picture frame bytes, not only the ID3 TXXX text."""
     if content[:3] != b"ID3" or content[3] not in (3, 4):
@@ -161,6 +177,7 @@ def verify(before: bytes, after: bytes, suffix):
             raise AssertionError("Original ID3v2 APIC picture bytes were changed or removed")
         if id3_audio_payload(before) != id3_audio_payload(after):
             raise AssertionError("Original MP3 compressed audio payload changed")
+        verify_original_mp3_txxx(before, after)
         tags = id3_txxx_values(after)
         if ("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED") not in tags:
             raise AssertionError("Real foobar MP3 writer did not persist requested TXXX tag")
@@ -243,6 +260,25 @@ def selftest_id3():
     frame = b"TXXX" + len(body).to_bytes(4, "big") + bytes(2) + body
     assert id3_txxx_values(b"ID3\x03\x00\x00" + ss(len(frame)) + frame) == [
         ("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")]
+    # The verifier must reject lost/custom ReplayGain values, not just parse.
+    def frame(name, value):
+        body = bytes((3,)) + name.encode() + bytes(1) + value.encode()
+        return b"TXXX" + len(body).to_bytes(4, "big") + bytes(2) + body
+    fields = b"".join(frame(k, val) for k, val in (
+        ("DISCOGGER_QA_CUSTOM", "Keep original MP3 metadata"),
+        ("REPLAYGAIN_TRACK_GAIN", "-5.00 dB"),
+        ("REPLAYGAIN_TRACK_PEAK", "0.800000"),
+    ))
+    original = b"ID3" + bytes((3, 0, 0)) + ss(len(fields)) + fields
+    verify_original_mp3_txxx(original, original)
+    for corrupted in (original.replace(b"0.800000", b"0.700000"),
+                      b"ID3" + bytes((3, 0, 0)) + ss(len(fields)-1) + fields[:-1]):
+        try:
+            verify_original_mp3_txxx(original, corrupted)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("MP3 ReplayGain preservation regression escaped")
     print("DISCOGGER_ID3_TXXX_UNICODE_VERIFIER=PASS")
 
 if __name__ == "__main__":
