@@ -155,6 +155,18 @@ assert "out.set_size(out.get_size() << 1)" not in fetcher
 assert "buffer.set_size(buffer.get_size() << 1)" not in fetcher
 assert '#include "http_status_util.h"' in fetcher
 assert "max_http_response_bytes = 64u * 1024u * 1024u" in (root / "http_status_util.h").read_text(encoding="utf-8-sig")
+# Reject invalid gzip payloads in both fetch entry points in Release builds.
+# The best-effort path must discard its compressed buffer on any inflate error.
+assert fetcher.count("state != Z_OK || destLen != unzipped.get_size()") == 2
+assert "PFC_ASSERT(destLen == unzipped.get_size())" not in fetcher
+main_zip = fetcher[fetcher.index("int state = myUncompress("):fetcher.index("void Fetcher::fetch_html_simple_log(")]
+assert 'throw network_exception("Invalid or truncated gzip response.");' in main_zip
+simple_zip = fetcher[fetcher.index("void Fetcher::fetch_html_simple_log("):fetcher.index("void Fetcher::set_oauth(")]
+bad_inflate = simple_zip[simple_zip.index("if (state != Z_OK || destLen != unzipped.get_size())"):
+                         simple_zip.index("buffer = unzipped;")]
+assert "buffer.set_size(0);" in bad_inflate
+assert "break;" in bad_inflate
+
 assert "error_code = 4011" not in fetcher
 
 search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
