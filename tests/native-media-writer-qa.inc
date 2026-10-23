@@ -578,7 +578,7 @@ public:
         try {
             if (index > 8) throw std::runtime_error("Invalid synthetic QA action.");
             if (index == 8) run_live_search_probe_qa();
-            if (index == 7) run_disposable_partial_write_audit_qa();
+            else if (index == 7) run_disposable_partial_write_audit_qa();
             else if (index == 6) run_disposable_unapproved_removal_qa();
             else if (index == 5) run_disposable_stale_disk_qa();
             else if (index == 4) run_populated_search_gui_qa();
