@@ -2061,7 +2061,7 @@ assert "discogger_live_search_qa::worker_advanced.store(" in tasks_callbacks
 assert "discogger_live_search_qa::worker_error.store(1);" in tasks_callbacks
 assert "discogger_live_search_qa::parsed_releases.store(" in search
 for field in ("BUTTON", "ROUTED", "WORKER_STARTED", "WORKER_SUCCESS",
-              "WORKER_ERROR", "WORKER_ABORT", "RESPONSE_PAGES", "RESPONSE_ITEMS",
+              "WORKER_ERROR", "WORKER_ABORT", "WORKER_ADVANCED", "RESPONSE_PAGES", "RESPONSE_ITEMS",
               "PARSED_MASTERS", "PARSED_RELEASES", "QUERY_LIMIT", "API_IDENTITY",
               "API_EXACT_OK", "API_EXACT_ITEMS", "API_EXACT_KNOWN",
               "API_BROAD_OK", "API_BROAD_ITEMS", "API_BROAD_KNOWN"):
