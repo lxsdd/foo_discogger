@@ -9,17 +9,28 @@ def flac_blocks(content):
         raise AssertionError("FLAC magic absent")
     offset = 4
     output = {}
+    block_index = 0
     while True:
         if offset + 4 > len(content):
             raise AssertionError("truncated FLAC block")
         kind = content[offset] & 127
         last = content[offset] & 128
         size = int.from_bytes(content[offset+1:offset+4], "big")
+        # STREAMINFO is mandatory, exactly once, first, and exactly 34 bytes.
+        # Comparing only block multisets would accept a writer that reordered
+        # STREAMINFO behind comments, making an otherwise intact FLAC invalid.
+        if kind == 127:
+            raise AssertionError("Forbidden FLAC metadata block type 127")
+        if block_index == 0 and (kind != 0 or size != 34):
+            raise AssertionError("Missing/invalid first FLAC STREAMINFO")
+        if kind == 0 and (block_index != 0 or size != 34):
+            raise AssertionError("Duplicate/invalid FLAC STREAMINFO")
         value = content[offset+4:offset+4+size]
         if len(value) != size:
             raise AssertionError("incomplete FLAC block")
         output.setdefault(kind, []).append(value)
         offset += 4 + size
+        block_index += 1
         if last: return output
 
 
@@ -448,12 +459,36 @@ def selftest_flac_vorbis():
     # P1 physical FLAC gate: an appended second Vorbis block must never be
     # ignored just because the first block still contains the expected tags.
     def flac_with_comments(comments):
-        encoded = b""
+        # A real FLAC must start with a 34-byte STREAMINFO metadata block.
+        encoded = bytes((0,)) + (34).to_bytes(3, "big") + bytes(34)
         for index, comment in enumerate(comments):
             encoded += bytes((4 | (0x80 if index == len(comments) - 1 else 0),))
             encoded += len(comment).to_bytes(3, "big") + comment
         return b"fLaC" + encoded + b"synthetic-audio"
     assert single_flac_vorbis_fields(flac_blocks(flac_with_comments([raw]))) == flac_vorbis_fields(raw)
+    # P1: reject metadata-block ordering/structure damage that a byte-multiset
+    # comparison cannot detect, even if the original STREAMINFO bytes survive.
+    streaminfo = bytes((0,)) + (34).to_bytes(3, "big") + bytes(34)
+    comment_last = bytes((0x84,)) + len(raw).to_bytes(3, "big") + raw
+    good_flac = b"fLaC" + streaminfo + comment_last + b"synthetic-audio"
+    assert flac_blocks(good_flac)[0] == [bytes(34)]
+    invalid_flac = (
+        b"fLaC" + comment_last + b"synthetic-audio",  # no STREAMINFO
+        b"fLaC" + streaminfo + streaminfo + comment_last + b"synthetic-audio",
+        b"fLaC" + bytes((0,)) + (33).to_bytes(3, "big") + bytes(33)
+        + comment_last + b"synthetic-audio",
+        b"fLaC" + streaminfo + bytes((0xff,)) + len(raw).to_bytes(3, "big")
+        + raw + b"synthetic-audio",  # forbidden metadata type 127
+        b"fLaC" + streaminfo[:-1],  # truncated STREAMINFO
+    )
+    for malformed in invalid_flac:
+        try:
+            flac_blocks(malformed)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Invalid FLAC metadata ordering/structure escaped audit")
+    print("DISCOGGER_FLAC_STREAMINFO_STRUCTURE_VERIFIER=PASS")
     conflicting = raw.replace(b"RUNNER-VERIFIED", b"RUNNER-CORRUPTED")
     for invalid in (
         {}, {4: []}, {4: [raw, raw]}, {4: [raw, conflicting]},
