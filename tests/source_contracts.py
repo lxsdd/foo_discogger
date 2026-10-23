@@ -1977,3 +1977,17 @@ assert "match.consider(" in numbered_body
 assert "if (match.ambiguous()) return MATCH_FAIL;" in numbered_body
 assert numbered_body.index("if (match.ambiguous())") < numbered_body.index("mappings[i].enabled = true;")
 print("PASS: ambiguous multidisc track numbers cannot auto-approve the first hit.")
+
+# A failed or ambiguous match must never silently approve positional mappings.
+# Previously match_tracks() used "!= MATCH_SUCCESS" and enabled every row even
+# after route_discogs_track_order() returned MATCH_FAIL.
+matching = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+match_entry = matching.split("void TagWriter::match_tracks() {", 1)[1].split(
+    "int TagWriter::route_discogs_track_order(", 1)[0]
+assert '#include "discogger_match_policy.h"' in matching
+assert "discogger_match_policy::for_status(" in match_entry
+assert "action::disable" in match_entry and "action::preserve" in match_entry
+assert "m_track_mappings[i].enabled = false;" in match_entry
+assert match_entry.index("m_track_mappings[i].enabled = false;") < match_entry.index("tm.enabled = true;")
+assert "m_match_status != MATCH_SUCCESS" not in match_entry
+print("PASS: failed/ambiguous matching cannot silently enable positional assignments.")

@@ -8,6 +8,7 @@
 #include "discogger_duration_match.h"
 #include "discogger_result_alignment.h"
 #include "discogger_number_match.h"
+#include "discogger_match_policy.h"
 #include <set>
 
 
@@ -94,28 +95,32 @@ const std::vector<int(TagWriter::*)(track_mappings_list_type &)> TagWriter::m_ma
 };
 
 void TagWriter::match_tracks() {
-	m_match_status = route_discogs_track_order(m_track_mappings);
-	if (m_match_status != MATCH_SUCCESS) {
-		const size_t citems = m_finfo_manager->items.get_count();
-		size_t ctracks = 0;
-		for (size_t i = 0; i < release->discs.get_count(); i++) {
-			for (size_t j = 0; j < release->discs[i]->tracks.get_count(); j++) {
-				if (ctracks < citems) {					
-					track_mapping& tm = m_track_mappings[ctracks];
-					tm.enabled = true;
-					tm.discogs_disc = i;
-					tm.discogs_track = j;
+    m_match_status = route_discogs_track_order(m_track_mappings);
+    const auto action = discogger_match_policy::for_status(
+        m_match_status, MATCH_SUCCESS, MATCH_ASSUME);
+    if (action == discogger_match_policy::action::preserve) return;
+    if (action == discogger_match_policy::action::disable) {
+        // A failed number/duration match, ambiguous remix, or mismatched
+        // selection must never become an enabled list-order assignment.
+        // Clear even partial approvals left by an earlier successful matcher.
+        for (size_t i = 0; i < m_track_mappings.get_count(); ++i)
+            m_track_mappings[i].enabled = false;
+        return;
+    }
 
-					ctracks++;
-				}
-				else {
-					//run out of files to match
-					return;
-				}
-				
-			}
-		}
-	}
+    // MATCH_ASSUME is the sole route allowed to use list-order mapping.
+    const size_t citems = m_finfo_manager->items.get_count();
+    size_t ctracks = 0;
+    for (size_t i = 0; i < release->discs.get_count(); ++i) {
+        for (size_t j = 0; j < release->discs[i]->tracks.get_count(); ++j) {
+            if (ctracks >= citems) return;
+            track_mapping& tm = m_track_mappings[ctracks];
+            tm.enabled = true;
+            tm.discogs_disc = i;
+            tm.discogs_track = j;
+            ++ctracks;
+        }
+    }
 }
 
 int TagWriter::route_discogs_track_order(track_mappings_list_type &mappings) {

@@ -1,5 +1,6 @@
 #include "../discogger_result_alignment.h"
 #include "../discogger_number_match.h"
+#include "../discogger_match_policy.h"
 #include <cassert>
 int main() {
     using discogger_result_alignment::valid_result_shape;
@@ -57,5 +58,15 @@ int main() {
     missing.consider(-1, 1, 1, 1, 1, 1, 0, 0);
     missing.consider(1, 0, 1, 0, 0, 1, 0, 0);
     assert(!missing.unique() && !missing.ambiguous());
+    // P0: an ambiguous/failed match must never silently re-enable every
+    // file in positional order, including when a previous matcher approved
+    // some rows before detecting a conflict.
+    using discogger_match_policy::action;
+    using discogger_match_policy::for_status;
+    static_assert(for_status(0, 0, 2) == action::preserve);
+    static_assert(for_status(2, 0, 2) == action::assume);
+    static_assert(for_status(1, 0, 2) == action::disable);
+    static_assert(for_status(-1, 0, 2) == action::disable);
+    assert(for_status(99, 0, 2) == action::disable);
     return 0;
 }
