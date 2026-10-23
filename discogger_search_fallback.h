@@ -22,10 +22,12 @@ inline std::string ascii_lower(std::string_view value) {
         if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
     return out;
 }
+// Suggestions from ampersand-separated artist credits remain review-only:
+// an ampersand can also be part of a permanent duo/group name.
 inline std::string trailing_collaborator(std::string_view artist) {
     const auto lowered = ascii_lower(artist);
     constexpr std::string_view joins[] = {
-        " x ", " vs. ", " vs ", " feat. ", " feat ", " featuring ", " ft. ", " ft "
+        " x ", " vs. ", " vs ", " feat. ", " feat ", " featuring ", " ft. ", " ft ", " & "
     };
     std::size_t position = std::string_view::npos, offset = 0;
     for (const auto join : joins) {

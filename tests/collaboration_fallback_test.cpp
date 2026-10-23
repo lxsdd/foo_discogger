@@ -6,7 +6,11 @@ int main() {
     using namespace discogger_search;
     assert(trailing_collaborator("Kyau & Albert X Maywave") == "Maywave");
     assert(trailing_collaborator("Kyau & Albert x Maywave") == "Maywave");
-    assert(trailing_collaborator("Kyau & Albert") == "");
+    // Ampersand collaborations are bounded discovery hints, not safe tag matches.
+    assert(trailing_collaborator("Artist & Guest") == "Guest");
+    assert(trailing_collaborator("Artist & ") == "");
+    assert(trailing_collaborator("Kyau & Albert") == "Albert"); // duo: review required
+    assert(trailing_collaborator("Kyau & Albert x Maywave") == "Maywave");
     assert(trailing_collaborator("Maywave x Kyau & Albert") == "Kyau & Albert");
     assert(trailing_collaborator("Matt Fax feat. Lovlee") == "Lovlee");
     assert(trailing_collaborator("Artist ft. Guest") == "Guest");
@@ -52,6 +56,16 @@ int main() {
     assert(collab.size() == 2);
     assert(collab[0].q == "Maywave" && collab[0].title == "1000 Years");
     assert(collab[1].q == "1000 Years" && collab[1].title.empty());
+    auto ampersand = build_fallback_plan("Producer & Vocalist", "A New Day", "");
+    assert(ampersand.size() == 2);
+    assert(ampersand[0].q == "Vocalist" && ampersand[0].title == "A New Day");
+    assert(ampersand[1].q == "A New Day" && ampersand[1].title.empty());
+    assert(encode_fallback_query(ampersand[0]) ==
+           "q=%22Vocalist%22&title=A%20New%20Day");
+    // A permanent duo is never silently accepted as a match:
+    // these remain bounded, manual-review fallback candidates.
+    auto duo = build_fallback_plan("Kyau & Albert", "1000 Years", "");
+    assert(duo.size() == 2 && duo[0].q == "Albert");
     // Short/generic release titles must not suppress a useful track search.
     // In particular, the Discogs title= filter refers to the RELEASE title,
     // not to the supplied track title. Such fallbacks must remain review-only.
