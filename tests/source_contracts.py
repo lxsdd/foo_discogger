@@ -2055,12 +2055,20 @@ assert "inline std::atomic<unsigned> worker_error" in _live_telemetry
 assert "inline void reset()" in _live_telemetry
 assert "discogger_live_search_qa::button.store(1);" in _live_dialog
 assert "discogger_live_search_qa::routed.store(1);" in _live_dialog
+assert "Query explicitly retried." in _live_dialog
+assert "Artist search explicitly retried." in _live_dialog
+assert "discogger_live_search_qa::early_exit.store(2);" in _live_dialog
+assert "discogger_live_search_qa::early_exit.store(5);" in _live_dialog
+assert "WindowText($searchEdit) -cne $query" in _live_host
+assert "DISCOGGER_AUTHENTICATED_GUI_PARSE_" in _live_host
 assert "MapToText(m_qdm_search_query, exp_pair, false, false)" in _live_dialog
 assert "discogger_live_search_qa::worker_started.store(1);" in tasks_callbacks
 assert "discogger_live_search_qa::worker_advanced.store(" in tasks_callbacks
 assert "discogger_live_search_qa::worker_error.store(1);" in tasks_callbacks
 assert "discogger_live_search_qa::parsed_releases.store(" in search
-for field in ("BUTTON", "ROUTED", "WORKER_STARTED", "WORKER_SUCCESS",
+for field in ("BUTTON", "ROUTED", "INPUT_NONEMPTY", "PARSED_FIELDS",
+              "QUERY_MINIMAL", "QUERY_DETECTED", "ALT_MODE", "REPEAT_QUERY",
+              "EARLY_EXIT", "WORKER_STARTED", "WORKER_SUCCESS",
               "WORKER_ERROR", "WORKER_ABORT", "WORKER_ADVANCED", "RESPONSE_PAGES", "RESPONSE_ITEMS",
               "PARSED_MASTERS", "PARSED_RELEASES", "QUERY_LIMIT", "API_IDENTITY",
               "API_EXACT_OK", "API_EXACT_ITEMS", "API_EXACT_KNOWN",
