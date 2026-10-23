@@ -2061,7 +2061,9 @@ assert "Query explicitly retried." in _live_dialog
 assert "Artist search explicitly retried." in _live_dialog
 assert "discogger_live_search_qa::early_exit.store(2);" in _live_dialog
 assert "discogger_live_search_qa::early_exit.store(5);" in _live_dialog
-assert "WindowText($searchEdit) -cne $query" in _live_host
+assert "EditText($searchEdit) -cne $query" in _live_host
+assert "SendTextMessageTimeoutW(hwnd,0x000C" in _live_host
+assert "ReadTextMessageTimeoutW(hwnd,0x000D" in _live_host
 assert "DISCOGGER_AUTHENTICATED_GUI_PARSE_" in _live_host
 assert "MapToText(m_qdm_search_query, exp_pair, false, false)" in _live_dialog
 assert "discogger_live_search_qa::worker_started.store(1);" in tasks_callbacks
