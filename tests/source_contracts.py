@@ -599,6 +599,23 @@ assert "void DiscogsInterface::process_amt_parsed_fake_artist(" in interface_imp
 assert "void DiscogsInterface::parse_amt_page(" in interface_impl
 print("PASS: composite-search parser declarations are visible and C++-qualified correctly.")
 
+# A release is shared by the parsed bucket, one or more artists and the cache.
+# Moving the loop-local shared_ptr into the first artist nulls it, then the
+# next cache-ID read dereferences that null pointer during real online search.
+advanced_parser = interface_impl.split("void DiscogsInterface::process_amt_parsed_fake_artist(", 1)[1].split(
+    "void DiscogsInterface::parse_amt_page(", 1
+)[0]
+for shared_add in (
+    "tmpArtist->master_releases.add_item(mr);",
+    "no_checkArtist->master_releases.add_item(mr);",
+    "tmpArtist->releases.add_item(r);",
+    "no_checkArtist->releases.add_item(r);",
+):
+    assert shared_add in advanced_parser
+assert "std::move(mr)" not in advanced_parser
+assert "std::move(r)" not in advanced_parser
+print("PASS: advanced online results retain shared release ownership through artist/cache processing.")
+
 # Restore the existing search/filter task base type and serialize its lock
 # counter transitions; do not confuse it with the separate async tag-write gate.
 task_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
