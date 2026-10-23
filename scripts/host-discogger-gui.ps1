@@ -922,7 +922,7 @@ FILE "synthetic-side-b.wav" WAVE
         if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
             throw 'Could not dispatch native live-search result inspection.'
         }
-        for($n=0;$n -lt 40;$n++){
+        for($n=0;$n -lt 180;$n++){
             Start-Sleep -Milliseconds 250
             if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
             $proc.Refresh()
@@ -932,15 +932,38 @@ FILE "synthetic-side-b.wav" WAVE
             throw 'Native live-search result inspection produced no evidence.'
         }
         $proof=Get-Content -LiteralPath $liveProbe -Raw
+        $expected=@('ARTISTS','KNOWN_RELEASE_MATCHES','TREE','BUTTON','ROUTED',
+            'WORKER_STARTED','WORKER_SUCCESS','WORKER_ERROR','WORKER_ABORT',
+            'RESPONSE_PAGES','RESPONSE_ITEMS','PARSED_MASTERS','PARSED_RELEASES',
+            'QUERY_LIMIT','API_IDENTITY','API_EXACT_OK','API_EXACT_ITEMS',
+            'API_EXACT_KNOWN','API_BROAD_OK','API_BROAD_ITEMS','API_BROAD_KNOWN')
         $counts=@{}
         foreach($line in ($proof -split '\r?\n')){
-            if($line -match '^(ARTISTS|KNOWN_RELEASE_MATCHES|TREE)=(\d+)$'){
+            if($line -match '^([A-Z_]+)=(\d+)$' -and $Matches[1] -in $expected){
                 $counts[$Matches[1]]=[int]$Matches[2]
             }
         }
-        if($counts.Count -ne 3){throw 'Malformed native live-search count evidence.'}
+        if($counts.Count -ne $expected.Count){throw 'Malformed native live-search stage evidence.'}
         Write-Host "DISCOGGER_AUTHENTICATED_GUI_RESULT_COUNTS_${Architecture}=artists:$($counts['ARTISTS']) known:$($counts['KNOWN_RELEASE_MATCHES']) tree:$($counts['TREE'])"
-        if($counts['ARTISTS'] -lt 1){throw 'Authenticated Discogger search returned no artist-list rows.'}
+        Write-Host "DISCOGGER_AUTHENTICATED_SEARCH_STAGES_${Architecture}=button:$($counts['BUTTON']) routed:$($counts['ROUTED']) started:$($counts['WORKER_STARTED']) success:$($counts['WORKER_SUCCESS']) error:$($counts['WORKER_ERROR']) abort:$($counts['WORKER_ABORT']) pages:$($counts['RESPONSE_PAGES']) items:$($counts['RESPONSE_ITEMS']) masters:$($counts['PARSED_MASTERS']) releases:$($counts['PARSED_RELEASES']) capped:$($counts['QUERY_LIMIT'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_API_PROBE_${Architecture}=identity:$($counts['API_IDENTITY']) exact_ok:$($counts['API_EXACT_OK']) exact_items:$($counts['API_EXACT_ITEMS']) exact_known:$($counts['API_EXACT_KNOWN']) broad_ok:$($counts['API_BROAD_OK']) broad_items:$($counts['API_BROAD_ITEMS']) broad_known:$($counts['API_BROAD_KNOWN'])"
+        if($counts['BUTTON'] -lt 1){throw 'Native Search button did not reach its actual Discogger handler.'}
+        if($counts['ROUTED'] -lt 1){throw 'Discogger Search handler did not route its parsed query.'}
+        if($counts['WORKER_STARTED'] -lt 1){throw 'Discogger routed search but the asynchronous worker never started.'}
+        if($counts['WORKER_ERROR'] -gt 0){throw 'Discogger asynchronous search failed before publishing results.'}
+        if($counts['WORKER_ABORT'] -gt 0){throw 'Discogger asynchronous search was aborted.'}
+        if($counts['QUERY_LIMIT'] -gt 0){throw 'Discogger search was incorrectly stopped by its configured result cap.'}
+        if($counts['ARTISTS'] -lt 1){
+            if($counts['API_IDENTITY'] -lt 1){throw 'Discogger OAuth identity request failed independently of the GUI.'}
+            if($counts['API_EXACT_OK'] -lt 1 -and $counts['API_BROAD_OK'] -lt 1){
+                throw 'Discogger direct API search probes failed independently of the GUI.'
+            }
+            if($counts['RESPONSE_PAGES'] -gt 0 -and
+               ($counts['PARSED_MASTERS'] -gt 0 -or $counts['PARSED_RELEASES'] -gt 0)){
+                throw 'Discogger parsed actual releases but did not publish artist rows.'
+            }
+            throw 'Discogger worker completed but produced no artist-list rows.'
+        }
         if($counts['KNOWN_RELEASE_MATCHES'] -lt 1){throw 'Authenticated Discogger results did not contain expected release 38012673.'}
         $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
         if($liveCount -lt 1 -or $counts['TREE'] -lt 1){
