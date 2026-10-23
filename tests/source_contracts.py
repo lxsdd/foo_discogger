@@ -2057,6 +2057,7 @@ assert "discogger_live_search_qa::button.store(1);" in _live_dialog
 assert "discogger_live_search_qa::routed.store(1);" in _live_dialog
 assert "MapToText(m_qdm_search_query, exp_pair, false, false)" in _live_dialog
 assert "discogger_live_search_qa::worker_started.store(1);" in tasks_callbacks
+assert "discogger_live_search_qa::worker_advanced.store(" in tasks_callbacks
 assert "discogger_live_search_qa::worker_error.store(1);" in tasks_callbacks
 assert "discogger_live_search_qa::parsed_releases.store(" in search
 for field in ("BUTTON", "ROUTED", "WORKER_STARTED", "WORKER_SUCCESS",
