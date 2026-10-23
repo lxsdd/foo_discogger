@@ -137,11 +137,15 @@ def id3_txxx_values(content):
     decoded = []
     while offset + 10 <= end:
         frame_id = content[offset:offset + 4]
-        if frame_id == bytes(4): break  # padding
+        if frame_id == bytes(4):
+            if any(content[offset:end]):
+                raise AssertionError("Invalid nonzero ID3v2 TXXX padding")
+            return decoded
         if not all((65 <= ch <= 90 or 48 <= ch <= 57) for ch in frame_id):
             raise AssertionError("Invalid ID3v2 frame identifier")
         frame_size = (int.from_bytes(content[offset + 4:offset + 8], "big")
                       if version == 3 else _syncsafe_size(content[offset + 4:offset + 8]))
+        frame_flags = content[offset + 8:offset + 10]
         offset += 10
         if frame_size < 1 or offset + frame_size > end:
             raise AssertionError("Malformed ID3v2 frame length")
@@ -149,6 +153,10 @@ def id3_txxx_values(content):
         offset += frame_size
         if frame_id != b"TXXX":
             continue
+        # Grouped, encrypted, compressed or otherwise opaque TXXX cannot
+        # prove custom-tag/ReplayGain preservation from decoded plain text.
+        if frame_flags != bytes(2):
+            raise AssertionError("Opaque/modified ID3v2 TXXX frame flags")
         enc, raw = frame[0], frame[1:]
         codecs = {0: "latin-1", 1: "utf-16", 2: "utf-16-be", 3: "utf-8"}
         if enc not in codecs:
@@ -163,6 +171,8 @@ def id3_txxx_values(content):
         if "\x00" in payload:
             name, value = payload.split("\x00", 1)
             decoded.append((name.strip(), value.strip("\x00")))
+    if any(content[offset:end]):
+        raise AssertionError("Truncated trailing ID3v2 TXXX frame")
     return decoded
 
 
@@ -420,6 +430,23 @@ def selftest_id3():
             frame = b"TXXX" + size + bytes(2) + body
             fake = b"ID3" + bytes((version, 0, 0)) + ss(len(frame)) + frame
             assert id3_txxx_values(fake) == [("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")]
+            # A writer must not hide the same TXXX payload behind changed
+            # compression/grouping flags, corrupt padding, or a short tail.
+            # Valid zero padding remains permitted in both ID3 versions.
+            padded = fake[:6] + ss(len(frame) + 3) + frame + bytes(3)
+            assert id3_txxx_values(padded) == [
+                ("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")]
+            opaque = fake[:18] + bytes((0, 8)) + fake[20:]
+            short_tail = fake[:6] + ss(len(frame) + 3) + frame + bytes((1, 2, 3))
+            bad_padding = (fake[:6] + ss(len(frame) + 10) + frame +
+                           bytes(4) + bytes((1,)) + bytes(5))
+            for malformed in (opaque, short_tail, bad_padding):
+                try:
+                    id3_txxx_values(malformed)
+                except AssertionError:
+                    pass
+                else:
+                    raise AssertionError("Opaque or malformed ID3v2 TXXX escaped verifier")
     # UTF-16 values may carry their own second BOM after the description.
     dual = (b"\xff\xfe" + "DISCOGGER_QA_RUNNER".encode("utf-16-le") +
             b"\x00\x00\xff\xfe" + "RUNNER-VERIFIED".encode("utf-16-le"))
@@ -514,6 +541,7 @@ def selftest_id3():
     print("DISCOGGER_ID3_STANDARD_TEXT_PRESERVATION_VERIFIER=PASS")
     print("DISCOGGER_ID3_EXTENDED_APIC_VERIFIER=PASS")
     print("DISCOGGER_ID3_TXXX_UNICODE_VERIFIER=PASS")
+    print("DISCOGGER_ID3_TXXX_FRAME_INTEGRITY_VERIFIER=PASS")
 
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == "--selftest":
