@@ -365,8 +365,15 @@ FILE "synthetic-side-b.wav" WAVE
     Start-Sleep -Seconds 5
     $proc.Refresh()
     if($proc.HasExited){throw 'foobar exited while initializing Discogger.'}
-    if(-not @((Get-Process -Id $proc.Id).Modules | Where-Object {$_.ModuleName -ieq 'foo_discogger.dll'}).Count){
+    $loadedModules=@((Get-Process -Id $proc.Id).Modules | ForEach-Object {$_.ModuleName})
+    if(-not @($loadedModules | Where-Object {$_ -ieq 'foo_discogger.dll'}).Count){
         throw 'Discogger module is absent from host process.'
+    }
+    if($companion){
+        if(-not @($loadedModules | Where-Object {$_ -ieq 'foo_metadata_isolation.dll'}).Count){
+            throw 'Metadata Isolation companion is absent from native foobar host process.'
+        }
+        Write-Host "DISCOGGER_METADATA_ISOLATION_NATIVE_COLOAD_$Architecture=PASS"
     }
     # Validate the actual initialization side effect; absence of a visible
     # error dialog alone never proves that CONF.load() completed.
