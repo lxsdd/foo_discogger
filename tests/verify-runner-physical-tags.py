@@ -82,6 +82,22 @@ def verify_original_flac_vorbis(before_fields, after_fields):
         raise AssertionError("Original physical FLAC Vorbis fields changed or disappeared")
 
 
+
+def verify_original_flac_blocks(before_blocks, after_blocks):
+    """Protect every physical FLAC metadata block except mutable padding/comments.
+
+    Native writers may resize PADDING (type 1) and rewrite VORBIS_COMMENT
+    (type 4, separately checked field-by-field). All other metadata, including
+    STREAMINFO, APPLICATION, SEEKTABLE, CUESHEET, PICTURE and unknown blocks,
+    must retain their exact bytes and multiplicity, independent of order.
+    """
+    for kind in set(before_blocks) | set(after_blocks):
+        if kind in (1, 4):
+            continue
+        if Counter(before_blocks.get(kind, [])) != Counter(after_blocks.get(kind, [])):
+            raise AssertionError(f"Physical FLAC metadata block type {kind} changed")
+
+
 def _syncsafe_size(value):
     if len(value) != 4 or any(byte & 0x80 for byte in value):
         raise AssertionError("Invalid ID3v2 synchsafe header")
@@ -262,6 +278,7 @@ def verify(before: bytes, after: bytes, suffix):
             raise AssertionError("Real foobar MP3 writer did not persist requested TXXX tag")
     elif suffix == ".flac":
         first, second = flac_blocks(before), flac_blocks(after)
+        verify_original_flac_blocks(first, second)
         if first.get(5) != second.get(5):
             raise AssertionError("Native FLAC Type-5 CUESHEET changed")
         if not first.get(6) or first.get(6) != second.get(6):
@@ -346,6 +363,33 @@ def selftest_flac_vorbis():
             pass
         else:
             raise AssertionError("FLAC physical-field preservation regression escaped")
+    # Metadata preservation must include opaque FLAC block types, not just
+    # Vorbis comments, artwork and CUESHEET. Padding/comment rewrites are OK.
+    physical = {
+        0: [b"STREAMINFO-original"], 1: [b"padding"],
+        2: [b"APP-opaque"], 3: [b"SEEKTABLE-opaque"],
+        4: [b"vorbis-before"], 5: [b"native-cuesheet"],
+        6: [b"picture-a", b"picture-b"], 10: [b"unknown-block"],
+    }
+    rewritten = {**physical, 1: [b"resized-padding"],
+                 4: [b"vorbis-after"], 6: [b"picture-b", b"picture-a"]}
+    verify_original_flac_blocks(physical, rewritten)
+    for damaged in (
+        {key: values for key, values in rewritten.items() if key != 2},
+        {**rewritten, 0: [b"STREAMINFO-changed"]},
+        {**rewritten, 3: []},
+        {**rewritten, 5: [b"changed-cuesheet"]},
+        {**rewritten, 6: [b"picture-a"]},
+        {**rewritten, 10: [b"unknown-block", b"unknown-block"]},
+        {**rewritten, 11: [b"unexpected-added-block"]},
+    ):
+        try:
+            verify_original_flac_blocks(physical, damaged)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Opaque FLAC physical metadata loss escaped verifier")
+    print("DISCOGGER_FLAC_OPAQUE_METADATA_PRESERVED=PASS")
     print("DISCOGGER_FLAC_ALL_PHYSICAL_FIELDS_PRESERVED=PASS")
     print("DISCOGGER_FLAC_VORBIS_EXACT_KEY_VERIFIER=PASS")
 
