@@ -537,6 +537,9 @@ void CFindReleaseDialog::GetCurrentSearchArtist(pfc::string8& out) {
 
 
 LRESULT CFindReleaseDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::reset(); // New native dialog, not each search invocation.
+#endif
 
 	SetIcon(g_discogs->icon);
 
@@ -967,8 +970,12 @@ LRESULT CFindReleaseDialog::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /
 
 LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
-	discogger_live_search_qa::reset();
-	discogger_live_search_qa::button.store(1);
+	discogger_live_search_qa::button.fetch_add(1);
+	const HWND live_edit = ::GetDlgItem(m_hWnd, IDC_EDIT_SEARCH);
+	discogger_live_search_qa::input_member_valid.store(::IsWindow(m_edit_artist) ? 1u : 0u);
+	discogger_live_search_qa::input_hwnd_match.store(live_edit == m_edit_artist ? 1u : 0u);
+	discogger_live_search_qa::input_member_length.store(static_cast<unsigned>(::GetWindowTextLengthW(m_edit_artist)));
+	discogger_live_search_qa::input_live_length.store(static_cast<unsigned>(::GetWindowTextLengthW(live_edit)));
 #endif
 
 	for (const std::string fld : kv_query_fields_ordered) {
@@ -981,6 +988,8 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	pfc::string8 trot_text = trim(uGetWindowText(m_edit_artist));
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 	discogger_live_search_qa::input_nonempty.store(trot_text.get_length() ? 1u : 0u);
+	if (trot_text.get_length()) discogger_live_search_qa::input_nonempty_calls.fetch_add(1);
+	else discogger_live_search_qa::input_empty_calls.fetch_add(1);
 #endif
 
 	bool bva_in_artist = false;
