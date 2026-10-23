@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <string>
 #include <iterator>
+#include <array>
+#include "tests/runner-live-search-telemetry.h"
 
 namespace {
 static const GUID qa_mp3_command = {0x4a1d5a11,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
@@ -288,6 +290,44 @@ void run_live_search_probe_qa() {
     if (!g_discogs || !g_discogs->find_release_dialog)
         throw std::runtime_error("Native Find Releases dialog is absent.");
     const auto counts = g_discogs->find_release_dialog->runner_qa_live_search_probe();
+    // Independent read-only requests distinguish OAuth/transport failures from
+    // actual Discogger UI and result-model failures. Never record API bodies.
+    unsigned identity_ok = 0;
+    try {
+        abort_callback_dummy abort;
+        pfc::string8 body;
+        discogs_interface->fetcher->fetch_html(
+            "https://api.discogs.com/oauth/identity", "", body, abort);
+        JSONParser parsed(body);
+        const json_t* username = json_object_get(parsed.root, "username");
+        identity_ok = json_is_string(username) && json_string_length(username) > 0 ? 1u : 0u;
+    } catch (...) {}
+    const auto probe_search = [](const char* params) -> std::array<unsigned, 3> {
+        std::array<unsigned, 3> result{0, 0, 0};
+        try {
+            abort_callback_dummy abort;
+            pfc::string8 body;
+            discogs_interface->fetcher->fetch_html(
+                "https://api.discogs.com/database/search", params, body, abort);
+            JSONParser parsed(body);
+            const json_t* rows = json_object_get(parsed.root, "results");
+            if (!json_is_array(rows)) return result;
+            result[0] = 1;
+            result[1] = static_cast<unsigned>(
+                parsed.get_object_int("pagination", "items"));
+            for (size_t i = 0; i < json_array_size(rows); ++i) {
+                const json_t* record = json_array_get(rows, i);
+                const json_t* id = json_object_get(record, "id");
+                if (json_is_integer(id) && json_integer_value(id) == 38012673)
+                    result[2] = 1;
+            }
+        } catch (...) {}
+        return result;
+    };
+    const auto api_exact = probe_search(
+        "artist=Estiva&title=Via%20Balearia&per_page=100&page=1");
+    const auto api_broad = probe_search(
+        "q=%22Via%20Balearia%22&per_page=100&page=1");
     const auto evidence = folder / "qa-live-search-probe.txt";
     if (std::filesystem::exists(evidence))
         throw std::runtime_error("Live GUI evidence already existed.");
@@ -297,7 +337,25 @@ void run_live_search_probe_qa() {
     // headers, OAuth values, responses, profile data or arbitrary error text.
     out << "ARTISTS=" << counts[0] << '\n'
         << "KNOWN_RELEASE_MATCHES=" << counts[1] << '\n'
-        << "TREE=" << counts[2] << '\n';
+        << "TREE=" << counts[2] << '\n'
+        << "BUTTON=" << discogger_live_search_qa::button.load() << '\n'
+        << "ROUTED=" << discogger_live_search_qa::routed.load() << '\n'
+        << "WORKER_STARTED=" << discogger_live_search_qa::worker_started.load() << '\n'
+        << "WORKER_SUCCESS=" << discogger_live_search_qa::worker_success.load() << '\n'
+        << "WORKER_ERROR=" << discogger_live_search_qa::worker_error.load() << '\n'
+        << "WORKER_ABORT=" << discogger_live_search_qa::worker_abort.load() << '\n'
+        << "RESPONSE_PAGES=" << discogger_live_search_qa::response_pages.load() << '\n'
+        << "RESPONSE_ITEMS=" << discogger_live_search_qa::response_items.load() << '\n'
+        << "PARSED_MASTERS=" << discogger_live_search_qa::parsed_masters.load() << '\n'
+        << "PARSED_RELEASES=" << discogger_live_search_qa::parsed_releases.load() << '\n'
+        << "QUERY_LIMIT=" << discogger_live_search_qa::query_limit.load() << '\n'
+        << "API_IDENTITY=" << identity_ok << '\n'
+        << "API_EXACT_OK=" << api_exact[0] << '\n'
+        << "API_EXACT_ITEMS=" << api_exact[1] << '\n'
+        << "API_EXACT_KNOWN=" << api_exact[2] << '\n'
+        << "API_BROAD_OK=" << api_broad[0] << '\n'
+        << "API_BROAD_ITEMS=" << api_broad[1] << '\n'
+        << "API_BROAD_KNOWN=" << api_broad[2] << '\n';
     out.flush();
     if (!out) throw std::runtime_error("Could not flush live GUI evidence.");
 }
