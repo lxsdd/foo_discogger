@@ -171,10 +171,10 @@ def id3_standard_text_values(content):
             raise AssertionError("Invalid ID3v2 text encoding")
         raw = payload[1:]
         codec = codecs[encoding]
-        if encoding == 1 and not (raw.startswith(b"\\xff\\xfe") or raw.startswith(b"\\xfe\\xff")):
+        if encoding == 1 and not (raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff")):
             codec = "utf-16-le"
         try:
-            decoded = raw.decode(codec).lstrip("\\ufeff").rstrip("\\x00")
+            decoded = raw.decode(codec).lstrip("\ufeff").rstrip("\x00")
         except UnicodeError as error:
             raise AssertionError("Corrupt ID3v2 standard text frame") from error
         values[(frame_id, decoded)] += 1
