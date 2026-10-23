@@ -68,6 +68,19 @@ def flac_vorbis_fields(block):
     return fields
 
 
+def single_flac_vorbis_fields(blocks):
+    """Reject duplicate/missing physical FLAC Vorbis-comment metadata blocks.
+
+    Comparing only blocks[4][0] can falsely PASS if a native writer appends a
+    second Vorbis-comment block containing conflicting or destructive tags.
+    A valid FLAC stream has exactly one VORBIS_COMMENT metadata block.
+    """
+    comments = blocks.get(4, [])
+    if len(comments) != 1:
+        raise AssertionError("FLAC must contain exactly one Vorbis-comment block")
+    return flac_vorbis_fields(comments[0])
+
+
 def verify_original_flac_vorbis(before_fields, after_fields):
     """Fail closed if *any* existing physical Vorbis field was lost or edited.
 
@@ -361,10 +374,8 @@ def verify(before: bytes, after: bytes, suffix):
                 if is_last: return raw[pos:]
         if audio_tail(before) != audio_tail(after):
             raise AssertionError("Original FLAC compressed audio payload changed")
-        if not first.get(4) or not second.get(4):
-            raise AssertionError("Vorbis comments missing")
-        before_fields = flac_vorbis_fields(first[4][0])
-        after_fields = flac_vorbis_fields(second[4][0])
+        before_fields = single_flac_vorbis_fields(first)
+        after_fields = single_flac_vorbis_fields(second)
         if not before_fields.get("CUESHEET") or before_fields["CUESHEET"] != after_fields.get("CUESHEET"):
             raise AssertionError("Embedded textual CUESHEET bytes changed or disappeared")
         for token in (b"Runner Embedded EP", b"Progressive Trance", b"Preserve me"):
@@ -402,6 +413,28 @@ def selftest_flac_vorbis():
             pass
         else:
             raise AssertionError("Invalid Vorbis comment was not rejected")
+    # P1 physical FLAC gate: an appended second Vorbis block must never be
+    # ignored just because the first block still contains the expected tags.
+    def flac_with_comments(comments):
+        encoded = b""
+        for index, comment in enumerate(comments):
+            encoded += bytes((4 | (0x80 if index == len(comments) - 1 else 0),))
+            encoded += len(comment).to_bytes(3, "big") + comment
+        return b"fLaC" + encoded + b"synthetic-audio"
+    assert single_flac_vorbis_fields(flac_blocks(flac_with_comments([raw]))) == flac_vorbis_fields(raw)
+    conflicting = raw.replace(b"RUNNER-VERIFIED", b"RUNNER-CORRUPTED")
+    for invalid in (
+        {}, {4: []}, {4: [raw, raw]}, {4: [raw, conflicting]},
+        flac_blocks(flac_with_comments([raw, raw])),
+        flac_blocks(flac_with_comments([raw, conflicting])),
+    ):
+        try:
+            single_flac_vorbis_fields(invalid)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Duplicate/missing FLAC Vorbis block escaped verifier")
+    print("DISCOGGER_FLAC_SINGLE_VORBIS_BLOCK_VERIFIER=PASS")
     # P0 physical-writer safety: all physical Vorbis fields must survive,
     # including unknown custom keys and standard TITLE/ARTIST/DATE fields.
     # The SDK may reorder fields, but must not silently lose multiplicity.
