@@ -190,7 +190,9 @@ def id3_standard_text_values(content):
     while offset + 10 <= end:
         frame_id = content[offset:offset + 4]
         if frame_id == bytes(4):
-            break
+            if any(content[offset:end]):
+                raise AssertionError("Invalid nonzero ID3v2 standard-text padding")
+            return values
         if not all(65 <= ch <= 90 or 48 <= ch <= 57 for ch in frame_id):
             raise AssertionError("Invalid ID3v2 text frame identifier")
         size = (int.from_bytes(content[offset + 4:offset + 8], "big")
@@ -219,6 +221,8 @@ def id3_standard_text_values(content):
         except UnicodeError as error:
             raise AssertionError("Corrupt ID3v2 standard text frame") from error
         values[(frame_id, decoded)] += 1
+    if any(content[offset:end]):
+        raise AssertionError("Truncated trailing ID3v2 standard-text frame")
     return values
 
 
@@ -570,6 +574,23 @@ def selftest_id3():
         return b"ID3" + bytes((version, 0, 0)) + ss(len(frames)) + frames + b"Trance"
     original_text = text_tag(3, 1)
     verify_original_mp3_standard_text(original_text, text_tag(4, 3))
+    # Reject corrupt ID3v2 padding and partial frame headers, even when
+    # all original text fields are still present and the audio contains
+    # their literal bytes. Clean zero padding remains valid.
+    text_payload = original_text[10:10 + _syncsafe_size(original_text[6:10])]
+    def with_text_tail(tail):
+        return (b"ID3\x03\x00\x00" + ss(len(text_payload) + len(tail)) +
+                text_payload + tail + b"Trance")
+    assert (id3_standard_text_values(with_text_tail(bytes(11))) ==
+            id3_standard_text_values(original_text))
+    for corrupt_tail in (b"\x00\x01", bytes(4) + b"\x01" + bytes(5)):
+        malformed = with_text_tail(corrupt_tail)
+        try:
+            verify_original_mp3_standard_text(original_text, malformed)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Malformed ID3v2 text padding escaped preservation gate")
     for damaged in (text_tag(4, 3, genre="House"),
                     text_tag(4, 3, include_genre=False)):
         try:
