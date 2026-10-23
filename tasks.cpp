@@ -17,6 +17,9 @@
 #include "discogger_write_safety.h"
 #include "discogger_task_completion.h"
 #include "discogger_physical_targets.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
 
 void foo_discogs_threaded_process_callback::run(threaded_process_status &p_status, abort_callback &p_abort) {
 	try {
@@ -1287,6 +1290,9 @@ void search_artist_process_callback::start(HWND parent) {
 }
 
 void search_artist_process_callback::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::worker_started.store(1);
+#endif
 
 	pfc::string8 msg;
 
@@ -1313,6 +1319,9 @@ void search_artist_process_callback::safe_run(threaded_process_status &p_status,
 }
 
 void search_artist_process_callback::on_success(HWND p_wnd) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::worker_success.store(1);
+#endif
 
 	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
 
@@ -1387,10 +1396,16 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
 }
 
 void search_artist_process_callback::on_abort(HWND p_wnd) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::worker_abort.store(1);
+#endif
 	//..
 }
 
 void search_artist_process_callback::on_error(HWND p_wnd) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::worker_error.store(1);
+#endif
 	//..
 }
 
