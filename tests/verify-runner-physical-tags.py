@@ -589,14 +589,14 @@ def selftest_id3():
                            for name, value, flags in entries) + padding
         return b"ID3" + bytes((version, 0, 0)) + ss(len(payload)) + payload
     entries = [
-        (b"COMM", b"eng\\x00Original comment", bytes(2)),
-        (b"USLT", b"eng\\x00Original lyrics", bytes(2)),
-        (b"PRIV", b"owner\\x00opaque-data", bytes(2)),
-        (b"UFID", b"owner\\x00original-id", bytes(2)),
-        (b"GEOB", b"application/octet-stream\\x00attachment", bytes(2)),
+        (b"COMM", b"eng\x00Original comment", bytes(2)),
+        (b"USLT", b"eng\x00Original lyrics", bytes(2)),
+        (b"PRIV", b"owner\x00opaque-data", bytes(2)),
+        (b"UFID", b"owner\x00original-id", bytes(2)),
+        (b"GEOB", b"application/octet-stream\x00attachment", bytes(2)),
     ]
     # Convert textual escaped nulls to actual ID3 binary separators.
-    entries = [(name, value.replace(b"\\\\x00", bytes(1)), flags)
+    entries = [(name, value.replace(b"\\\x00", bytes(1)), flags)
                for name, value, flags in entries]
     for version in (3, 4):
         original_other = opaque_tag(version, entries)
@@ -607,9 +607,9 @@ def selftest_id3():
             opaque_tag(4, entries[:-1]),
             opaque_tag(4, entries + [entries[0]]),
             opaque_tag(4, entries[:-1] + [(b"GEOB", b"modified", bytes(2))]),
-            opaque_tag(4, entries[:-1] + [(b"GEOB", entries[-1][1], b"\\x00\\x08")]),
-            opaque_tag(4, entries, b"\\x00\\x01"),
-            opaque_tag(4, entries, b"\\x01"),
+            opaque_tag(4, entries[:-1] + [(b"GEOB", entries[-1][1], b"\x00\x08")]),
+            opaque_tag(4, entries, b"\x00\x01"),
+            opaque_tag(4, entries, b"\x01"),
         ]
         for invalid_other in invalid_others:
             try:
