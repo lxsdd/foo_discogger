@@ -595,9 +595,6 @@ def selftest_id3():
         (b"UFID", b"owner\x00original-id", bytes(2)),
         (b"GEOB", b"application/octet-stream\x00attachment", bytes(2)),
     ]
-    # Convert textual escaped nulls to actual ID3 binary separators.
-    entries = [(name, value.replace(b"\\\x00", bytes(1)), flags)
-               for name, value, flags in entries]
     for version in (3, 4):
         original_other = opaque_tag(version, entries)
         assert len(id3_other_physical_frames(original_other)) == len(entries)
