@@ -914,8 +914,58 @@ FILE "synthetic-side-b.wav" WAVE
             $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
             if($liveCount -gt 0){break}
         }
-        if($liveCount -le 0){
-            throw 'Authenticated native Discogger search returned no release-tree entries.'
+        # The search normally fills the artist list first. In the common
+        # single-artist case Discogger now opens its releases automatically;
+        # otherwise the runner-only probe selects the exact known *live* hit
+        # through the production tree presenter. It cannot fabricate a result.
+        $liveProbe=Join-Path $dir 'qa-live-search-probe.txt'
+        if(Test-Path -LiteralPath $liveProbe){throw 'Live-search probe evidence unexpectedly exists.'}
+        $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
+        if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
+            throw 'Could not dispatch native live-search result inspection.'
+        }
+        for($n=0;$n -lt 40;$n++){
+            Start-Sleep -Milliseconds 250
+            if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited during live-search result inspection.'}
+        }
+        if(-not (Test-Path -LiteralPath $liveProbe -PathType Leaf)){
+            throw 'Native live-search result inspection produced no evidence.'
+        }
+        $proof=Get-Content -LiteralPath $liveProbe -Raw
+        $counts=@{}
+        foreach($line in ($proof -split "`r?`n")){
+            if($line -match '^(ARTISTS|KNOWN_RELEASE_MATCHES|TREE)=(\d+)
+        # Search must be read-only even after the prior isolated writer tests.
+        if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
+            throw 'Authenticated Discogger search changed disposable WAVE data.'
+        }
+    }
+
+    if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
+    Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
+    Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
+    Write-Host "DISCOGGER_GUI_SYNTHETIC_WAV_NO_WRITE_$Architecture=PASS"
+    Write-Host "MEDIA_WRITE_SAFETY_$Architecture=NOT_TESTED"
+} finally {
+    if($null -ne $proc){
+        try {if(-not $proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction Stop}}
+        catch {Write-Warning 'Disposable foobar process could not be stopped.'}
+    }
+    if(Test-Path -LiteralPath $dir){Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue}
+}
+){
+                $counts[$Matches[1]]=[int]$Matches[2]
+            }
+        }
+        if($counts.Count -ne 3){throw 'Malformed native live-search count evidence.'}
+        Write-Host "DISCOGGER_AUTHENTICATED_GUI_RESULT_COUNTS_${Architecture}=artists:$($counts['ARTISTS']) known:$($counts['KNOWN_RELEASE_MATCHES']) tree:$($counts['TREE'])"
+        if($counts['ARTISTS'] -lt 1){throw 'Authenticated Discogger search returned no artist-list rows.'}
+        if($counts['KNOWN_RELEASE_MATCHES'] -lt 1){throw 'Authenticated Discogger results did not contain expected release 38012673.'}
+        $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
+        if($liveCount -lt 1 -or $counts['TREE'] -lt 1){
+            throw 'Authenticated Discogger result was not displayed in the native release tree.'
         }
         Write-Host "DISCOGGER_AUTHENTICATED_GUI_SEARCH_$Architecture=PASS"
         # Search must be read-only even after the prior isolated writer tests.
