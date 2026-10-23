@@ -73,8 +73,12 @@ def _syncsafe_size(value):
     return (value[0] << 21) | (value[1] << 14) | (value[2] << 7) | value[3]
 
 
-def id3_txxx_values(content):
-    """Read actual TXXX descriptions/values, including UTF-16 ID3v2 frames."""
+def id3_frame_bounds(content):
+    """Validate the ID3v2 tag and skip v2.3/v2.4 extended headers.
+
+    Both TXXX and APIC checks must inspect actual frames, not bytes inside
+    extended-header data that happen to resemble frame identifiers.
+    """
     if content[:3] != b"ID3" or len(content) < 10:
         raise AssertionError("ID3v2 header absent")
     version = content[3]
@@ -89,7 +93,16 @@ def id3_txxx_values(content):
             raise AssertionError("Truncated extended ID3v2 header")
         size = (int.from_bytes(content[offset:offset + 4], "big")
                 if version == 3 else _syncsafe_size(content[offset:offset + 4]))
-        offset += 4 + size if version == 3 else size
+        skip = 4 + size if version == 3 else size
+        if size < 6 or skip > end - offset:
+            raise AssertionError("Invalid extended ID3v2 header length")
+        offset += skip
+    return version, offset, end
+
+
+def id3_txxx_values(content):
+    """Read actual TXXX descriptions/values, including UTF-16 ID3v2 frames."""
+    version, offset, end = id3_frame_bounds(content)
     decoded = []
     while offset + 10 <= end:
         frame_id = content[offset:offset + 4]
@@ -140,17 +153,13 @@ def verify_original_mp3_txxx(before, after):
 
 def id3_apic_frames(content):
     """Inspect physical picture frame bytes, not only the ID3 TXXX text."""
-    if content[:3] != b"ID3" or content[3] not in (3, 4):
-        raise AssertionError("Invalid APIC source ID3v2")
-    end = 10 + _syncsafe_size(content[6:10])
-    if end > len(content):
-        raise AssertionError("Truncated MP3 ID3v2 header")
-    pos, pictures = 10, []
+    version, pos, end = id3_frame_bounds(content)
+    pictures = []
     while pos + 10 <= end:
         name = content[pos:pos + 4]
         if name == bytes(4): break
         size = (int.from_bytes(content[pos + 4:pos + 8], "big")
-                if content[3] == 3 else _syncsafe_size(content[pos + 4:pos + 8]))
+                if version == 3 else _syncsafe_size(content[pos + 4:pos + 8]))
         pos += 10
         if pos + size > end: raise AssertionError("Truncated APIC frame")
         if name == b"APIC":
@@ -279,6 +288,31 @@ def selftest_id3():
             pass
         else:
             raise AssertionError("MP3 ReplayGain preservation regression escaped")
+    # P1 media-safety verifier: ID3v2 extended headers must not hide APIC
+    # frames, or cause a false picture-preservation PASS/FAIL.
+    for version in (3, 4):
+        picture = b"\x00image/png\x00\x03\x00\x89PNG-SYNTHETIC"
+        size = len(picture).to_bytes(4, "big") if version == 3 else ss(len(picture))
+        frame = b"APIC" + size + bytes(2) + picture
+        ext = ((6).to_bytes(4, "big") + bytes(6)
+               if version == 3 else ss(6) + b"\x01\x00")
+        payload = ext + frame
+        fake = b"ID3" + bytes((version, 0, 0x40)) + ss(len(payload)) + payload
+        assert id3_apic_frames(fake) == [picture]
+        assert id3_txxx_values(fake) == []
+        changed = fake.replace(b"PNG-SYNTHETIC", b"PNG-SYNTHETIx")
+        assert id3_apic_frames(fake) != id3_apic_frames(changed)
+        # An extended header claiming bytes beyond the tag must fail closed.
+        oversized = ((100).to_bytes(4, "big") if version == 3 else ss(100))
+        malformed = b"ID3" + bytes((version, 0, 0x40)) + ss(6) + oversized + bytes(2)
+        for reader in (id3_apic_frames, id3_txxx_values):
+            try:
+                reader(malformed)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Invalid ID3v2 extended header was accepted")
+    print("DISCOGGER_ID3_EXTENDED_APIC_VERIFIER=PASS")
     print("DISCOGGER_ID3_TXXX_UNICODE_VERIFIER=PASS")
 
 if __name__ == "__main__":
