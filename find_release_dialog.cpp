@@ -1959,9 +1959,18 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
         }
         for (size_t j = 0; j < artist->master_releases.get_count(); ++j) {
             const MasterRelease_ptr& master = artist->master_releases[j];
-            if (master && master->main_release_id.equals("38012673")) {
+            if (!master) continue;
+            if (master->main_release_id.equals("38012673")) {
                 ++known_release_matches;
                 matching_artist = artist;
+            }
+            // Database-search releases may be grouped below a master even
+            // when the known release is not that master's main release.
+            for (const Release_ptr& subrelease : master->sub_releases) {
+                if (subrelease && subrelease->id.equals("38012673")) {
+                    ++known_release_matches;
+                    matching_artist = artist;
+                }
             }
         }
     }
