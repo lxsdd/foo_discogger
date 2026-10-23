@@ -1241,6 +1241,8 @@ assert 'artist_field != qdm_search_query.end()' in status
 assert 'artist_field->second.first.c_str()' in status
 assert "constexpr size_t uncapped_threshold = SIZE_MAX - 100;" in status
 assert "pow(2, sv)" not in status
+assert "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_$Architecture=PASS" in (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "Authenticated empty-result native search did not complete." in (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 print("PASS: advanced-search empty-result status tolerates partial fields and true size_t sentinels.")
 
 
