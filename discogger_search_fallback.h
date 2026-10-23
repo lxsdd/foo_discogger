@@ -27,7 +27,7 @@ inline std::string ascii_lower(std::string_view value) {
 inline std::string trailing_collaborator(std::string_view artist) {
     const auto lowered = ascii_lower(artist);
     constexpr std::string_view joins[] = {
-        " x ", " vs. ", " vs ", " feat. ", " feat ", " featuring ", " ft. ", " ft ", " & "
+        " x ", " vs. ", " vs ", " feat. ", " feat ", " featuring ", " ft. ", " ft "
     };
     std::size_t position = std::string_view::npos, offset = 0;
     for (const auto join : joins) {
@@ -35,6 +35,13 @@ inline std::string trailing_collaborator(std::string_view artist) {
         if (p != std::string::npos && (position == std::string_view::npos || p > position)) {
             position = p; offset = join.size();
         }
+    }
+    // Prefer an explicit featuring/x/vs join over an ampersand inside a
+    // collaborating group's name (e.g. "Maywave x Kyau & Albert").
+    // Only use '&' as a weaker discovery hint if no explicit join exists.
+    if (position == std::string_view::npos) {
+        position = lowered.rfind(" & ");
+        offset = 3;
     }
     if (position == std::string_view::npos) return {};
     return trim_copy(artist.substr(position + offset));
