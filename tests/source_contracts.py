@@ -2035,6 +2035,7 @@ _live_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
 _live_qa = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
 _live_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 assert "m_alist.Get_Artists().get_count() == 1" in _live_dialog
+assert "for (const Release_ptr& subrelease : master->sub_releases)" in _live_dialog
 assert "ShowArtistSearchResults(only);" in _live_dialog
 assert "runner_qa_live_search_probe()" in _live_dialog and "runner_qa_live_search_probe()" in _live_header
 assert 'release->id.equals("38012673")' in _live_dialog
