@@ -914,10 +914,8 @@ FILE "synthetic-side-b.wav" WAVE
             $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
             if($liveCount -gt 0){break}
         }
-        # The search normally fills the artist list first. In the common
-        # single-artist case Discogger now opens its releases automatically;
-        # otherwise the runner-only probe selects the exact known *live* hit
-        # through the production tree presenter. It cannot fabricate a result.
+        # The search fills the artist list before the release tree. Inspect the
+        # exact, real result identity and open it via the native tree presenter.
         $liveProbe=Join-Path $dir 'qa-live-search-probe.txt'
         if(Test-Path -LiteralPath $liveProbe){throw 'Live-search probe evidence unexpectedly exists.'}
         $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
@@ -935,27 +933,8 @@ FILE "synthetic-side-b.wav" WAVE
         }
         $proof=Get-Content -LiteralPath $liveProbe -Raw
         $counts=@{}
-        foreach($line in ($proof -split "`r?`n")){
-            if($line -match '^(ARTISTS|KNOWN_RELEASE_MATCHES|TREE)=(\d+)
-        # Search must be read-only even after the prior isolated writer tests.
-        if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
-            throw 'Authenticated Discogger search changed disposable WAVE data.'
-        }
-    }
-
-    if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
-    Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
-    Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
-    Write-Host "DISCOGGER_GUI_SYNTHETIC_WAV_NO_WRITE_$Architecture=PASS"
-    Write-Host "MEDIA_WRITE_SAFETY_$Architecture=NOT_TESTED"
-} finally {
-    if($null -ne $proc){
-        try {if(-not $proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction Stop}}
-        catch {Write-Warning 'Disposable foobar process could not be stopped.'}
-    }
-    if(Test-Path -LiteralPath $dir){Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue}
-}
-){
+        foreach($line in ($proof -split '\r?\n')){
+            if($line -match '^(ARTISTS|KNOWN_RELEASE_MATCHES|TREE)=(\d+)$'){
                 $counts[$Matches[1]]=[int]$Matches[2]
             }
         }
