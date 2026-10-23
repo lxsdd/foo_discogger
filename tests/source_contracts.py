@@ -2053,7 +2053,9 @@ assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in _live_telemetry
 assert "inline std::atomic<unsigned> button" in _live_telemetry
 assert "inline std::atomic<unsigned> worker_error" in _live_telemetry
 assert "inline void reset()" in _live_telemetry
-assert "discogger_live_search_qa::button.store(1);" in _live_dialog
+assert "discogger_live_search_qa::button.fetch_add(1);" in _live_dialog
+assert "discogger_live_search_qa::reset(); // New native dialog" in _live_dialog
+assert "discogger_live_search_qa::input_empty_calls.fetch_add(1);" in _live_dialog
 assert "discogger_live_search_qa::routed.store(1);" in _live_dialog
 assert "Query explicitly retried." in _live_dialog
 assert "Artist search explicitly retried." in _live_dialog
@@ -2066,7 +2068,9 @@ assert "discogger_live_search_qa::worker_started.store(1);" in tasks_callbacks
 assert "discogger_live_search_qa::worker_advanced.store(" in tasks_callbacks
 assert "discogger_live_search_qa::worker_error.store(1);" in tasks_callbacks
 assert "discogger_live_search_qa::parsed_releases.store(" in search
-for field in ("BUTTON", "ROUTED", "INPUT_NONEMPTY", "PARSED_FIELDS",
+for field in ("BUTTON", "ROUTED", "INPUT_NONEMPTY", "INPUT_NONEMPTY_CALLS",
+              "INPUT_EMPTY_CALLS", "INPUT_MEMBER_VALID", "INPUT_HWND_MATCH",
+              "INPUT_MEMBER_LENGTH", "INPUT_LIVE_LENGTH", "PARSED_FIELDS",
               "QUERY_MINIMAL", "QUERY_DETECTED", "ALT_MODE", "REPEAT_QUERY",
               "EARLY_EXIT", "WORKER_STARTED", "WORKER_SUCCESS",
               "WORKER_ERROR", "WORKER_ABORT", "WORKER_ADVANCED", "RESPONSE_PAGES", "RESPONSE_ITEMS",
@@ -2081,4 +2085,6 @@ assert "identity_ok" in _live_qa and "json_string_length(username)" in _live_qa
 assert "No queries, URLs, response bodies, user profiles or OAuth material are stored." in _live_telemetry
 assert "DISCOGGER_AUTHENTICATED_API_PROBE_" in _live_host
 assert "DISCOGGER_AUTHENTICATED_SEARCH_STAGES_" in _live_host
+assert "DISCOGGER_AUTHENTICATED_UI_BOUNDARY_" in _live_host
+assert "DISCOGGER_AUTHENTICATED_UI_POSTCLICK_" in _live_host
 print("PASS: authenticated native search stages, private OAuth probe and type-filter fix are guarded.")
