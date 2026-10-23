@@ -10,6 +10,9 @@
 
 #include "tag_mappings_dialog.h"
 #include "find_release_dialog.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
 #include "discogger_release_id.h"
 #include "discogger_artist_activation.h"
 #include "discogger_artist_refresh.h"
@@ -963,6 +966,10 @@ LRESULT CFindReleaseDialog::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /
 }
 
 LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::reset();
+	discogger_live_search_qa::button.store(1);
+#endif
 
 	for (const std::string fld : kv_query_fields_ordered) {
 
@@ -1045,7 +1052,8 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (bres) {
 
-			search_query::MapToText(m_qdm_search_query, exp_pair, true, false);
+			// The API has no need for the GUI-only default type=all filter.
+			search_query::MapToText(m_qdm_search_query, exp_pair, false, false);
 			pfc::string8 artist_meta_scaped = exp_pair.second.c_str();
 
 			trot_text = artist_meta_scaped;
@@ -1080,6 +1088,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 		// hint display the preffix 'Query results'
 		SetSearchModeText("");
 
+		#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::routed.store(1);
+		#endif
 		route_artist_search(trot_text, true, bid);
 
 	}
