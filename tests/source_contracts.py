@@ -1765,7 +1765,9 @@ assert "def enrich(path):" in flac_gen
 assert 'if os.getenv("GITHUB_ACTIONS") != "true"' in flac_gen
 assert "id3_apic_frames(before)" in phys_verify
 assert "first.get(6) != second.get(6)" in phys_verify
-assert 'Counter(before_fields.get(field, []))' in phys_verify
+assert 'verify_original_flac_vorbis(before_fields, after_fields)' in phys_verify
+assert 'return {key: Counter(values) for key, values in fields.items()' in phys_verify
+assert 'DISCOGGER_FLAC_ALL_PHYSICAL_FIELDS_PRESERVED=PASS' in phys_verify
 assert "id3_audio_payload(before) != id3_audio_payload(after)" in phys_verify
 assert "tests/enrich-synthetic-flac.py" in host_media
 print("PASS: runner actual MP3/FLAC writer preserves embedded pictures, multivalues and audio.")
