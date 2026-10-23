@@ -295,8 +295,21 @@ def verify_original_mp3_txxx(before, after):
     ):
         if original[(name, value)] != 1:
             raise AssertionError("Synthetic MP3 lacks custom/ReplayGain fixture: " + name)
-    if original != existing(after):
-        raise AssertionError("Physical MP3 custom TXXX/ReplayGain metadata was changed")
+    observed = existing(after)
+    if original != observed:
+        # Only classify the difference. Never print values, file paths or
+        # user-defined tag names into a public CI log. Case-only changes are
+        # still destructive physical rewrites and must remain a hard failure.
+        def folded(fields):
+            return Counter((name.casefold(), value) for (name, value), count
+                           in fields.items() for _ in range(count))
+        case_only = folded(original) == folded(observed)
+        missing = sum((original - observed).values())
+        added = sum((observed - original).values())
+        reason = "CASE_ONLY_DESCRIPTION_REWRITE" if case_only else "FIELD_VALUE_OR_MULTIPLICITY_CHANGE"
+        raise AssertionError(
+            "Physical MP3 custom TXXX/ReplayGain metadata was changed "
+            f"({reason}; missing={missing}; unexpected={added}; values_redacted=1)")
 
 def verify_exact_mp3_runner_marker(content):
     """Require exactly one physical QA marker; duplicates cannot certify a write.
@@ -712,6 +725,11 @@ def selftest_id3():
         else:
             raise AssertionError("Whitespace-spoofed TXXX QA marker escaped verifier")
     print("DISCOGGER_ID3_TXXX_DESCRIPTION_WHITESPACE_PRESERVATION=PASS")
+    # Classification must not mask case-only corruption or disclose values.
+    assert Counter((name.casefold(), value) for name, value in
+                   id3_txxx_values(case_tag("DJ User Key"))) == Counter(
+                       (name.casefold(), value) for name, value in
+                       id3_txxx_values(case_tag("DJ USER KEY")))
     print("DISCOGGER_ID3_TXXX_DESCRIPTION_CASE_PRESERVATION=PASS")
     print("DISCOGGER_ID3_TXXX_INTERIOR_BOM_PRESERVATION=PASS")
     for corrupted in (original.replace(b"0.800000", b"0.700000"),
