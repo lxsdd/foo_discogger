@@ -67,6 +67,11 @@ public static class DiscoggerWindowTest {
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hwnd,int id);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern bool SetWindowTextW(IntPtr hwnd,string value);
+  public static string WindowText(IntPtr hwnd) {
+    var sb=new StringBuilder(1024);
+    GetWindowTextW(hwnd,sb,sb.Capacity);
+    return sb.ToString();
+  }
   public static int TreeCount(IntPtr hwnd) {
     IntPtr result;
     if(SendMessageTimeoutW(hwnd,0x1105,IntPtr.Zero,IntPtr.Zero,2,4000,out result)==IntPtr.Zero)
@@ -905,6 +910,9 @@ FILE "synthetic-side-b.wav" WAVE
         if(-not [DiscoggerWindowTest]::SetWindowTextW($searchEdit,$query)){
             throw 'Could not enter native authenticated Discogger search.'
         }
+        if([DiscoggerWindowTest]::WindowText($searchEdit) -cne $query){
+            throw 'Native Search text did not match the submitted known fixture query.'
+        }
         [DiscoggerWindowTest]::ClickButton($searchButton)
         $liveCount=0
         for($n=0;$n -lt 120;$n++){
@@ -933,6 +941,8 @@ FILE "synthetic-side-b.wav" WAVE
         }
         $proof=Get-Content -LiteralPath $liveProbe -Raw
         $expected=@('ARTISTS','KNOWN_RELEASE_MATCHES','TREE','BUTTON','ROUTED',
+            'INPUT_NONEMPTY','PARSED_FIELDS','QUERY_MINIMAL','QUERY_DETECTED',
+            'ALT_MODE','REPEAT_QUERY','EARLY_EXIT',
             'WORKER_STARTED','WORKER_ADVANCED','WORKER_SUCCESS','WORKER_ERROR','WORKER_ABORT',
             'RESPONSE_PAGES','RESPONSE_ITEMS','PARSED_MASTERS','PARSED_RELEASES',
             'QUERY_LIMIT','API_IDENTITY','API_EXACT_OK','API_EXACT_ITEMS',
@@ -946,9 +956,10 @@ FILE "synthetic-side-b.wav" WAVE
         if($counts.Count -ne $expected.Count){throw 'Malformed native live-search stage evidence.'}
         Write-Host "DISCOGGER_AUTHENTICATED_GUI_RESULT_COUNTS_${Architecture}=artists:$($counts['ARTISTS']) known:$($counts['KNOWN_RELEASE_MATCHES']) tree:$($counts['TREE'])"
         Write-Host "DISCOGGER_AUTHENTICATED_SEARCH_STAGES_${Architecture}=button:$($counts['BUTTON']) routed:$($counts['ROUTED']) started:$($counts['WORKER_STARTED']) advanced:$($counts['WORKER_ADVANCED']) success:$($counts['WORKER_SUCCESS']) error:$($counts['WORKER_ERROR']) abort:$($counts['WORKER_ABORT']) pages:$($counts['RESPONSE_PAGES']) items:$($counts['RESPONSE_ITEMS']) masters:$($counts['PARSED_MASTERS']) releases:$($counts['PARSED_RELEASES']) capped:$($counts['QUERY_LIMIT'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_GUI_PARSE_${Architecture}=input:$($counts['INPUT_NONEMPTY']) fields:$($counts['PARSED_FIELDS']) minimal:$($counts['QUERY_MINIMAL']) query:$($counts['QUERY_DETECTED']) alt:$($counts['ALT_MODE']) retry:$($counts['REPEAT_QUERY']) exit:$($counts['EARLY_EXIT'])"
         Write-Host "DISCOGGER_AUTHENTICATED_API_PROBE_${Architecture}=identity:$($counts['API_IDENTITY']) exact_ok:$($counts['API_EXACT_OK']) exact_items:$($counts['API_EXACT_ITEMS']) exact_known:$($counts['API_EXACT_KNOWN']) broad_ok:$($counts['API_BROAD_OK']) broad_items:$($counts['API_BROAD_ITEMS']) broad_known:$($counts['API_BROAD_KNOWN'])"
         if($counts['BUTTON'] -lt 1){throw 'Native Search button did not reach its actual Discogger handler.'}
-        if($counts['ROUTED'] -lt 1){throw 'Discogger Search handler did not route its parsed query.'}
+        if($counts['ROUTED'] -lt 1){throw ('Discogger Search handler did not route its parsed query; early-exit stage '+$counts['EARLY_EXIT']+'.')}
         if($counts['WORKER_STARTED'] -lt 1){throw 'Discogger routed search but the asynchronous worker never started.'}
         if($counts['WORKER_ADVANCED'] -lt 1){throw 'Discogger parsed advanced query was routed to plain artist-name search.'}
         if($counts['WORKER_ERROR'] -gt 0){throw 'Discogger asynchronous search failed before publishing results.'}
