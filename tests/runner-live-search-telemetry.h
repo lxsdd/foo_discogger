@@ -7,6 +7,7 @@ namespace discogger_live_search_qa {
 inline std::atomic<unsigned> button{0};
 inline std::atomic<unsigned> routed{0};
 inline std::atomic<unsigned> worker_started{0};
+inline std::atomic<unsigned> worker_advanced{0};
 inline std::atomic<unsigned> worker_success{0};
 inline std::atomic<unsigned> worker_error{0};
 inline std::atomic<unsigned> worker_abort{0};
