@@ -1939,13 +1939,15 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
     for (size_t i = 0; i < artists.get_count(); ++i) {
         const Artist_ptr& artist = artists[i];
         if (!artist) continue;
-        for (const Release_ptr& release : artist->releases) {
+        for (size_t j = 0; j < artist->releases.get_count(); ++j) {
+            const Release_ptr& release = artist->releases[j];
             if (release && release->id.equals("38012673")) {
                 ++known_release_matches;
                 matching_artist = artist;
             }
         }
-        for (const MasterRelease_ptr& master : artist->master_releases) {
+        for (size_t j = 0; j < artist->master_releases.get_count(); ++j) {
+            const MasterRelease_ptr& master = artist->master_releases[j];
             if (master && master->main_release_id.equals("38012673")) {
                 ++known_release_matches;
                 matching_artist = artist;
