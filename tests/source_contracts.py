@@ -1964,3 +1964,16 @@ assert "add_error(message, true);" in completion_body
 assert "catch (const std::exception& e)" in completion_header
 assert "catch (...)" in completion_header
 print("PASS: UI-thread task completion contains ordinary and unknown exceptions.")
+
+# A missing DISCNUMBER may match tracks on multiple discs. Native numbered
+# matching must reject ambiguous candidates before assigning an enabled row;
+# otherwise the legacy first-match path could silently tag the wrong track.
+numbered = (root / "tag_writer.cpp").read_text(encoding="utf-8-sig")
+numbered_body = numbered.split("int TagWriter::order_tracks_by_number(", 1)[1].split(
+    "int TagWriter::order_tracks_by_assumption(", 1)[0]
+assert '#include "discogger_number_match.h"' in numbered
+assert "unique_number_match match;" in numbered_body
+assert "match.consider(" in numbered_body
+assert "if (match.ambiguous()) return MATCH_FAIL;" in numbered_body
+assert numbered_body.index("if (match.ambiguous())") < numbered_body.index("mappings[i].enabled = true;")
+print("PASS: ambiguous multidisc track numbers cannot auto-approve the first hit.")

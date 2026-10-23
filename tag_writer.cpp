@@ -7,6 +7,7 @@
 #include "tag_deletion_preflight.h"
 #include "discogger_duration_match.h"
 #include "discogger_result_alignment.h"
+#include "discogger_number_match.h"
 #include <set>
 
 
@@ -247,80 +248,71 @@ int TagWriter::order_tracks_by_duration(track_mappings_list_type &mappings) {
 }
 
 int TagWriter::order_tracks_by_number(track_mappings_list_type &mappings) {
-	if (!CONF.match_tracks_using_number) {
-		return MATCH_NA;
-	}
+    if (!CONF.match_tracks_using_number) return MATCH_NA;
+    if (!release || !m_finfo_manager) return MATCH_FAIL;
 
-	const size_t citems = m_finfo_manager->items.get_count();
-	int missing = 0;
-	metadb_handle_ptr item;
+    const size_t citems = m_finfo_manager->items.get_count();
+    int missing = 0;
+    pfc::array_t<std::pair<size_t, size_t>> used;
+    file_info_impl finfo;
 
-	pfc::array_t<std::pair<size_t, size_t>> used;
+    for (size_t i = 0; i < citems; ++i) {
+        const metadb_handle_ptr item = m_finfo_manager->items.get_item(i);
+        if (!item) return MATCH_FAIL;
+        item->get_info(finfo);
 
-	file_info_impl finfo;
-	for (size_t i = 0; i < citems; i++) {
-		item = m_finfo_manager->items.get_item(i);
-		item->get_info(finfo);
+        const char* disc_number_s = finfo.meta_get("DISCNUMBER", 0);
+        const char* track_number_s = finfo.meta_get("TRACKNUMBER", 0);
+        int disc_number = 0, track_number = 0;
+        try {
+            if (disc_number_s != nullptr) disc_number = std::stoi(disc_number_s);
+            if (track_number_s == nullptr) {
+                ++missing;
+                continue;
+            }
+            track_number = std::stoi(track_number_s);
+        } catch (const std::exception&) {
+            ++missing;
+            continue;
+        }
 
-		const char * disc_number_s = finfo.meta_get("DISCNUMBER", 0);
-		const char * track_number_s = finfo.meta_get("TRACKNUMBER", 0);
-		int disc_number, track_number;
-		try {
-			if (disc_number_s != nullptr) {
-				disc_number = std::stoi(disc_number_s);
-			}
-			else {
-				disc_number = 0;
-			}
-			if (track_number_s != nullptr) {
-				track_number = std::stoi(track_number_s);
-			}
-			else {
-				missing++;
-				continue;
-			}
-		}
-		catch (std::exception) {
-			missing++;
-			continue;
-		}
+        discogger_number_matching::unique_number_match match;
+        size_t absolute_track_number = 0;
+        for (size_t d = 0; d < release->discs.get_size(); ++d) {
+            const ReleaseDisc_ptr& disc = release->discs[d];
+            if (!disc) return MATCH_FAIL;
+            for (size_t j = 0; j < disc->tracks.get_size(); ++j) {
+                const ReleaseTrack_ptr& track = disc->tracks[j];
+                if (!track) return MATCH_FAIL;
+                ++absolute_track_number;
+                match.consider(disc_number, track_number, disc->disc_number,
+                    track->track_number, track->disc_track_number,
+                    absolute_track_number, d, j);
+            }
+        }
 
-		int total_num = 0;
-		bool found = false;
-		for (size_t d = 0; d < release->discs.get_size() && !found; d++) {
-			ReleaseDisc_ptr &disc = release->discs[d];
-			for (size_t j = 0; j < disc->tracks.get_size(); j++) {
-				total_num++;
-				ReleaseTrack_ptr &track = disc->tracks[j];
-				bool match;
-				match = (!disc_number || disc_number == disc->disc_number) && (track->track_number == track_number || track->disc_track_number == track_number);
-				match = match || (!disc_number && track_number == total_num);
-				if (match) {
-					for (size_t k = 0; k < used.get_count(); k++) {
-						if (used[k].first == d && used[k].second == j) {
-							return MATCH_FAIL;
-						}
-					}
-					mappings[i].enabled = true;
-					mappings[i].discogs_disc = d;
-					mappings[i].discogs_track = j;
-					found = true;
-					used.append_single(std::pair<size_t, size_t>(d, j));
-					break;
-				}
-			}
-		}
-		if (!found) {
-			missing++;
-		}
-	}
-	if (missing == citems) {
-		return MATCH_NA;
-	}
-	else if (missing) {
-		return MATCH_FAIL;
-	}
-	return MATCH_SUCCESS;
+        // A first-match choice could tag the wrong disc/remix. Crucially,
+        // ambiguity is MATCH_FAIL, not MATCH_NA: never fall back to assumed
+        // list order when numbered tracks disagree.
+        if (match.ambiguous()) return MATCH_FAIL;
+        if (!match.unique()) {
+            ++missing;
+            continue;
+        }
+        const size_t disc_index = match.disc_index();
+        const size_t track_index = match.track_index();
+        for (size_t k = 0; k < used.get_count(); ++k) {
+            if (used[k].first == disc_index && used[k].second == track_index)
+                return MATCH_FAIL;
+        }
+        mappings[i].enabled = true;
+        mappings[i].discogs_disc = disc_index;
+        mappings[i].discogs_track = track_index;
+        used.append_single(std::pair<size_t, size_t>(disc_index, track_index));
+    }
+    if (missing == citems) return MATCH_NA;
+    if (missing) return MATCH_FAIL;
+    return MATCH_SUCCESS;
 }
 
 int TagWriter::order_tracks_by_assumption(track_mappings_list_type &mappings) {
