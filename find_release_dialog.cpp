@@ -1232,6 +1232,15 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 	if (!append) {
 		m_alist.fill_artist_list(b_chk_exact_matches, m_tracer.has_amr(), updrelsrc/*updRelSrc::ArtistSearch*/);
 
+		// A unique advanced-search result already contains its release previews.
+		// Show it immediately, without another artist click or any metadata write.
+		// Multiple artists remain an explicit review choice.
+		if ((m_query_mode & SearchMode::AT) && m_alist.Get_Artists().get_count() == 1) {
+			Artist_ptr only = m_alist.Get_Artists()[0];
+			if (only && (only->releases.get_count() || only->master_releases.get_count()))
+				ShowArtistSearchResults(only);
+		}
+
 		if (!m_alist.Get_Artists().get_count()) {
 			cupdRelSrc cupdsrc(updRelSrc::Undef);
 			//..
@@ -1921,6 +1930,36 @@ void CFindReleaseDialog::UpdateArtistProfile(Artist_ptr artist) {
 
 
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
+std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
+    if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
+        throw std::runtime_error("Live result inspection requires an open native Find Releases dialog.");
+    const auto artists = m_alist.Get_Artists();
+    size_t known_release_matches = 0;
+    Artist_ptr matching_artist;
+    for (size_t i = 0; i < artists.get_count(); ++i) {
+        const Artist_ptr& artist = artists[i];
+        if (!artist) continue;
+        for (const Release_ptr& release : artist->releases) {
+            if (release && release->id.equals("38012673")) {
+                ++known_release_matches;
+                matching_artist = artist;
+            }
+        }
+        for (const MasterRelease_ptr& master : artist->master_releases) {
+            if (master && master->main_release_id.equals("38012673")) {
+                ++known_release_matches;
+                matching_artist = artist;
+            }
+        }
+    }
+    // The real search and real artist-list model must already have produced
+    // the exact known release. This test-only helper only opens that reviewed
+    // result through the production tree presenter; it cannot create a row.
+    if (matching_artist && !m_dctree.Get_Size())
+        ShowArtistSearchResults(matching_artist);
+    return {artists.get_count(), known_release_matches, m_dctree.Get_Size()};
+}
+
 std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
