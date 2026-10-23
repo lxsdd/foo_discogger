@@ -2011,3 +2011,13 @@ assert 'oauth_token = token;' in runner_fetcher
 assert 'oauth_token_secret = token_secret;' in runner_fetcher
 assert 'return true;' in runner_gui.split('bool OAuthCheck(', 1)[1].split('#endif', 1)[0]
 print("PASS: protected runner OAuth is test-build-only and default Discogger behavior is preserved.")
+
+# The authenticated live path must drive real native Find Releases controls,
+# while the existing uncredentialed synthetic GUI coverage remains reusable.
+gui_script = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "[switch]$AuthorizedLive" in gui_script
+assert "DISCOGGER_AUTHENTICATED_GUI_SEARCH_$Architecture=PASS" in gui_script
+assert "[DiscoggerWindowTest]::ClickButton($searchButton)" in gui_script
+assert "CompanionMetadataIsolationDll" in gui_script
+assert "DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY" in gui_script
+print("PASS: authenticated runner GUI extension retains native controls and redacts crash details.")
