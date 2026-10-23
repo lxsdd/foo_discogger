@@ -979,12 +979,18 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 	//todo: move search query related 
 	pfc::string8 trot_text = trim(uGetWindowText(m_edit_artist));
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::input_nonempty.store(trot_text.get_length() ? 1u : 0u);
+#endif
 
 	bool bva_in_artist = false;
 	bva_in_artist |= pfc::stringLite::g_equalsCaseInsensitive(trot_text, "various");
 	bva_in_artist |= pfc::stringLite::g_equalsCaseInsensitive(trot_text, "various artists");
 
 	if (!trot_text.get_length()) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(1);
+#endif
 		//..
 		return FALSE;
 		//..
@@ -1002,6 +1008,12 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	m_qdm_search_query = {};
 	bool bquery = search_query::TextToMap(trot_text, m_qdm_search_query);
 	bquery &= search_query::IsMinimal(m_qdm_search_query);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::parsed_fields.store(static_cast<unsigned>(search_query::CountAvailableFields(m_qdm_search_query)));
+	discogger_live_search_qa::query_minimal.store(search_query::IsMinimal(m_qdm_search_query) ? 1u : 0u);
+	discogger_live_search_qa::query_detected.store(bquery ? 1u : 0u);
+	discogger_live_search_qa::alt_mode.store(CONF.awt_get_alt_mode() ? 1u : 0u);
+#endif
 
 	bool bquery_type_uncompleted = search_query::CountAvailableFields(m_qdm_search_query) >= 1 && !search_query::IsMinimal(m_qdm_search_query);
 
@@ -1009,6 +1021,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		pfc::string8 hint = search_query::IsMinimalHint(m_qdm_search_query);
 		SetSearchModeText(hint, false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(2);
+#endif
 
 		//..
 
@@ -1027,6 +1042,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	if (bva_in_artist && !bqdm_various) {
 
 		SetSearchModeText("Use query syntax 'artist= various && title= ...' or enter an individual artist / appearance.", false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(3);
+#endif
 
 		//..
 		return FALSE;
@@ -1044,10 +1062,10 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (!exp_pair.first.compare(m_search_expression)) {
 
-			log_msg("Query loaded.");
-			//..
-			return FALSE;
-			//..
+			log_msg("Query explicitly retried.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+			discogger_live_search_qa::repeat_query.store(1);
+#endif
 		}
 
 		if (bres) {
@@ -1059,6 +1077,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 			trot_text = artist_meta_scaped;
 
 			if (CONF.awt_get_alt_mode()) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+				discogger_live_search_qa::early_exit.store(5);
+#endif
 
 				//..
 
@@ -1072,10 +1093,10 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (trot_text.equals(m_search_artist)) {
 
-			log_msg("Artist search loaded.");
-			//..
-			return FALSE;
-			//..
+			log_msg("Artist search explicitly retried.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+			discogger_live_search_qa::repeat_query.store(1);
+#endif
 		}
 
 		m_search_expression = "";
@@ -1097,6 +1118,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	else {
 
 		SetSearchModeText("to check syntax, right click on this message for examples.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(7);
+#endif
 
 	}
 	return FALSE;
