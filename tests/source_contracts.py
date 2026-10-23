@@ -1883,6 +1883,16 @@ for callback_name, ui_function in (
 assert async_tasks_header.count("HWND m_owner_window = nullptr;") >= 2
 print("PASS: artist and search list/tree updates are guarded main-thread completions.")
 
+# The network search owns locked_operation until its on_success returns. It
+# launches a presentation-only follow-up *inside* that callback. Acquiring
+# the same exclusive gate in the nested task throws "Operation locked" and
+# drops every result, even after a successful authenticated API response.
+assert "class search_artist_process_callback : public foo_discogs_threaded_locked_process_callback" in async_tasks_header
+assert "class on_search_artist_done_process_callback : public foo_discogs_threaded_process_callback" in async_tasks_header
+assert "class on_search_artist_done_process_callback : public foo_discogs_threaded_locked_process_callback" not in async_tasks_header
+assert "task->start(find_dlg->m_hWnd);" in async_tasks_source
+print("PASS: nested search-result presentation does not reacquire the parent operation gate.")
+
 # Loading release versions may run off-thread; mutating the TreeView may not.
 expand_source = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
 expand_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
