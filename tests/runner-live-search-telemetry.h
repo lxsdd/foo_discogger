@@ -6,6 +6,12 @@
 namespace discogger_live_search_qa {
 inline std::atomic<unsigned> button{0};
 inline std::atomic<unsigned> input_nonempty{0};
+inline std::atomic<unsigned> input_nonempty_calls{0};
+inline std::atomic<unsigned> input_empty_calls{0};
+inline std::atomic<unsigned> input_member_valid{0};
+inline std::atomic<unsigned> input_hwnd_match{0};
+inline std::atomic<unsigned> input_member_length{0};
+inline std::atomic<unsigned> input_live_length{0};
 inline std::atomic<unsigned> parsed_fields{0};
 inline std::atomic<unsigned> query_minimal{0};
 inline std::atomic<unsigned> query_detected{0};
@@ -27,6 +33,12 @@ inline std::atomic<unsigned> query_limit{0};
 inline void reset() noexcept {
     button.store(0);
     input_nonempty.store(0);
+    input_nonempty_calls.store(0);
+    input_empty_calls.store(0);
+    input_member_valid.store(0);
+    input_hwnd_match.store(0);
+    input_member_length.store(0);
+    input_live_length.store(0);
     parsed_fields.store(0);
     query_minimal.store(0);
     query_detected.store(0);
