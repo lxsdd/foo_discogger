@@ -283,7 +283,9 @@ def verify_original_mp3_standard_text(before, after):
 def verify_original_mp3_txxx(before, after):
     """Preserve physical custom TXXX and ReplayGain despite ID3 re-encoding."""
     def existing(raw):
-        return Counter((name.upper(), value) for name, value in id3_txxx_values(raw)
+        # TXXX descriptions are user-defined physical names: preserve their
+        # exact case. Uppercasing here concealed destructive case-only renames.
+        return Counter((name, value) for name, value in id3_txxx_values(raw)
                        if name.upper() != "DISCOGGER_QA_RUNNER")
     original = existing(before)
     for name, value in (
@@ -657,6 +659,33 @@ def selftest_id3():
         pass
     else:
         raise AssertionError("Trimmed physical TXXX description escaped preservation audit")
+    # ID3 TXXX descriptions are not ordinary case-folded Vorbis keys.
+    # A physical writer must not silently change the spelling of a custom
+    # description while retaining its value (v2.3 and v2.4).
+    for version in (3, 4):
+        def case_tag(custom_name):
+            entries = (
+                ("DISCOGGER_QA_CUSTOM", "Keep original MP3 metadata"),
+                ("REPLAYGAIN_TRACK_GAIN", "-5.00 dB"),
+                ("REPLAYGAIN_TRACK_PEAK", "0.800000"),
+                (custom_name, "unchanged"),
+            )
+            payload = b""
+            for name, value in entries:
+                body = b"\x03" + name.encode("utf-8") + b"\x00" + value.encode("utf-8")
+                size = (len(body).to_bytes(4, "big") if version == 3
+                        else ss(len(body)))
+                payload += b"TXXX" + size + bytes(2) + body
+            return b"ID3" + bytes((version, 0, 0)) + ss(len(payload)) + payload
+        original_case = case_tag("DJ User Key")
+        renamed_case = case_tag("DJ USER KEY")
+        verify_original_mp3_txxx(original_case, original_case)
+        try:
+            verify_original_mp3_txxx(original_case, renamed_case)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Case-only TXXX description rename escaped preservation audit")
     marker = frame("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")
     def with_qa_marker(marker_frames):
         payload = fields + marker_frames
@@ -683,6 +712,7 @@ def selftest_id3():
         else:
             raise AssertionError("Whitespace-spoofed TXXX QA marker escaped verifier")
     print("DISCOGGER_ID3_TXXX_DESCRIPTION_WHITESPACE_PRESERVATION=PASS")
+    print("DISCOGGER_ID3_TXXX_DESCRIPTION_CASE_PRESERVATION=PASS")
     print("DISCOGGER_ID3_TXXX_INTERIOR_BOM_PRESERVATION=PASS")
     for corrupted in (original.replace(b"0.800000", b"0.700000"),
                       b"ID3" + bytes((3, 0, 0)) + ss(len(fields)-1) + fields[:-1]):
