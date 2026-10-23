@@ -2,6 +2,9 @@
 #include "discogger_search_fallback.h"
 #include <fstream>
 #include "discogger_cache_pages.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
 #include <cstdlib>
 
 #include "pfc/other.h"
@@ -655,7 +658,17 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 	try {
 
 		pages = discogs_interface->get_all_pages(url, params, out_max_to_abort, p_abort, "Fetching query results...", p_status);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::response_pages.store(static_cast<unsigned>(pages.get_count()));
+		if (pages.get_count())
+			discogger_live_search_qa::response_items.store(static_cast<unsigned>(
+				pages[0]->get_object_int("pagination", "items")));
+#endif
 		if (out_max_to_abort > max_to_abort) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+			discogger_live_search_qa::query_limit.store(1);
+			discogger_live_search_qa::response_items.store(static_cast<unsigned>(out_max_to_abort));
+#endif
 			return rppair_t({ out_max_to_abort,out_max_to_abort }, { 0,0 });
 		}
 
@@ -758,6 +771,10 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         }
     }
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::parsed_masters.store(static_cast<unsigned>(fake_artist->master_releases.get_count()));
+	discogger_live_search_qa::parsed_releases.store(static_cast<unsigned>(fake_artist->releases.get_count()));
+#endif
 	va_res_cap.first = fake_artist->master_releases.get_count();
 	va_res_cap.second = fake_artist->releases.get_count();
 
