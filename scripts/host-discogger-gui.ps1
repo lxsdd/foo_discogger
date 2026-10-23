@@ -67,6 +67,25 @@ public static class DiscoggerWindowTest {
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hwnd,int id);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern bool SetWindowTextW(IntPtr hwnd,string value);
+  // Cross-process edit controls require WM_SETTEXT/WM_GETTEXT, not the
+  // SetWindowText/GetWindowText convenience APIs (Microsoft Win32 contract).
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)]
+  static extern IntPtr SendTextMessageTimeoutW(IntPtr hwnd,uint msg,IntPtr w,string text,uint flags,uint timeout,out IntPtr result);
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)]
+  static extern IntPtr ReadTextMessageTimeoutW(IntPtr hwnd,uint msg,IntPtr w,StringBuilder text,uint flags,uint timeout,out IntPtr result);
+  public static void SetEditText(IntPtr hwnd,string value) {
+    IntPtr result;
+    if(SendTextMessageTimeoutW(hwnd,0x000C,IntPtr.Zero,value,2,4000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Timed out setting native search edit text");
+  }
+  public static string EditText(IntPtr hwnd) {
+    var sb=new StringBuilder(1024);
+    IntPtr result;
+    if(ReadTextMessageTimeoutW(hwnd,0x000D,new IntPtr(sb.Capacity),sb,2,4000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Timed out reading native search edit text");
+    return sb.ToString();
+  }
+
   public static string WindowText(IntPtr hwnd) {
     var sb=new StringBuilder(1024);
     GetWindowTextW(hwnd,sb,sb.Capacity);
@@ -907,14 +926,12 @@ FILE "synthetic-side-b.wav" WAVE
         # This query is a known exact public release; the disposable profile has
         # no Discogger search cache, so a populated tree requires a live request.
         $query='artist= Estiva & title= Via Balearia'
-        if(-not [DiscoggerWindowTest]::SetWindowTextW($searchEdit,$query)){
-            throw 'Could not enter native authenticated Discogger search.'
-        }
-        if([DiscoggerWindowTest]::WindowText($searchEdit) -cne $query){
+        [DiscoggerWindowTest]::SetEditText($searchEdit,$query)
+        if([DiscoggerWindowTest]::EditText($searchEdit) -cne $query){
             throw 'Native Search text did not match the submitted known fixture query.'
         }
         [DiscoggerWindowTest]::ClickButton($searchButton)
-        $postClickText=[DiscoggerWindowTest]::WindowText($searchEdit)
+        $postClickText=[DiscoggerWindowTest]::EditText($searchEdit)
         Write-Host "DISCOGGER_AUTHENTICATED_UI_POSTCLICK_${Architecture}=length:$($postClickText.Length) retained:$([int]($postClickText -ceq $query))"
         $liveCount=0
         for($n=0;$n -lt 120;$n++){
