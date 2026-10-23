@@ -277,6 +277,45 @@ def id3_apic_frames(content):
         raise AssertionError("Truncated trailing ID3v2 frame")
     return pictures
 
+
+def id3_other_physical_frames(content):
+    """Preserve non-text/non-artwork ID3 frames, including comments and private data.
+
+    The ordinary text, TXXX/ReplayGain and APIC checks run separately. For
+    COMM, USLT, UFID, PRIV, GEOB, chapters and unknown frames, do not silently
+    treat a lost frame as harmless just because TITLE and APIC still match.
+    Frame flags and raw payloads are part of the physical preservation contract.
+    """
+    version, pos, end = id3_frame_bounds(content)
+    frames = Counter()
+    while pos + 10 <= end:
+        name = content[pos:pos + 4]
+        if name == bytes(4):
+            if any(content[pos:end]):
+                raise AssertionError("Invalid nonzero ID3v2 opaque-frame padding")
+            return frames
+        if not all(65 <= ch <= 90 or 48 <= ch <= 57 for ch in name):
+            raise AssertionError("Invalid ID3v2 opaque-frame identifier")
+        size = (int.from_bytes(content[pos + 4:pos + 8], "big")
+                if version == 3 else _syncsafe_size(content[pos + 4:pos + 8]))
+        flags = content[pos + 8:pos + 10]
+        pos += 10
+        if size < 1 or size > end - pos:
+            raise AssertionError("Invalid ID3v2 opaque-frame size")
+        if name not in (b"TXXX", b"APIC") and not name.startswith(b"T"):
+            frames[(name, flags, content[pos:pos + size])] += 1
+        pos += size
+    if any(content[pos:end]):
+        raise AssertionError("Truncated trailing ID3v2 opaque frame")
+    return frames
+
+
+def verify_original_mp3_other_frames(before, after):
+    """Require exact preservation of every other physical ID3 frame and count."""
+    if id3_other_physical_frames(before) != id3_other_physical_frames(after):
+        raise AssertionError("Physical MP3 comments/private/unknown frames changed")
+
+
 def id3_audio_payload(content):
     end = 10 + _syncsafe_size(content[6:10])
     if end > len(content): raise AssertionError("ID3 tag overlaps MP3 data")
@@ -298,6 +337,7 @@ def verify(before: bytes, after: bytes, suffix):
             raise AssertionError("Original MP3 compressed audio payload changed")
         verify_original_mp3_standard_text(before, after)
         verify_original_mp3_txxx(before, after)
+        verify_original_mp3_other_frames(before, after)
         tags = id3_txxx_values(after)
         if ("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED") not in tags:
             raise AssertionError("Real foobar MP3 writer did not persist requested TXXX tag")
@@ -538,6 +578,47 @@ def selftest_id3():
             pass
         else:
             raise AssertionError("Changed/missing physical MP3 text tag escaped verifier")
+    # Non-text physical ID3 frames were previously invisible to the verifier.
+    # Preserve comments/lyrics/private/unique-ID frames even across frame order
+    # changes and ID3v2.3 -> v2.4 upgrades; reject removals, edits and extras.
+    def opaque_frame(name, value, version, flags=bytes(2)):
+        size = len(value).to_bytes(4, "big") if version == 3 else ss(len(value))
+        return name + size + flags + value
+    def opaque_tag(version, entries, padding=b""):
+        payload = b"".join(opaque_frame(name, value, version, flags)
+                           for name, value, flags in entries) + padding
+        return b"ID3" + bytes((version, 0, 0)) + ss(len(payload)) + payload
+    entries = [
+        (b"COMM", b"eng\\x00Original comment", bytes(2)),
+        (b"USLT", b"eng\\x00Original lyrics", bytes(2)),
+        (b"PRIV", b"owner\\x00opaque-data", bytes(2)),
+        (b"UFID", b"owner\\x00original-id", bytes(2)),
+        (b"GEOB", b"application/octet-stream\\x00attachment", bytes(2)),
+    ]
+    # Convert textual escaped nulls to actual ID3 binary separators.
+    entries = [(name, value.replace(b"\\\\x00", bytes(1)), flags)
+               for name, value, flags in entries]
+    for version in (3, 4):
+        original_other = opaque_tag(version, entries)
+        assert len(id3_other_physical_frames(original_other)) == len(entries)
+        verify_original_mp3_other_frames(
+            original_other, opaque_tag(4, list(reversed(entries)), bytes(3)))
+        invalid_others = [
+            opaque_tag(4, entries[:-1]),
+            opaque_tag(4, entries + [entries[0]]),
+            opaque_tag(4, entries[:-1] + [(b"GEOB", b"modified", bytes(2))]),
+            opaque_tag(4, entries[:-1] + [(b"GEOB", entries[-1][1], b"\\x00\\x08")]),
+            opaque_tag(4, entries, b"\\x00\\x01"),
+            opaque_tag(4, entries, b"\\x01"),
+        ]
+        for invalid_other in invalid_others:
+            try:
+                verify_original_mp3_other_frames(original_other, invalid_other)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Lost/altered physical MP3 opaque frame escaped verifier")
+    print("DISCOGGER_ID3_OPAQUE_FRAME_PRESERVATION_VERIFIER=PASS")
     print("DISCOGGER_ID3_STANDARD_TEXT_PRESERVATION_VERIFIER=PASS")
     print("DISCOGGER_ID3_EXTENDED_APIC_VERIFIER=PASS")
     print("DISCOGGER_ID3_TXXX_UNICODE_VERIFIER=PASS")
