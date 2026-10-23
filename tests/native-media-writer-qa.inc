@@ -295,9 +295,9 @@ void run_live_search_probe_qa() {
     if (!out) throw std::runtime_error("Could not write live GUI evidence.");
     // Counts and fixed public release identity only. Never record query,
     // headers, OAuth values, responses, profile data or arbitrary error text.
-    out << "ARTISTS=" << counts[0] << '\\n'
-        << "KNOWN_RELEASE_MATCHES=" << counts[1] << '\\n'
-        << "TREE=" << counts[2] << '\\n';
+    out << "ARTISTS=" << counts[0] << '\n'
+        << "KNOWN_RELEASE_MATCHES=" << counts[1] << '\n'
+        << "TREE=" << counts[2] << '\n';
     out.flush();
     if (!out) throw std::runtime_error("Could not flush live GUI evidence.");
 }
