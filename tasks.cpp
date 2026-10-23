@@ -1292,6 +1292,7 @@ void search_artist_process_callback::start(HWND parent) {
 void search_artist_process_callback::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 	discogger_live_search_qa::worker_started.store(1);
+	discogger_live_search_qa::worker_advanced.store((m_va & SearchMode::AT) ? 1u : 0u);
 #endif
 
 	pfc::string8 msg;
