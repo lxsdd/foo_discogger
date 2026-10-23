@@ -128,6 +128,13 @@ def id3_frame_bounds(content):
     version = content[3]
     if version not in (3, 4):
         raise AssertionError("Unsupported synthetic fixture ID3v2 version")
+    # Unsynchronisation changes the meaning of on-disk frame bytes. Likewise,
+    # experimental/footer/reserved flags are not decoded by this verifier.
+    # Reject rather than incorrectly certify preservation of opaque metadata.
+    if content[4] != 0:
+        raise AssertionError("Unsupported ID3v2 revision")
+    if content[5] & ~0x40:
+        raise AssertionError("Unsupported ID3v2 unsync/experimental/footer flags")
     end = 10 + _syncsafe_size(content[6:10])
     if end > len(content):
         raise AssertionError("Truncated ID3v2 tag")
@@ -607,6 +614,30 @@ def selftest_id3():
         return b"ID3" + bytes((version, 0, 0)) + ss(len(frames)) + frames + b"Trance"
     original_text = text_tag(3, 1)
     verify_original_mp3_standard_text(original_text, text_tag(4, 3))
+    # P1: toggling ID3 header unsynchronisation (or other unsupported bits)
+    # changes the interpretation of identical frame bytes. Every physical
+    # metadata reader must fail closed, for both supported ID3v2 versions.
+    for version in (3, 4):
+        clean = text_tag(version, 1 if version == 3 else 3)
+        for reader in (id3_txxx_values, id3_standard_text_values,
+                       id3_apic_frames, id3_other_physical_frames):
+            reader(clean)
+            for flags in (0x80, 0x20, 0x10, 0x01, 0xc0):
+                malformed = clean[:5] + bytes((flags,)) + clean[6:]
+                try:
+                    reader(malformed)
+                except AssertionError:
+                    pass
+                else:
+                    raise AssertionError("Opaque ID3v2 header flags escaped verifier")
+            malformed_revision = clean[:4] + bytes((1,)) + clean[5:]
+            try:
+                reader(malformed_revision)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Unsupported ID3v2 revision escaped verifier")
+    print("DISCOGGER_ID3_HEADER_FLAG_INTEGRITY_VERIFIER=PASS")
     # Reject corrupt ID3v2 padding and partial frame headers, even when
     # all original text fields are still present and the audio contains
     # their literal bytes. Clean zero padding remains valid.
