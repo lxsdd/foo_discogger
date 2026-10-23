@@ -6,7 +6,12 @@
 #include "exception.h"
 #include "utils.h"
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+// Stable, non-secret identity for protected native Discogs read-only requests.
+char USER_AGENT[] = "User-Agent: foobar2000-discogger-protected-qa/1.0 (+https://github.com/lxsdd/foo_discogger)";
+#else
 char USER_AGENT[] = "User-Agent: <<user agent>>";
+#endif
 
 const double RL_AVG_THRESHOLD = 0.5;
 const size_t RL_REMAINING_THRESHOLD = 30;

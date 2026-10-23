@@ -2021,3 +2021,9 @@ assert "[DiscoggerWindowTest]::ClickButton($searchButton)" in gui_script
 assert "CompanionMetadataIsolationDll" in gui_script
 assert "DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY" in gui_script
 print("PASS: authenticated runner GUI extension retains native controls and redacts crash details.")
+
+# The live QA path must identify itself rather than sending the upstream
+# unpublished application's placeholder user agent.
+assert 'foobar2000-discogger-protected-qa/1.0' in runner_fetcher
+assert 'char USER_AGENT[] = "User-Agent: <<user agent>>";' in runner_fetcher
+print("PASS: protected QA uses a fixed non-secret User-Agent while product behavior remains unchanged.")
