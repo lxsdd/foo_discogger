@@ -1,8 +1,11 @@
 #include "../discogger_async_write_lease.h"
+#include "../discogger_task_completion.h"
 #include <atomic>
 #include <cassert>
 #include <thread>
 #include <vector>
+#include <stdexcept>
+#include <string>
 int main() {
     discogger_write_safety::async_write_gate gate;
     assert(!gate.busy());
@@ -33,4 +36,20 @@ int main() {
     assert(!gate.acquire()); // Tag writer cannot race active manual artwork.
     manual_art.reset();
     assert(!gate.busy());
+
+    // The modeless UI-thread completion callback must not crash foobar if
+    // physical readback, artwork scheduling or error reporting throws.
+    int completions = 0, reports = 0;
+    std::string message;
+    auto report = [&](const char* what) { ++reports; message = what; };
+    discogger_async::run_success_with_error_boundary([&] { ++completions; }, report);
+    assert(completions == 1 && reports == 0);
+    discogger_async::run_success_with_error_boundary(
+        [] { throw std::runtime_error("Physical metadata readback failed"); }, report);
+    assert(reports == 1 && message == "Physical metadata readback failed");
+    discogger_async::run_success_with_error_boundary([] { throw 42; }, report);
+    assert(reports == 2 && message == "Unknown error completing task.");
+    discogger_async::run_success_with_error_boundary(
+        [] { throw std::runtime_error("Failed write"); },
+        [](const char*) { throw std::runtime_error("Reporter failed"); });
 }

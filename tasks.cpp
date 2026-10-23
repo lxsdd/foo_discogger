@@ -15,6 +15,7 @@
 #include "discogger_preview_selection.h"
 #include "discogger_artist_load_ownership.h"
 #include "discogger_write_safety.h"
+#include "discogger_task_completion.h"
 #include "discogger_physical_targets.h"
 
 void foo_discogs_threaded_process_callback::run(threaded_process_status &p_status, abort_callback &p_abort) {
@@ -42,12 +43,9 @@ void foo_discogs_threaded_process_callback::on_done(HWND p_wnd, bool p_was_abort
 	}
 	else {
 		if (!fatal_error) {
-			try {
-				on_success(p_wnd);
-			}
-			catch (foo_discogs_exception &e) {
-				add_error(e, true);
-			}
+			discogger_async::run_success_with_error_boundary(
+				[&]() { on_success(p_wnd); },
+				[&](const char* message) { add_error(message, true); });
 		}
 		if (errors.get_count()) {
 			display_errors();

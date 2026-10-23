@@ -1949,3 +1949,18 @@ assert "discogger_require_physical_targets(" in write_worker
 assert "write_infos(" not in write_worker
 assert "write_infos(" in write_commit
 print("PASS: cancelled tag preparation cannot enter the physical SDK writer.")
+
+# Modeless on_success runs on foobar's UI thread. Ordinary std::exceptions
+# (including physical readback and artwork scheduling failures) must be
+# reported as fatal rather than escaping the SDK callback.
+completion_header = (root / "discogger_task_completion.h").read_text(encoding="utf-8-sig")
+completion_body = async_tasks_source.split(
+    "void foo_discogs_threaded_process_callback::on_done(", 1)[1].split(
+    "generate_tags_task::generate_tags_task(", 1)[0]
+assert '#include "discogger_task_completion.h"' in async_tasks_source
+assert "run_success_with_error_boundary(" in completion_body
+assert "on_success(p_wnd);" in completion_body
+assert "add_error(message, true);" in completion_body
+assert "catch (const std::exception& e)" in completion_header
+assert "catch (...)" in completion_header
+print("PASS: UI-thread task completion contains ordinary and unknown exceptions.")
