@@ -1993,3 +1993,21 @@ assert "m_track_mappings[i].enabled = false;" in match_entry
 assert match_entry.index("m_track_mappings[i].enabled = false;") < match_entry.index("tm.enabled = true;")
 assert "m_match_status != MATCH_SUCCESS" not in match_entry
 print("PASS: failed/ambiguous matching cannot silently enable positional assignments.")
+
+# Protected CI-only OAuth values must be consumed strictly from the runner
+# process environment; never committed, embedded, saved to Discogger config or
+# printed. Ordinary product builds retain the existing OAuth path unchanged.
+runner_fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")
+runner_gui = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in runner_fetcher
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in runner_gui
+for name in ("DISCOGS_OAUTH_CONSUMER_KEY", "DISCOGS_OAUTH_CONSUMER_SECRET",
+             "DISCOGS_OAUTH_ACCESS_TOKEN", "DISCOGS_OAUTH_TOKEN_SECRET"):
+    assert ('std::getenv("' + name + '")') in runner_fetcher
+    assert ('std::getenv("' + name + '")') in runner_gui
+assert 'throw foo_discogs_exception("Incomplete or unauthorized runner OAuth configuration.");' in runner_fetcher
+assert 'consumer = new OAuth::Consumer(CONSUMER_KEY, CONSUMER_SECRET);' in runner_fetcher
+assert 'oauth_token = token;' in runner_fetcher
+assert 'oauth_token_secret = token_secret;' in runner_fetcher
+assert 'return true;' in runner_gui.split('bool OAuthCheck(', 1)[1].split('#endif', 1)[0]
+print("PASS: protected runner OAuth is test-build-only and default Discogger behavior is preserved.")

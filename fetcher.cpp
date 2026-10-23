@@ -15,6 +15,8 @@ const size_t RL_REMAINING_THRESHOLD = 30;
 #include <optional>
 #include <ostream>
 #include <iostream>
+#include <cstdlib>
+#include <cstring>
 
 std::ostream& operator<<(std::ostream& os, std::chrono::nanoseconds ns)
 {
@@ -533,6 +535,29 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 }
 
 void Fetcher::set_oauth(const pfc::string8 &token, const pfc::string8 &token_secret) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	// Test-only process-memory OAuth injection. Never compile secrets into the DLL,
+	// write them to a profile, or enable this path in production component builds.
+	const char* runner = std::getenv("GITHUB_ACTIONS");
+	const char* key = std::getenv("DISCOGS_OAUTH_CONSUMER_KEY");
+	const char* secret = std::getenv("DISCOGS_OAUTH_CONSUMER_SECRET");
+	const char* access = std::getenv("DISCOGS_OAUTH_ACCESS_TOKEN");
+	const char* access_secret = std::getenv("DISCOGS_OAUTH_TOKEN_SECRET");
+	const bool any = (key && *key) || (secret && *secret) ||
+		(access && *access) || (access_secret && *access_secret);
+	const bool all = (key && *key) && (secret && *secret) &&
+		(access && *access) && (access_secret && *access_secret);
+	if (any && (!all || !runner || std::strcmp(runner, "true") != 0)) {
+		throw foo_discogs_exception("Incomplete or unauthorized runner OAuth configuration.");
+	}
+	if (all) {
+		consumer = new OAuth::Consumer(key, secret);
+		oauth_token = access;
+		oauth_token_secret = access_secret;
+		init_oauth();
+		return;
+	}
+#endif
 	consumer = new OAuth::Consumer(CONSUMER_KEY, CONSUMER_SECRET);
 	oauth_token = token;
 	oauth_token_secret = token_secret;

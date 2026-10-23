@@ -1,4 +1,6 @@
 #include "stdafx.h"
+#include <cstdlib>
+#include <cstring>
 #include "configuration_dialog.h"
 #include "tasks.h"
 
@@ -312,6 +314,18 @@ bool CFindReleaseDialog::ForwardVKReturn()
 }
 
 bool OAuthCheck(const foo_conf& conf) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	// The protected Windows QA runner injects all four values in memory. The
+	// disposable GUI may search without persisting tokens to Discogger config.
+	const char* runner = std::getenv("GITHUB_ACTIONS");
+	const char* key = std::getenv("DISCOGS_OAUTH_CONSUMER_KEY");
+	const char* secret = std::getenv("DISCOGS_OAUTH_CONSUMER_SECRET");
+	const char* access = std::getenv("DISCOGS_OAUTH_ACCESS_TOKEN");
+	const char* access_secret = std::getenv("DISCOGS_OAUTH_TOKEN_SECRET");
+	if (runner && std::strcmp(runner, "true") == 0 &&
+		key && *key && secret && *secret && access && *access &&
+		access_secret && *access_secret) return true;
+#endif
 
 	if (!g_discogs->gave_oauth_warning && (!conf.oauth_token.get_length() || !conf.oauth_token_secret.get_length())) {
 
