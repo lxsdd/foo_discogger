@@ -2027,3 +2027,19 @@ print("PASS: authenticated runner GUI extension retains native controls and reda
 assert 'foobar2000-discogger-protected-qa/1.0' in runner_fetcher
 assert 'char USER_AGENT[] = "User-Agent: <<user agent>>";' in runner_fetcher
 print("PASS: protected QA uses a fixed non-secret User-Agent while product behavior remains unchanged.")
+
+# Authenticated GUI validation must distinguish a populated artist list from
+# a populated release tree, and require a known exact live release identity.
+_live_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+_live_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+_live_qa = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+_live_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "m_alist.Get_Artists().get_count() == 1" in _live_dialog
+assert "ShowArtistSearchResults(only);" in _live_dialog
+assert "runner_qa_live_search_probe()" in _live_dialog and "runner_qa_live_search_probe()" in _live_header
+assert 'release->id.equals("38012673")' in _live_dialog
+assert "KNOWN_RELEASE_MATCHES=" in _live_qa and "qa-live-search-probe.txt" in _live_qa
+assert "Discogger QA live search probe" in _live_qa
+assert "KNOWN_RELEASE_MATCHES" in _live_host and "ARTISTS" in _live_host
+assert _live_host.index("qa-live-search-probe.txt") > _live_host.index("[DiscoggerWindowTest]::ClickButton($searchButton)")
+print("PASS: exact authenticated GUI artist/release identity and review-only auto-display contract.")
