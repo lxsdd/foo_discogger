@@ -20,6 +20,7 @@ inline void reset() noexcept {
     button.store(0);
     routed.store(0);
     worker_started.store(0);
+    worker_advanced.store(0);
     worker_success.store(0);
     worker_error.store(0);
     worker_abort.store(0);
