@@ -914,6 +914,8 @@ FILE "synthetic-side-b.wav" WAVE
             throw 'Native Search text did not match the submitted known fixture query.'
         }
         [DiscoggerWindowTest]::ClickButton($searchButton)
+        $postClickText=[DiscoggerWindowTest]::WindowText($searchEdit)
+        Write-Host "DISCOGGER_AUTHENTICATED_UI_POSTCLICK_${Architecture}=length:$($postClickText.Length) retained:$([int]($postClickText -ceq $query))"
         $liveCount=0
         for($n=0;$n -lt 120;$n++){
             Start-Sleep -Milliseconds 500
@@ -941,7 +943,9 @@ FILE "synthetic-side-b.wav" WAVE
         }
         $proof=Get-Content -LiteralPath $liveProbe -Raw
         $expected=@('ARTISTS','KNOWN_RELEASE_MATCHES','TREE','BUTTON','ROUTED',
-            'INPUT_NONEMPTY','PARSED_FIELDS','QUERY_MINIMAL','QUERY_DETECTED',
+            'INPUT_NONEMPTY','INPUT_NONEMPTY_CALLS','INPUT_EMPTY_CALLS',
+            'INPUT_MEMBER_VALID','INPUT_HWND_MATCH','INPUT_MEMBER_LENGTH','INPUT_LIVE_LENGTH',
+            'PARSED_FIELDS','QUERY_MINIMAL','QUERY_DETECTED',
             'ALT_MODE','REPEAT_QUERY','EARLY_EXIT',
             'WORKER_STARTED','WORKER_ADVANCED','WORKER_SUCCESS','WORKER_ERROR','WORKER_ABORT',
             'RESPONSE_PAGES','RESPONSE_ITEMS','PARSED_MASTERS','PARSED_RELEASES',
@@ -956,6 +960,7 @@ FILE "synthetic-side-b.wav" WAVE
         if($counts.Count -ne $expected.Count){throw 'Malformed native live-search stage evidence.'}
         Write-Host "DISCOGGER_AUTHENTICATED_GUI_RESULT_COUNTS_${Architecture}=artists:$($counts['ARTISTS']) known:$($counts['KNOWN_RELEASE_MATCHES']) tree:$($counts['TREE'])"
         Write-Host "DISCOGGER_AUTHENTICATED_SEARCH_STAGES_${Architecture}=button:$($counts['BUTTON']) routed:$($counts['ROUTED']) started:$($counts['WORKER_STARTED']) advanced:$($counts['WORKER_ADVANCED']) success:$($counts['WORKER_SUCCESS']) error:$($counts['WORKER_ERROR']) abort:$($counts['WORKER_ABORT']) pages:$($counts['RESPONSE_PAGES']) items:$($counts['RESPONSE_ITEMS']) masters:$($counts['PARSED_MASTERS']) releases:$($counts['PARSED_RELEASES']) capped:$($counts['QUERY_LIMIT'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_UI_BOUNDARY_${Architecture}=calls:$($counts['BUTTON']) nonempty:$($counts['INPUT_NONEMPTY_CALLS']) empty:$($counts['INPUT_EMPTY_CALLS']) member_valid:$($counts['INPUT_MEMBER_VALID']) hwnd_match:$($counts['INPUT_HWND_MATCH']) member_length:$($counts['INPUT_MEMBER_LENGTH']) live_length:$($counts['INPUT_LIVE_LENGTH'])"
         Write-Host "DISCOGGER_AUTHENTICATED_GUI_PARSE_${Architecture}=input:$($counts['INPUT_NONEMPTY']) fields:$($counts['PARSED_FIELDS']) minimal:$($counts['QUERY_MINIMAL']) query:$($counts['QUERY_DETECTED']) alt:$($counts['ALT_MODE']) retry:$($counts['REPEAT_QUERY']) exit:$($counts['EARLY_EXIT'])"
         Write-Host "DISCOGGER_AUTHENTICATED_API_PROBE_${Architecture}=identity:$($counts['API_IDENTITY']) exact_ok:$($counts['API_EXACT_OK']) exact_items:$($counts['API_EXACT_ITEMS']) exact_known:$($counts['API_EXACT_KNOWN']) broad_ok:$($counts['API_BROAD_OK']) broad_items:$($counts['API_BROAD_ITEMS']) broad_known:$($counts['API_BROAD_KNOWN'])"
         if($counts['BUTTON'] -lt 1){throw 'Native Search button did not reach its actual Discogger handler.'}
