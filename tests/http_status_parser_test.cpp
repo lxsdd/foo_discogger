@@ -4,6 +4,16 @@
 int main() {
     using discogger_net::parse_http_status_code;
     assert(parse_http_status_code("HTTP/1.1 200 OK") == 200);
+    assert(parse_http_status_code("HTTP/2 200\r\n") == 200);
+    assert(parse_http_status_code("HTTP/2 429\r\n") == 429);
+    assert(parse_http_status_code("HTTP/1.1 503 Service Unavailable\r\n") == 503);
+    assert(parse_http_status_code("HTTP/3 200") == 200);
+    assert(parse_http_status_code("HTTP/2\t429") == 429);
+    assert(parse_http_status_code("X-Proxy 200 OK") == 0);
+    assert(parse_http_status_code("HTTP/1.1x 200 OK") == 0);
+    assert(parse_http_status_code("HTTP/2 200\r\nHTTP/2 429") == 0);
+    assert(parse_http_status_code("HTTP/2 099") == 0);
+    assert(parse_http_status_code("HTTP/2 600") == 0);
     assert(parse_http_status_code("HTTP/2 200") == 200);
     assert(parse_http_status_code("HTTP/2 429 Too Many Requests") == 429);
     assert(parse_http_status_code("HTTP/1.1 401 Unauthorized") == 401);
@@ -17,6 +27,8 @@ int main() {
     using discogger_net::usable_preview_http_response;
     assert(usable_preview_http_response("HTTP/1.1 200 OK"));
     assert(usable_preview_http_response("HTTP/2 200"));
+    assert(usable_preview_http_response("HTTP/2 200\r\n"));
+    assert(!usable_preview_http_response("X-Proxy 200 OK"));
     assert(!usable_preview_http_response("HTTP/1.1 206 Partial Content"));
     assert(!usable_preview_http_response("HTTP/2 301 Moved Permanently"));
     assert(!usable_preview_http_response("HTTP/2 401 Unauthorized"));

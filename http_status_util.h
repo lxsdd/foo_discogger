@@ -73,14 +73,26 @@ inline bool should_throttle_discogs_image(std::string_view url) noexcept {
 }
 
 inline int parse_http_status_code(std::string_view line) noexcept {
+    // libcurl header callbacks can deliver CRLF-terminated status lines,
+    // including HTTP/2 responses without a reason phrase ("HTTP/2 429\\r\\n").
+    // Strip only trailing line endings; reject embedded lines and forged
+    // non-HTTP prefixes before accepting a status or preview body.
+    while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+        line.remove_suffix(1);
+    if (line.find_first_of("\r\n") != std::string_view::npos) return 0;
     const auto separator = line.find_first_of(" \t");
+    if (separator == std::string_view::npos) return 0;
+    const auto version = line.substr(0, separator);
+    if (version != "HTTP/1.0" && version != "HTTP/1.1" &&
+        version != "HTTP/2" && version != "HTTP/3") return 0;
     if (separator == std::string_view::npos) return 0;
     const auto first = line.find_first_not_of(" \t", separator);
     if (first == std::string_view::npos || line.size() - first < 3) return 0;
     const char a = line[first], b = line[first + 1], c = line[first + 2];
     if (a < '0' || a > '9' || b < '0' || b > '9' || c < '0' || c > '9') return 0;
     if (first + 3 < line.size() && line[first + 3] != ' ' && line[first + 3] != '\t') return 0;
-    return (a - '0') * 100 + (b - '0') * 10 + (c - '0');
+    const int status = (a - '0') * 100 + (b - '0') * 10 + (c - '0');
+    return status >= 100 && status <= 599 ? status : 0;
 }
 // Optional preview fetches consume only an unambiguous complete HTTP success,
 // never a 404/429 JSON error document or a 206 partial body.
