@@ -185,12 +185,16 @@ def id3_txxx_values(content):
         if enc == 1 and not (raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff")):
             codec = "utf-16-le"
         try:
-            payload = raw.decode(codec).replace("\ufeff", "").strip("\x00")
+            payload = raw.decode(codec).replace("\ufeff", "")
         except UnicodeError as error:
             raise AssertionError("Corrupt Unicode TXXX frame") from error
-        if "\x00" in payload:
-            name, value = payload.split("\x00", 1)
-            decoded.append((name.strip(), value.strip("\x00")))
+        # A TXXX frame without the required description/value separator is
+        # malformed, not a field that may be silently ignored during a
+        # physical metadata preservation audit. Keep a legitimate empty value.
+        if "\x00" not in payload:
+            raise AssertionError("Malformed ID3v2 TXXX missing value separator")
+        name, value = payload.split("\x00", 1)
+        decoded.append((name.strip(), value.rstrip("\x00")))
     if any(content[offset:end]):
         raise AssertionError("Truncated trailing ID3v2 TXXX frame")
     return decoded
@@ -269,6 +273,18 @@ def verify_original_mp3_txxx(before, after):
             raise AssertionError("Synthetic MP3 lacks custom/ReplayGain fixture: " + name)
     if original != existing(after):
         raise AssertionError("Physical MP3 custom TXXX/ReplayGain metadata was changed")
+
+def verify_exact_mp3_runner_marker(content):
+    """Require exactly one physical QA marker; duplicates cannot certify a write.
+
+    A writer appending the marker twice (or leaving an old conflicting value)
+    must not be accepted merely because one expected tuple is present.
+    """
+    markers = [(name, value) for name, value in id3_txxx_values(content)
+               if name.upper() == "DISCOGGER_QA_RUNNER"]
+    if markers != [("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")]:
+        raise AssertionError("MP3 physical QA marker absent, duplicate or conflicting")
+
 
 def id3_apic_frames(content):
     """Fail closed on malformed physical ID3 frames or opaque APIC flags.
@@ -362,9 +378,7 @@ def verify(before: bytes, after: bytes, suffix):
         verify_original_mp3_standard_text(before, after)
         verify_original_mp3_txxx(before, after)
         verify_original_mp3_other_frames(before, after)
-        tags = id3_txxx_values(after)
-        if ("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED") not in tags:
-            raise AssertionError("Real foobar MP3 writer did not persist requested TXXX tag")
+        verify_exact_mp3_runner_marker(after)
     elif suffix == ".flac":
         first, second = flac_blocks(before), flac_blocks(after)
         verify_original_flac_blocks(first, second)
@@ -514,6 +528,29 @@ def selftest_id3():
             frame = b"TXXX" + size + bytes(2) + body
             fake = b"ID3" + bytes((version, 0, 0)) + ss(len(frame)) + frame
             assert id3_txxx_values(fake) == [("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")]
+            # Empty TXXX values remain actual fields, not silently skipped.
+            empty_raw = ("EMPTY\x00".encode("utf-16")
+                         if enc == 1 else b"EMPTY\x00")
+            empty_body = bytes((enc,)) + empty_raw
+            empty_size = (len(empty_body).to_bytes(4, "big")
+                          if version == 3 else ss(len(empty_body)))
+            empty_frame = b"TXXX" + empty_size + bytes(2) + empty_body
+            empty_tag = b"ID3" + bytes((version, 0, 0)) + ss(len(empty_frame)) + empty_frame
+            assert id3_txxx_values(empty_tag) == [("EMPTY", "")]
+            # Malformed custom fields without a separator must fail closed.
+            no_sep_raw = ("DISCOGGER_QA_RUNNER".encode("utf-16")
+                          if enc == 1 else b"DISCOGGER_QA_RUNNER")
+            no_sep_body = bytes((enc,)) + no_sep_raw
+            no_sep_size = (len(no_sep_body).to_bytes(4, "big")
+                           if version == 3 else ss(len(no_sep_body)))
+            no_sep_frame = b"TXXX" + no_sep_size + bytes(2) + no_sep_body
+            no_sep_tag = b"ID3" + bytes((version, 0, 0)) + ss(len(no_sep_frame)) + no_sep_frame
+            try:
+                id3_txxx_values(no_sep_tag)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Malformed TXXX separator escaped physical audit")
             # A writer must not hide the same TXXX payload behind changed
             # compression/grouping flags, corrupt padding, or a short tail.
             # Valid zero padding remains permitted in both ID3 versions.
@@ -549,6 +586,20 @@ def selftest_id3():
     ))
     original = b"ID3" + bytes((3, 0, 0)) + ss(len(fields)) + fields
     verify_original_mp3_txxx(original, original)
+    marker = frame("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")
+    def with_qa_marker(marker_frames):
+        payload = fields + marker_frames
+        return b"ID3" + bytes((3, 0, 0)) + ss(len(payload)) + payload
+    verify_exact_mp3_runner_marker(with_qa_marker(marker))
+    for bad_marker in (b"", marker + marker,
+                       marker + frame("DISCOGGER_QA_RUNNER", "STALE"),
+                       frame("DISCOGGER_QA_RUNNER", "STALE")):
+        try:
+            verify_exact_mp3_runner_marker(with_qa_marker(bad_marker))
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Missing/duplicate/conflicting MP3 QA marker escaped audit")
     for corrupted in (original.replace(b"0.800000", b"0.700000"),
                       b"ID3" + bytes((3, 0, 0)) + ss(len(fields)-1) + fields[:-1]):
         try:
@@ -705,6 +756,7 @@ def selftest_id3():
     print("DISCOGGER_ID3_EXTENDED_APIC_VERIFIER=PASS")
     print("DISCOGGER_ID3_TXXX_UNICODE_VERIFIER=PASS")
     print("DISCOGGER_ID3_TXXX_FRAME_INTEGRITY_VERIFIER=PASS")
+    print("DISCOGGER_ID3_TXXX_MARKER_UNIQUENESS_VERIFIER=PASS")
 
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == "--selftest":
