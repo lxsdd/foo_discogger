@@ -312,6 +312,30 @@ int main() {
     discogger_write_safety::write_completion_gate succeeded_with_reset;
     assert(succeeded_with_reset.finish(true, [&] { ++artwork_starts; }, [&] { ++resets; }));
     assert(resets == 1 && artwork_starts == 2);
+    int cleanup_after_success_failure = 0;
+    discogger_write_safety::write_completion_gate verification_failed;
+    bool preserved = false;
+    try {
+        verification_failed.finish(true,
+            [] { throw std::runtime_error("readback mismatch"); },
+            [&] { ++cleanup_after_success_failure; });
+    } catch (const std::runtime_error& e) {
+        preserved = std::string(e.what()) == "readback mismatch";
+    }
+    assert(preserved && verification_failed.completed());
+    assert(cleanup_after_success_failure == 1);
+    assert(!verification_failed.finish(false, [] {}, [&] { ++cleanup_after_success_failure; }));
+    assert(cleanup_after_success_failure == 1);
+    discogger_write_safety::write_completion_gate cleanup_also_failed;
+    bool original_error = false;
+    try {
+        cleanup_also_failed.finish(true,
+            [] { throw std::runtime_error("original readback error"); },
+            [] { throw std::runtime_error("secondary preview error"); });
+    } catch (const std::runtime_error& e) {
+        original_error = std::string(e.what()) == "original readback error";
+    }
+    assert(original_error && cleanup_also_failed.completed());
     discogger_write_safety::write_completion_gate throwing_reset;
     try { throwing_reset.finish(false, [] { assert(false); }, [] { throw std::runtime_error("synthetic reset failure"); }); }
     catch (const std::runtime_error&) { caught = true; }

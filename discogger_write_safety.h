@@ -214,7 +214,15 @@ public:
             std::forward<FailureAction>(failure_action)();
             return false;
         }
-        std::forward<SuccessAction>(success_action)();
+        // Readback/artwork may fail despite SDK success: revoke the pending
+        // preview, preserving the original error if cleanup also throws.
+        try {
+            std::forward<SuccessAction>(success_action)();
+        } catch (...) {
+            try { std::forward<FailureAction>(failure_action)(); }
+            catch (...) {}
+            throw;
+        }
         return true;
     }
     template <typename SuccessAction>
