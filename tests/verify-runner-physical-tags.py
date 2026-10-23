@@ -67,6 +67,21 @@ def flac_vorbis_fields(block):
         raise AssertionError("Unexpected FLAC Vorbis trailing bytes")
     return fields
 
+
+def verify_original_flac_vorbis(before_fields, after_fields):
+    """Fail closed if *any* existing physical Vorbis field was lost or edited.
+
+    Only the explicitly requested QA marker is allowed to differ. Comparing
+    Counters preserves exact byte values and multivalue multiplicity while
+    tolerating harmless field reordering by the native metadata writer.
+    """
+    def preserved(fields):
+        return {key: Counter(values) for key, values in fields.items()
+                if key != "DISCOGGER_QA_RUNNER"}
+    if preserved(before_fields) != preserved(after_fields):
+        raise AssertionError("Original physical FLAC Vorbis fields changed or disappeared")
+
+
 def _syncsafe_size(value):
     if len(value) != 4 or any(byte & 0x80 for byte in value):
         raise AssertionError("Invalid ID3v2 synchsafe header")
@@ -269,9 +284,7 @@ def verify(before: bytes, after: bytes, suffix):
         for token in (b"Runner Embedded EP", b"Progressive Trance", b"Preserve me"):
             if not any(token in value for value in after_fields["CUESHEET"]):
                 raise AssertionError(f"Embedded FLAC CUE marker missing: {token!r}")
-        for field in ("GENRE", "REPLAYGAIN_TRACK_GAIN", "REPLAYGAIN_TRACK_PEAK", "DISCOGGER_QA_CUSTOM"):
-            if Counter(before_fields.get(field, [])) != Counter(after_fields.get(field, [])):
-                raise AssertionError(f"Original FLAC multi-value/custom/ReplayGain metadata changed: {field}")
+        verify_original_flac_vorbis(before_fields, after_fields)
         if Counter(after_fields.get("GENRE", [])) != Counter((b"House", b"Progressive Trance")):
             raise AssertionError("Original separate FLAC multi-value GENRE entries not retained")
         if after_fields.get("DISCOGGER_QA_RUNNER") != [b"RUNNER-VERIFIED"]:
@@ -303,6 +316,37 @@ def selftest_flac_vorbis():
             pass
         else:
             raise AssertionError("Invalid Vorbis comment was not rejected")
+    # P0 physical-writer safety: all physical Vorbis fields must survive,
+    # including unknown custom keys and standard TITLE/ARTIST/DATE fields.
+    # The SDK may reorder fields, but must not silently lose multiplicity.
+    baseline = {
+        "TITLE": [b"Synthetic Track"],
+        "ARTIST": [b"QA Artist"],
+        "DATE": [b"2026"],
+        "GENRE": [b"Trance", b"House"],
+        "X-UNMAPPED": [b"Keep original custom value"],
+        "REPLAYGAIN_TRACK_GAIN": [b"-5.00 dB"],
+        "CUESHEET": [b'FILE "synthetic.flac"'],
+    }
+    updated = {**baseline, "GENRE": [b"House", b"Trance"],
+               "DISCOGGER_QA_RUNNER": [b"RUNNER-VERIFIED"]}
+    verify_original_flac_vorbis(baseline, updated)
+    corrupted_cases = (
+        {key: values for key, values in updated.items() if key != "ARTIST"},
+        {**updated, "TITLE": [b"Unexpected replacement"]},
+        {**updated, "X-UNMAPPED": [b"Lost custom value"]},
+        {**updated, "GENRE": [b"Trance"]},
+        {**updated, "GENRE": [b"Trance", b"House", b"House"]},
+        {**updated, "UNREQUESTED_NEW_TAG": [b"Unexpected addition"]},
+    )
+    for corrupted in corrupted_cases:
+        try:
+            verify_original_flac_vorbis(baseline, corrupted)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("FLAC physical-field preservation regression escaped")
+    print("DISCOGGER_FLAC_ALL_PHYSICAL_FIELDS_PRESERVED=PASS")
     print("DISCOGGER_FLAC_VORBIS_EXACT_KEY_VERIFIER=PASS")
 
 def selftest_id3():
