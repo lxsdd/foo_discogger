@@ -135,6 +135,60 @@ def id3_txxx_values(content):
     return decoded
 
 
+
+def id3_standard_text_values(content):
+    """Read real ID3v2 text frames; never trust markers in audio or artwork.
+
+    Compare decoded values so an SDK re-encoding of the same physical tag is
+    accepted, but a missing/changed TITLE, ARTIST, GENRE or other T*** field
+    cannot pass merely because its old bytes remain elsewhere in the file.
+    TXXX custom/ReplayGain tags are verified independently.
+    """
+    version, offset, end = id3_frame_bounds(content)
+    values = Counter()
+    while offset + 10 <= end:
+        frame_id = content[offset:offset + 4]
+        if frame_id == bytes(4):
+            break
+        if not all(65 <= ch <= 90 or 48 <= ch <= 57 for ch in frame_id):
+            raise AssertionError("Invalid ID3v2 text frame identifier")
+        size = (int.from_bytes(content[offset + 4:offset + 8], "big")
+                if version == 3 else _syncsafe_size(content[offset + 4:offset + 8]))
+        flags = content[offset + 8:offset + 10]
+        offset += 10
+        if size < 1 or size > end - offset:
+            raise AssertionError("Invalid ID3v2 text frame size")
+        payload = content[offset:offset + size]
+        offset += size
+        if not frame_id.startswith(b"T") or frame_id == b"TXXX":
+            continue
+        # Grouped/compressed/encrypted text cannot be compared as plain bytes.
+        if flags != bytes(2):
+            raise AssertionError("Unsupported ID3v2 text frame flags")
+        encoding = payload[0]
+        codecs = {0: "latin-1", 1: "utf-16", 2: "utf-16-be", 3: "utf-8"}
+        if encoding not in codecs:
+            raise AssertionError("Invalid ID3v2 text encoding")
+        raw = payload[1:]
+        codec = codecs[encoding]
+        if encoding == 1 and not (raw.startswith(b"\\xff\\xfe") or raw.startswith(b"\\xfe\\xff")):
+            codec = "utf-16-le"
+        try:
+            decoded = raw.decode(codec).lstrip("\\ufeff").rstrip("\\x00")
+        except UnicodeError as error:
+            raise AssertionError("Corrupt ID3v2 standard text frame") from error
+        values[(frame_id, decoded)] += 1
+    return values
+
+
+def verify_original_mp3_standard_text(before, after):
+    """Reject silent physical title/artist/genre removal or replacement."""
+    original = id3_standard_text_values(before)
+    if not original:
+        raise AssertionError("Synthetic MP3 has no physical standard text tags")
+    if original != id3_standard_text_values(after):
+        raise AssertionError("Physical MP3 standard text tags changed or disappeared")
+
 def verify_original_mp3_txxx(before, after):
     """Preserve physical custom TXXX and ReplayGain despite ID3 re-encoding."""
     def existing(raw):
@@ -186,6 +240,7 @@ def verify(before: bytes, after: bytes, suffix):
             raise AssertionError("Original ID3v2 APIC picture bytes were changed or removed")
         if id3_audio_payload(before) != id3_audio_payload(after):
             raise AssertionError("Original MP3 compressed audio payload changed")
+        verify_original_mp3_standard_text(before, after)
         verify_original_mp3_txxx(before, after)
         tags = id3_txxx_values(after)
         if ("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED") not in tags:
@@ -312,6 +367,32 @@ def selftest_id3():
                 pass
             else:
                 raise AssertionError("Invalid ID3v2 extended header was accepted")
+
+    # P1 physical-media gate: the original TITLE/GENRE must survive a real
+    # writer even if their literal bytes are still present in compressed audio.
+    # Re-encoding the same value between ID3v2.3 UTF-16 and v2.4 UTF-8 is OK.
+    def text_frame(name, value, version, encoding):
+        raw = value.encode("utf-16") if encoding == 1 else value.encode("utf-8")
+        body = bytes((encoding,)) + raw
+        size = len(body).to_bytes(4, "big") if version == 3 else ss(len(body))
+        return name + size + bytes(2) + body
+    def text_tag(version, encoding, genre="Trance", include_genre=True):
+        frames = text_frame(b"TIT2", "Synthetic Test", version, encoding)
+        if include_genre:
+            frames += text_frame(b"TCON", genre, version, encoding)
+        # Deliberate audio marker: a raw substring grep would falsely PASS.
+        return b"ID3" + bytes((version, 0, 0)) + ss(len(frames)) + frames + b"Trance"
+    original_text = text_tag(3, 1)
+    verify_original_mp3_standard_text(original_text, text_tag(4, 3))
+    for damaged in (text_tag(4, 3, genre="House"),
+                    text_tag(4, 3, include_genre=False)):
+        try:
+            verify_original_mp3_standard_text(original_text, damaged)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Changed/missing physical MP3 text tag escaped verifier")
+    print("DISCOGGER_ID3_STANDARD_TEXT_PRESERVATION_VERIFIER=PASS")
     print("DISCOGGER_ID3_EXTENDED_APIC_VERIFIER=PASS")
     print("DISCOGGER_ID3_TXXX_UNICODE_VERIFIER=PASS")
 
