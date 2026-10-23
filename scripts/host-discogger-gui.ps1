@@ -950,6 +950,7 @@ FILE "synthetic-side-b.wav" WAVE
         if($counts['BUTTON'] -lt 1){throw 'Native Search button did not reach its actual Discogger handler.'}
         if($counts['ROUTED'] -lt 1){throw 'Discogger Search handler did not route its parsed query.'}
         if($counts['WORKER_STARTED'] -lt 1){throw 'Discogger routed search but the asynchronous worker never started.'}
+        if($counts['WORKER_ADVANCED'] -lt 1){throw 'Discogger parsed advanced query was routed to plain artist-name search.'}
         if($counts['WORKER_ERROR'] -gt 0){throw 'Discogger asynchronous search failed before publishing results.'}
         if($counts['WORKER_ABORT'] -gt 0){throw 'Discogger asynchronous search was aborted.'}
         if($counts['QUERY_LIMIT'] -gt 0){throw 'Discogger search was incorrectly stopped by its configured result cap.'}
