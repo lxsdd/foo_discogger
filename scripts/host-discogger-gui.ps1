@@ -229,6 +229,35 @@ public static class DiscoggerWindowTest {
 function Write-DiscoggerCrashEvidence {
     if($AuthorizedLive){
         Write-Host 'DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY'
+        # Never expose minidumps, crash text, process memory, paths, requests or
+        # credentials. Only numeric Windows event metadata may reach CI logs.
+        try {
+            $proc.Refresh()
+            if($proc.HasExited){
+                Write-Host ('DISCOGGER_AUTHENTICATED_HOST_EXIT_CODE='+[int64]$proc.ExitCode)
+            }
+        } catch { Write-Host 'DISCOGGER_AUTHENTICATED_HOST_EXIT_CODE=UNAVAILABLE' }
+        try {
+            $events=@(Get-WinEvent -FilterHashtable @{
+                LogName='Application'; Id=1000
+                StartTime=[DateTime]::Now.AddMinutes(-10)
+            } -MaxEvents 20 -ErrorAction Stop |
+                Where-Object { $_.Properties.Count -ge 7 -and
+                    [string]$_.Properties[0].Value -eq 'foobar2000.exe' } |
+                Select-Object -First 1)
+            if($events.Count){
+                $event=$events[0]
+                $module=[IO.Path]::GetFileName([string]$event.Properties[3].Value)
+                if($module -notin @('foobar2000.exe','foo_discogger.dll','foo_metadata_isolation.dll')){
+                    $module='other'
+                }
+                $exception=[string]$event.Properties[6].Value
+                if($exception -notmatch '^(0x)?[0-9a-fA-F]{8}$'){$exception='UNKNOWN'}
+                Write-Host "DISCOGGER_AUTHENTICATED_CRASH_SIGNATURE=module:$module code:$exception"
+            } else {
+                Write-Host 'DISCOGGER_AUTHENTICATED_CRASH_SIGNATURE=NO_EVENT'
+            }
+        } catch { Write-Host 'DISCOGGER_AUTHENTICATED_CRASH_SIGNATURE=UNAVAILABLE' }
         return
     }
     # All evidence is taken from this disposable host/profile and Windows'
@@ -937,7 +966,10 @@ FILE "synthetic-side-b.wav" WAVE
         for($n=0;$n -lt 120;$n++){
             Start-Sleep -Milliseconds 500
             $proc.Refresh()
-            if($proc.HasExited){throw 'Host exited during authenticated Discogger search.'}
+            if($proc.HasExited){
+                Write-DiscoggerCrashEvidence
+                throw 'Host exited during authenticated Discogger search.'
+            }
             $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
             if($liveCount -gt 0){break}
         }
@@ -1007,6 +1039,90 @@ FILE "synthetic-side-b.wav" WAVE
         # Search must be read-only even after the prior isolated writer tests.
         if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
             throw 'Authenticated Discogger search changed disposable WAVE data.'
+        }
+
+        # A fresh negative search must complete without a thrown no-results
+        # status or a stale tree from the successful search above.
+        if(-not [DiscoggerWindowTest]::PostMessageW($liveDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+            throw 'Could not close positive Find Releases before empty-result regression.'
+        }
+        for($n=0;$n -lt 35;$n++){
+            Start-Sleep -Milliseconds 200
+            if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){break}
+        }
+        if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count){
+            throw 'Positive Find Releases remained open before empty-result regression.'
+        }
+        $emptyLauncher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $liveArgs -PassThru
+        if(-not $emptyLauncher.WaitForExit(15000) -or $emptyLauncher.ExitCode -ne 0){
+            throw 'Could not open independent Find Releases for empty-result regression.'
+        }
+        $emptyDialog=[IntPtr]::Zero
+        for($n=0;$n -lt 40;$n++){
+            Start-Sleep -Milliseconds 250
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited before empty-result regression.'}
+            $found=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+            if($found.Length -eq 1){$emptyDialog=$found[0];break}
+        }
+        if($emptyDialog -eq [IntPtr]::Zero){throw 'Independent empty-result dialog not found.'}
+        $emptyEdit=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1083)
+        $emptyButton=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1086)
+        $emptyTree=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1018)
+        if($emptyEdit -eq [IntPtr]::Zero -or $emptyButton -eq [IntPtr]::Zero -or
+            $emptyTree -eq [IntPtr]::Zero -or [DiscoggerWindowTest]::TreeCount($emptyTree) -ne 0){
+            throw 'Independent empty-result controls were not ready.'
+        }
+        $emptyQuery='artist= DiscoggerQAImpossibleArtist251024 & title= DiscoggerQAImpossibleRelease251024'
+        [DiscoggerWindowTest]::SetEditText($emptyEdit,$emptyQuery)
+        if([DiscoggerWindowTest]::EditText($emptyEdit) -cne $emptyQuery){
+            throw 'Empty-result regression query was not set in the native edit.'
+        }
+        [DiscoggerWindowTest]::ClickButton($emptyButton)
+        Remove-Item -LiteralPath $liveProbe -Force
+        $emptyCompleted=$false
+        for($attempt=0;$attempt -lt 4 -and -not $emptyCompleted;$attempt++){
+            Start-Sleep -Seconds 10
+            $proc.Refresh()
+            if($proc.HasExited){
+                Write-DiscoggerCrashEvidence
+                throw 'Host exited while rendering an empty authenticated search.'
+            }
+            $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
+            if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
+                throw 'Could not inspect empty-result native search.'
+            }
+            for($n=0;$n -lt 80;$n++){
+                Start-Sleep -Milliseconds 250
+                if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
+            }
+            if(-not (Test-Path -LiteralPath $liveProbe -PathType Leaf)){
+                throw 'Empty-result native probe did not produce evidence.'
+            }
+            $emptyProof=Get-Content -LiteralPath $liveProbe -Raw
+            Remove-Item -LiteralPath $liveProbe -Force
+            $emptyCounts=@{}
+            foreach($line in ($emptyProof -split '\r?\n')){
+                if($line -match '^([A-Z_]+)=(\d+)$'){$emptyCounts[$Matches[1]]=[int]$Matches[2]}
+            }
+            if($emptyCounts['WORKER_ERROR'] -gt 0 -or $emptyCounts['WORKER_ABORT'] -gt 0){
+                throw 'Empty-result native search ended in worker error or abort.'
+            }
+            if($emptyCounts['WORKER_SUCCESS'] -eq 1){
+                if($emptyCounts['BUTTON'] -ne 1 -or $emptyCounts['ROUTED'] -ne 1 -or
+                   $emptyCounts['WORKER_ADVANCED'] -ne 1 -or $emptyCounts['ARTISTS'] -ne 0 -or
+                   $emptyCounts['TREE'] -ne 0 -or $emptyCounts['PARSED_RELEASES'] -ne 0 -or
+                   $emptyCounts['PARSED_MASTERS'] -ne 0 -or
+                   [DiscoggerWindowTest]::TreeCount($emptyTree) -ne 0){
+                    throw 'Empty-result search retained or published unexpected GUI rows.'
+                }
+                $emptyCompleted=$true
+            }
+        }
+        if(-not $emptyCompleted){throw 'Authenticated empty-result native search did not complete.'}
+        Write-Host "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_$Architecture=PASS"
+        if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
+            throw 'Empty-result Discogger search changed disposable WAVE data.'
         }
     }
 

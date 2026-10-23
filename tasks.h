@@ -340,7 +340,10 @@ private:
 };
 
 
-class on_search_artist_done_process_callback : public foo_discogs_threaded_locked_process_callback {
+// This is a presentation-only follow-up launched from a still-locked search
+// on_success callback. Reacquiring locked_operation here throws "Operation locked"
+// and silently discards otherwise valid Discogs results.
+class on_search_artist_done_process_callback : public foo_discogs_threaded_process_callback {
 
 public:
 	on_search_artist_done_process_callback(const pfc::array_t<Artist_ptr> p_artist_exact_matches,

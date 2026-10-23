@@ -599,6 +599,23 @@ assert "void DiscogsInterface::process_amt_parsed_fake_artist(" in interface_imp
 assert "void DiscogsInterface::parse_amt_page(" in interface_impl
 print("PASS: composite-search parser declarations are visible and C++-qualified correctly.")
 
+# A release is shared by the parsed bucket, one or more artists and the cache.
+# Moving the loop-local shared_ptr into the first artist nulls it, then the
+# next cache-ID read dereferences that null pointer during real online search.
+advanced_parser = interface_impl.split("void DiscogsInterface::process_amt_parsed_fake_artist(", 1)[1].split(
+    "void DiscogsInterface::parse_amt_page(", 1
+)[0]
+for shared_add in (
+    "tmpArtist->master_releases.add_item(mr);",
+    "no_checkArtist->master_releases.add_item(mr);",
+    "tmpArtist->releases.add_item(r);",
+    "no_checkArtist->releases.add_item(r);",
+):
+    assert shared_add in advanced_parser
+assert "std::move(mr)" not in advanced_parser
+assert "std::move(r)" not in advanced_parser
+print("PASS: advanced online results retain shared release ownership through artist/cache processing.")
+
 # Restore the existing search/filter task base type and serialize its lock
 # counter transitions; do not confuse it with the separate async tag-write gate.
 task_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
@@ -1213,6 +1230,20 @@ assert "m_alist.fill_artist_list(b_chk_exact_matches" in frag
 assert "search_visibility_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "search_visibility_test.cpp" in wf_gate
 print("PASS: alternative search candidates remain visible with matched checkbox state.")
+
+# The no-results status can be reached after an interrupted/restored query.
+# Do not assume the artist field exists, and do not confuse bytes with bits
+# when interpreting the SIZE_MAX uncapped sentinel.
+status = searchdlg[searchdlg.index("pfc::string8 search_query_run_message("):
+                   searchdlg.index("void CFindReleaseDialog::on_search_artist_done(")]
+assert 'qdm_search_query.find("artist=")' in status
+assert 'artist_field != qdm_search_query.end()' in status
+assert 'artist_field->second.first.c_str()' in status
+assert "constexpr size_t uncapped_threshold = SIZE_MAX - 100;" in status
+assert "pow(2, sv)" not in status
+assert "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_$Architecture=PASS" in (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "Authenticated empty-result native search did not complete." in (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+print("PASS: advanced-search empty-result status tolerates partial fields and true size_t sentinels.")
 
 
 # Double-click on an actual artist list row routes through the same
@@ -1865,6 +1896,16 @@ for callback_name, ui_function in (
     assert "m_owner_window = parent;" in starter, callback_name
 assert async_tasks_header.count("HWND m_owner_window = nullptr;") >= 2
 print("PASS: artist and search list/tree updates are guarded main-thread completions.")
+
+# The network search owns locked_operation until its on_success returns. It
+# launches a presentation-only follow-up *inside* that callback. Acquiring
+# the same exclusive gate in the nested task throws "Operation locked" and
+# drops every result, even after a successful authenticated API response.
+assert "class search_artist_process_callback : public foo_discogs_threaded_locked_process_callback" in async_tasks_header
+assert "class on_search_artist_done_process_callback : public foo_discogs_threaded_process_callback" in async_tasks_header
+assert "class on_search_artist_done_process_callback : public foo_discogs_threaded_locked_process_callback" not in async_tasks_header
+assert "task->start(find_dlg->m_hWnd);" in async_tasks_source
+print("PASS: nested search-result presentation does not reacquire the parent operation gate.")
 
 # Loading release versions may run off-thread; mutating the TreeView may not.
 expand_source = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
