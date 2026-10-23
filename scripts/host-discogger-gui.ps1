@@ -228,6 +228,7 @@ public static class DiscoggerWindowTest {
 '@
 function Write-DiscoggerCrashEvidence {
     if($AuthorizedLive){
+        Write-Host 'DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY'
         # Never expose minidumps, crash text, process memory, paths, requests or
         # credentials. Only numeric Windows event metadata may reach CI logs.
         try {
