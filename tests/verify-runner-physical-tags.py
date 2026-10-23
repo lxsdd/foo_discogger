@@ -237,19 +237,34 @@ def verify_original_mp3_txxx(before, after):
         raise AssertionError("Physical MP3 custom TXXX/ReplayGain metadata was changed")
 
 def id3_apic_frames(content):
-    """Inspect physical picture frame bytes, not only the ID3 TXXX text."""
+    """Fail closed on malformed physical ID3 frames or opaque APIC flags.
+
+    Identical picture payload bytes are not preservation evidence when a
+    writer changes APIC frame flags to compression/encryption/grouping.
+    """
     version, pos, end = id3_frame_bounds(content)
     pictures = []
     while pos + 10 <= end:
         name = content[pos:pos + 4]
-        if name == bytes(4): break
+        if name == bytes(4):
+            if any(content[pos:end]):
+                raise AssertionError("Invalid nonzero ID3v2 padding")
+            return pictures
+        if not all(65 <= ch <= 90 or 48 <= ch <= 57 for ch in name):
+            raise AssertionError("Invalid ID3v2 picture-walker frame identifier")
         size = (int.from_bytes(content[pos + 4:pos + 8], "big")
                 if version == 3 else _syncsafe_size(content[pos + 4:pos + 8]))
+        flags = content[pos + 8:pos + 10]
         pos += 10
-        if pos + size > end: raise AssertionError("Truncated APIC frame")
+        if size < 1 or size > end - pos:
+            raise AssertionError("Invalid ID3v2 picture-walker frame size")
         if name == b"APIC":
+            if flags != bytes(2):
+                raise AssertionError("Opaque/modified ID3v2 APIC frame flags")
             pictures.append(content[pos:pos + size])
         pos += size
+    if any(content[pos:end]):
+        raise AssertionError("Truncated trailing ID3v2 frame")
     return pictures
 
 def id3_audio_payload(content):
@@ -443,6 +458,22 @@ def selftest_id3():
         fake = b"ID3" + bytes((version, 0, 0x40)) + ss(len(payload)) + payload
         assert id3_apic_frames(fake) == [picture]
         assert id3_txxx_values(fake) == []
+        # Same APIC payload but altered flags is NOT an identical picture.
+        # Likewise reject corrupt frame IDs, zero-size frames and stray bytes.
+        bad_flags = fake.replace(b"APIC" + size + bytes(2),
+                                 b"APIC" + size + bytes((0, 8)), 1)
+        bad_id = fake.replace(b"APIC" + size, b"A?IC" + size, 1)
+        zero_size = fake.replace(b"APIC" + size,
+                                 b"APIC" + bytes(4), 1)
+        trailing = (fake[:6] + ss(len(payload) + 1) +
+                    payload + bytes((1,)))
+        for invalid_apic in (bad_flags, bad_id, zero_size, trailing):
+            try:
+                id3_apic_frames(invalid_apic)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Unsafe/malformed APIC framing escaped verifier")
         changed = fake.replace(b"PNG-SYNTHETIC", b"PNG-SYNTHETIx")
         assert id3_apic_frames(fake) != id3_apic_frames(changed)
         # An extended header claiming bytes beyond the tag must fail closed.
