@@ -341,6 +341,7 @@ void run_live_search_probe_qa() {
         << "BUTTON=" << discogger_live_search_qa::button.load() << '\n'
         << "ROUTED=" << discogger_live_search_qa::routed.load() << '\n'
         << "WORKER_STARTED=" << discogger_live_search_qa::worker_started.load() << '\n'
+        << "WORKER_ADVANCED=" << discogger_live_search_qa::worker_advanced.load() << '\n'
         << "WORKER_SUCCESS=" << discogger_live_search_qa::worker_success.load() << '\n'
         << "WORKER_ERROR=" << discogger_live_search_qa::worker_error.load() << '\n'
         << "WORKER_ABORT=" << discogger_live_search_qa::worker_abort.load() << '\n'
