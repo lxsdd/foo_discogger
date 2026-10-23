@@ -77,7 +77,10 @@ inline int parse_http_status_code(std::string_view line) noexcept {
     // including HTTP/2 responses without a reason phrase ("HTTP/2 429\\r\\n").
     // Strip only trailing line endings; reject embedded lines and forged
     // non-HTTP prefixes before accepting a status or preview body.
-    while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+    // Accept one optional terminator, not a second forged line.
+    if (line.size() >= 2 && line.substr(line.size() - 2) == "\r\n")
+        line.remove_suffix(2);
+    else if (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
         line.remove_suffix(1);
     if (line.find_first_of("\r\n") != std::string_view::npos) return 0;
     const auto separator = line.find_first_of(" \t");

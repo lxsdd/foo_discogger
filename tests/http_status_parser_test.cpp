@@ -12,6 +12,9 @@ int main() {
     assert(parse_http_status_code("X-Proxy 200 OK") == 0);
     assert(parse_http_status_code("HTTP/1.1x 200 OK") == 0);
     assert(parse_http_status_code("HTTP/2 200\r\nHTTP/2 429") == 0);
+    assert(parse_http_status_code("HTTP/2 200\r\n\r\n") == 0);
+    assert(parse_http_status_code("HTTP/2 200\n\n") == 0);
+    assert(!discogger_net::usable_preview_http_response("HTTP/2 200\r\n\r\n"));
     assert(parse_http_status_code("HTTP/2 099") == 0);
     assert(parse_http_status_code("HTTP/2 600") == 0);
     assert(parse_http_status_code("HTTP/2 200") == 200);
