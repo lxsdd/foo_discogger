@@ -185,15 +185,24 @@ def id3_txxx_values(content):
         if enc == 1 and not (raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff")):
             codec = "utf-16-le"
         try:
-            payload = raw.decode(codec).replace("\ufeff", "")
+            payload = raw.decode(codec)
         except UnicodeError as error:
             raise AssertionError("Corrupt Unicode TXXX frame") from error
+        # A BOM at the beginning is an encoding marker; a BOM *inside* a
+        # custom field is data. Globally removing U+FEFF would falsely certify
+        # an SDK write that silently deleted a user tag character.
+        if payload.startswith("\ufeff"):
+            payload = payload[1:]
         # A TXXX frame without the required description/value separator is
         # malformed, not a field that may be silently ignored during a
         # physical metadata preservation audit. Keep a legitimate empty value.
         if "\x00" not in payload:
             raise AssertionError("Malformed ID3v2 TXXX missing value separator")
         name, value = payload.split("\x00", 1)
+        # UTF-16 descriptions and values can each carry their own BOM.
+        # Strip only that second boundary marker, never an interior BOM.
+        if enc in (1, 2) and value.startswith("\ufeff"):
+            value = value[1:]
         decoded.append((name.strip(), value.rstrip("\x00")))
     if any(content[offset:end]):
         raise AssertionError("Truncated trailing ID3v2 TXXX frame")
@@ -586,6 +595,19 @@ def selftest_id3():
     ))
     original = b"ID3" + bytes((3, 0, 0)) + ss(len(fields)) + fields
     verify_original_mp3_txxx(original, original)
+    # An interior U+FEFF in a real custom tag must survive byte-level writer
+    # verification. Previously a global BOM replacement hid its deletion.
+    def custom_tag(payload):
+        return b"ID3" + bytes((3, 0, 0)) + ss(len(payload)) + payload
+    bom_original = custom_tag(fields + frame("DISCOGGER_QA_BOM", "alpha\ufeffbeta"))
+    bom_removed = custom_tag(fields + frame("DISCOGGER_QA_BOM", "alphabeta"))
+    assert ("DISCOGGER_QA_BOM", "alpha\ufeffbeta") in id3_txxx_values(bom_original)
+    try:
+        verify_original_mp3_txxx(bom_original, bom_removed)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("Deleted interior TXXX BOM escaped preservation audit")
     marker = frame("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")
     def with_qa_marker(marker_frames):
         payload = fields + marker_frames
@@ -593,6 +615,7 @@ def selftest_id3():
     verify_exact_mp3_runner_marker(with_qa_marker(marker))
     for bad_marker in (b"", marker + marker,
                        marker + frame("DISCOGGER_QA_RUNNER", "STALE"),
+                       frame("DISCOGGER_QA_RUNNER", "RUNNER-\ufeffVERIFIED"),
                        frame("DISCOGGER_QA_RUNNER", "STALE")):
         try:
             verify_exact_mp3_runner_marker(with_qa_marker(bad_marker))
@@ -600,6 +623,7 @@ def selftest_id3():
             pass
         else:
             raise AssertionError("Missing/duplicate/conflicting MP3 QA marker escaped audit")
+    print("DISCOGGER_ID3_TXXX_INTERIOR_BOM_PRESERVATION=PASS")
     for corrupted in (original.replace(b"0.800000", b"0.700000"),
                       b"ID3" + bytes((3, 0, 0)) + ss(len(fields)-1) + fields[:-1]):
         try:
