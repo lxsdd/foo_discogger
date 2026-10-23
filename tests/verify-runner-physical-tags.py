@@ -203,7 +203,9 @@ def id3_txxx_values(content):
         # Strip only that second boundary marker, never an interior BOM.
         if enc in (1, 2) and value.startswith("\ufeff"):
             value = value[1:]
-        decoded.append((name.strip(), value.rstrip("\x00")))
+        # TXXX descriptions are user-defined field names: whitespace is data.
+        # Trimming it hides destructive renames and can spoof the QA marker.
+        decoded.append((name, value.rstrip("\x00")))
     if any(content[offset:end]):
         raise AssertionError("Truncated trailing ID3v2 TXXX frame")
     return decoded
@@ -608,6 +610,18 @@ def selftest_id3():
         pass
     else:
         raise AssertionError("Deleted interior TXXX BOM escaped preservation audit")
+    # A writer may not silently trim whitespace from custom ID3 field names.
+    # Previous .strip() normalized these two distinct physical descriptions.
+    spaced_original = custom_tag(fields + frame(" DJ USER KEY ", "unchanged"))
+    spaced_changed = custom_tag(fields + frame("DJ USER KEY", "unchanged"))
+    assert (" DJ USER KEY ", "unchanged") in id3_txxx_values(spaced_original)
+    verify_original_mp3_txxx(spaced_original, spaced_original)
+    try:
+        verify_original_mp3_txxx(spaced_original, spaced_changed)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("Trimmed physical TXXX description escaped preservation audit")
     marker = frame("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")
     def with_qa_marker(marker_frames):
         payload = fields + marker_frames
@@ -623,6 +637,17 @@ def selftest_id3():
             pass
         else:
             raise AssertionError("Missing/duplicate/conflicting MP3 QA marker escaped audit")
+    # Leading/trailing spaces cannot turn a different physical TXXX field
+    # into the exact runner marker expected from a native SDK write.
+    for forged_name in (" DISCOGGER_QA_RUNNER", "DISCOGGER_QA_RUNNER "):
+        try:
+            verify_exact_mp3_runner_marker(with_qa_marker(
+                frame(forged_name, "RUNNER-VERIFIED")))
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Whitespace-spoofed TXXX QA marker escaped verifier")
+    print("DISCOGGER_ID3_TXXX_DESCRIPTION_WHITESPACE_PRESERVATION=PASS")
     print("DISCOGGER_ID3_TXXX_INTERIOR_BOM_PRESERVATION=PASS")
     for corrupted in (original.replace(b"0.800000", b"0.700000"),
                       b"ID3" + bytes((3, 0, 0)) + ss(len(fields)-1) + fields[:-1]):
