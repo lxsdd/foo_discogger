@@ -1231,6 +1231,18 @@ assert "search_visibility_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1"
 assert "search_visibility_test.cpp" in wf_gate
 print("PASS: alternative search candidates remain visible with matched checkbox state.")
 
+# The no-results status can be reached after an interrupted/restored query.
+# Do not assume the artist field exists, and do not confuse bytes with bits
+# when interpreting the SIZE_MAX uncapped sentinel.
+status = searchdlg[searchdlg.index("pfc::string8 search_query_run_message("):
+                   searchdlg.index("void CFindReleaseDialog::on_search_artist_done(")]
+assert 'qdm_search_query.find("artist=")' in status
+assert 'artist_field != qdm_search_query.end()' in status
+assert 'artist_field->second.first.c_str()' in status
+assert "constexpr size_t uncapped_threshold = SIZE_MAX - 100;" in status
+assert "pow(2, sv)" not in status
+print("PASS: advanced-search empty-result status tolerates partial fields and true size_t sentinels.")
+
 
 # Double-click on an actual artist list row routes through the same
 # release-load action as Enter, never from blank/stale selections.
