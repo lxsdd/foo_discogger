@@ -2043,3 +2043,32 @@ assert "Discogger QA live search probe" in _live_qa
 assert "KNOWN_RELEASE_MATCHES" in _live_host and "ARTISTS" in _live_host
 assert _live_host.index("qa-live-search-probe.txt") > _live_host.index("[DiscoggerWindowTest]::ClickButton($searchButton)")
 print("PASS: exact authenticated GUI artist/release identity and review-only auto-display contract.")
+
+# Protected live discovery: stage evidence must stay numeric/identity-free,
+# the GUI must actually route the query, and the default "type=all" must not
+# reach the Discogs database endpoint.
+_live_telemetry = (root / "tests/runner-live-search-telemetry.h").read_text(encoding="utf-8-sig")
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in _live_telemetry
+assert "inline std::atomic<unsigned> button" in _live_telemetry
+assert "inline std::atomic<unsigned> worker_error" in _live_telemetry
+assert "inline void reset()" in _live_telemetry
+assert "discogger_live_search_qa::button.store(1);" in _live_dialog
+assert "discogger_live_search_qa::routed.store(1);" in _live_dialog
+assert "MapToText(m_qdm_search_query, exp_pair, false, false)" in _live_dialog
+assert "discogger_live_search_qa::worker_started.store(1);" in tasks_callbacks
+assert "discogger_live_search_qa::worker_error.store(1);" in tasks_callbacks
+assert "discogger_live_search_qa::parsed_releases.store(" in search
+for field in ("BUTTON", "ROUTED", "WORKER_STARTED", "WORKER_SUCCESS",
+              "WORKER_ERROR", "WORKER_ABORT", "RESPONSE_PAGES", "RESPONSE_ITEMS",
+              "PARSED_MASTERS", "PARSED_RELEASES", "QUERY_LIMIT", "API_IDENTITY",
+              "API_EXACT_OK", "API_EXACT_ITEMS", "API_EXACT_KNOWN",
+              "API_BROAD_OK", "API_BROAD_ITEMS", "API_BROAD_KNOWN"):
+    assert ('"' + field + '="') in _live_qa, field
+    assert ("'" + field + "'") in _live_host, field
+assert "https://api.discogs.com/oauth/identity" in _live_qa
+assert "https://api.discogs.com/database/search" in _live_qa
+assert "identity_ok" in _live_qa and "json_string_length(username)" in _live_qa
+assert "No queries, URLs, response bodies, user profiles or OAuth material are stored." in _live_telemetry
+assert "DISCOGGER_AUTHENTICATED_API_PROBE_" in _live_host
+assert "DISCOGGER_AUTHENTICATED_SEARCH_STAGES_" in _live_host
+print("PASS: authenticated native search stages, private OAuth probe and type-filter fix are guarded.")
