@@ -1,0 +1,38 @@
+name: Discogs OAuth central API health evidence (no secrets)
+
+# This tests the *central* API/OAuth service, not local GUI, cache or tags.
+# Zero Discogs credentials are passed to or stored in this repository.
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '41 8 * * 1'
+  workflow_dispatch:
+  # A trusted default-branch consumer runs after the exact Discogger draft
+  # native CI completes. No secret is passed to the draft branch.
+  workflow_run:
+    workflows: ['Discogger modernization validation']
+    types: [completed]
+    branches: [work/portable-build-properties-20261018]
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-discogs-oauth:
+    name: Central protected Discogs API QA evidence, not native GUI acceptance
+    # A workflow_run is privileged in GitHub. This job does NOT checkout the
+    # trigger's head/PR, consume artifacts, run its scripts or access secrets.
+    # Only a completed SUCCESS on our named draft branch may activate it.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == 'lxsdd/foo_discogger' &&
+        github.event.workflow_run.head_branch == 'work/portable-build-properties-20261018'
+      )
+    uses: lxsdd/dev-infrastructure-public/.github/workflows/discogs-oauth-evidence.yml@53e26f6943dc2ae4552e5e57433ae24a6818b876
+    permissions:
+      contents: read

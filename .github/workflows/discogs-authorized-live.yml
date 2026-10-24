@@ -12,6 +12,7 @@ on:
     paths:
       - '.github/workflows/discogs-authorized-live.yml'
       - '.github/workflows/validation.yml'
+      - '.github/workflows/discogs-central-qa-evidence.yml'
 
 permissions:
   contents: read
