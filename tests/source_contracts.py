@@ -1892,27 +1892,30 @@ live_probe_body = gui_source.split(
 assert "ShowArtistSearchResults" not in live_probe_body
 assert "matching_artist" not in live_probe_body
 print("PASS: five native release fixtures and read-only online GUI probe are wired.")
-# Require all eleven *new* public Discogs references in both the
+# Require eleven diversified references plus three original user misses in both the
 # deterministic fallback suite and the protected-runner read-only API sampler.
 corpus_qa = (root / "tests/live-discogs-search-corpus-qa.h").read_text(encoding="utf-8-sig")
 for release_id in (
     2844, 2783977, 7809, 32559, 3666, 294906, 13584056,
-    18370, 82825, 31623, 18278686,
+    18370, 82825, 31623, 18278686, 37332711, 36397609, 36819730,
 ):
     assert "{" + str(release_id) + ", " in corpus_qa
-assert "std::array<search_case, 11>" in corpus_qa
+assert "std::array<search_case, 14>" in corpus_qa
 assert '#include "live-discogs-search-corpus-qa.h"' in runner_commands
 assert '#include "live-discogs-search-corpus-qa.h"' in (
     root / "tests/collaboration_fallback_test.cpp"
 ).read_text(encoding="utf-8-sig")
 assert "cohort_nonempty_mask" in runner_commands
+assert "cohort_known_mask" in runner_commands
+assert "API_COHORT_KNOWN_MASK=" in runner_commands
+assert "known_mask:$($counts['API_COHORT_KNOWN_MASK'])" in gui_host
 assert 'if (counts[1] != 0 && expected_release_id == "38012673")' in runner_commands
 assert "API_COHORT_TOTAL=" in runner_commands
 assert "'API_COHORT_TOTAL','API_COHORT_OK'" in gui_host
 assert "DISCOGGER_AUTHENTICATED_API_COHORT_" in gui_host
 assert "fewer than nine populated searches" in gui_host
-print("PASS: eleven additional diversified public Discogs queries use runner-only numeric authenticated evidence.")
-# Four additional native GUI searches plus one no-purge repeat must use
+print("PASS: fourteen diversified and user-reported Discogs queries have per-case numeric OAuth evidence.")
+# Seven additional native GUI searches plus one no-purge repeat must use
 # actual Find Releases controls, observable remote objects and a whitelisted
 # runner-only public-ID selector, never a test-side tree presenter.
 assert "runner_qa_live_search_probe(const char* expected_release_id)" in gui_header
@@ -1921,7 +1924,8 @@ assert "release->id.equals(expected_release_id)" in gui_source
 assert 'qa-live-expected-id.txt' in runner_commands and 'qa-live-expected-id.txt' in gui_host
 assert "Unrecognized public release QA selector." in runner_commands
 assert 'expected_release_id == "38012673"' in runner_commands
-for name in ("daft-punk", "chemical-brothers", "bjork-utf8",
+for name in ("kyau-maywave", "matt-fax-only-you", "matt-fax-till-you-let-go",
+             "daft-punk", "chemical-brothers", "bjork-utf8",
              "royksopp-utf8", "daft-punk-cache-repeat"):
     assert "Name='" + name + "'" in gui_host
 assert "DISCOGGER_AUTHENTICATED_NATIVE_QUERY_" in gui_host

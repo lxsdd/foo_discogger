@@ -1001,7 +1001,7 @@ FILE "synthetic-side-b.wav" WAVE
             'QUERY_LIMIT','API_IDENTITY','API_EXACT_OK','API_EXACT_ITEMS',
             'API_EXACT_KNOWN','API_BROAD_OK','API_BROAD_ITEMS','API_BROAD_KNOWN',
             'API_COHORT_TOTAL','API_COHORT_OK','API_COHORT_NONEMPTY','API_COHORT_KNOWN',
-            'API_COHORT_MASK')
+            'API_COHORT_MASK','API_COHORT_KNOWN_MASK')
         $counts=@{}
         foreach($line in ($proof -split '\r?\n')){
             if($line -match '^([A-Z_]+)=(\d+)$' -and $Matches[1] -in $expected){
@@ -1014,8 +1014,8 @@ FILE "synthetic-side-b.wav" WAVE
         Write-Host "DISCOGGER_AUTHENTICATED_UI_BOUNDARY_${Architecture}=calls:$($counts['BUTTON']) nonempty:$($counts['INPUT_NONEMPTY_CALLS']) empty:$($counts['INPUT_EMPTY_CALLS']) member_valid:$($counts['INPUT_MEMBER_VALID']) hwnd_match:$($counts['INPUT_HWND_MATCH']) member_length:$($counts['INPUT_MEMBER_LENGTH']) live_length:$($counts['INPUT_LIVE_LENGTH'])"
         Write-Host "DISCOGGER_AUTHENTICATED_GUI_PARSE_${Architecture}=input:$($counts['INPUT_NONEMPTY']) fields:$($counts['PARSED_FIELDS']) minimal:$($counts['QUERY_MINIMAL']) query:$($counts['QUERY_DETECTED']) alt:$($counts['ALT_MODE']) retry:$($counts['REPEAT_QUERY']) exit:$($counts['EARLY_EXIT'])"
         Write-Host "DISCOGGER_AUTHENTICATED_API_PROBE_${Architecture}=identity:$($counts['API_IDENTITY']) exact_ok:$($counts['API_EXACT_OK']) exact_items:$($counts['API_EXACT_ITEMS']) exact_known:$($counts['API_EXACT_KNOWN']) broad_ok:$($counts['API_BROAD_OK']) broad_items:$($counts['API_BROAD_ITEMS']) broad_known:$($counts['API_BROAD_KNOWN'])"
-        Write-Host "DISCOGGER_AUTHENTICATED_API_COHORT_${Architecture}=total:$($counts['API_COHORT_TOTAL']) completed:$($counts['API_COHORT_OK']) nonempty:$($counts['API_COHORT_NONEMPTY']) expected_on_page:$($counts['API_COHORT_KNOWN']) nonempty_mask:$($counts['API_COHORT_MASK'])"
-        if($counts['API_COHORT_TOTAL'] -ne 11 -or $counts['API_COHORT_OK'] -ne 11){
+        Write-Host "DISCOGGER_AUTHENTICATED_API_COHORT_${Architecture}=total:$($counts['API_COHORT_TOTAL']) completed:$($counts['API_COHORT_OK']) nonempty:$($counts['API_COHORT_NONEMPTY']) expected_on_page:$($counts['API_COHORT_KNOWN']) nonempty_mask:$($counts['API_COHORT_MASK']) known_mask:$($counts['API_COHORT_KNOWN_MASK'])"
+        if($counts['API_COHORT_TOTAL'] -ne 14 -or $counts['API_COHORT_OK'] -ne 14){
             throw 'Authenticated independent Discogs query corpus was incomplete.'
         }
         # A few historic exact-format releases can be absent from the current
@@ -1058,6 +1058,11 @@ FILE "synthetic-side-b.wav" WAVE
         # and require automatic tree publication without a QA presenter click.
         # The final repeat exercises the cached-query/artist route.
         $nativeMatrix=@(
+            # Original user cases must actually populate the native release tree.
+            # The Maywave query is the independently observed live search fallback.
+            @{Id='37332711';Query='q= Maywave & title= 1000 Years';Name='kyau-maywave'},
+            @{Id='36397609';Query='artist= Matt Fax & title= Only You';Name='matt-fax-only-you'},
+            @{Id='36819730';Query='artist= Matt Fax & title= Till You Let Go';Name='matt-fax-till-you-let-go'},
             @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk'},
             @{Id='7809';Query='artist= The Chemical Brothers & title= Hey Boy Hey Girl';Name='chemical-brothers'},
             @{Id='32559';Query='artist= Björk & title= Jóga';Name='bjork-utf8'},

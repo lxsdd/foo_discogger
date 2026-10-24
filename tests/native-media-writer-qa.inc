@@ -356,12 +356,13 @@ void run_live_search_probe_qa() {
         api_broad = probe_search(
             "q=%22Via%20Balearia%22&per_page=100&page=1", 38012673);
     }
-    // New independent public-search cohort: eleven varied release identities,
+    // Independent public-search cohort: eleven diverse identities plus three
+    // original user-reported missing releases,
     // including collaborations, ampersands, UTF-8 and punctuation. Use actual
     // authenticated API requests only in the known-positive live-GUI probe,
     // never again in the empty-result probe (avoids duplicate rate-limit load).
     unsigned cohort_ok = 0, cohort_nonempty = 0, cohort_known = 0;
-    unsigned cohort_nonempty_mask = 0;
+    unsigned cohort_nonempty_mask = 0, cohort_known_mask = 0;
     const unsigned cohort_total = static_cast<unsigned>(discogger_live_corpus_qa::cases.size());
     if (counts[1] != 0 && expected_release_id == "38012673") {
         for (unsigned i = 0; i < cohort_total; ++i) {
@@ -372,7 +373,10 @@ void run_live_search_probe_qa() {
                 ++cohort_nonempty;
                 cohort_nonempty_mask |= (1u << i);
             }
-            cohort_known += evidence[2];
+            if (evidence[2] != 0) {
+                ++cohort_known;
+                cohort_known_mask |= (1u << i);
+            }
         }
     }
     const auto evidence = folder / "qa-live-search-probe.txt";
@@ -421,7 +425,8 @@ void run_live_search_probe_qa() {
         << "API_COHORT_OK=" << cohort_ok << '\n'
         << "API_COHORT_NONEMPTY=" << cohort_nonempty << '\n'
         << "API_COHORT_KNOWN=" << cohort_known << '\n'
-        << "API_COHORT_MASK=" << cohort_nonempty_mask << '\n';
+        << "API_COHORT_MASK=" << cohort_nonempty_mask << '\n'
+        << "API_COHORT_KNOWN_MASK=" << cohort_known_mask << '\n';
     out.flush();
     if (!out) throw std::runtime_error("Could not flush live GUI evidence.");
 }

@@ -58,7 +58,7 @@ int main() {
         // Literal metadata separator characters must never become new filters.
         assert(encoded.find(" & title=") == std::string::npos);
     }
-    assert(corpus_ids.size() == 11);
+    assert(corpus_ids.size() == 14);
     assert(percent_encode_search_value("Björk – Jóga") ==
            "Bj%C3%B6rk%20%E2%80%93%20J%C3%B3ga");
     assert(percent_encode_search_value("Röyksopp") == "R%C3%B6yksopp");
