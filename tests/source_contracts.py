@@ -599,6 +599,27 @@ assert "void DiscogsInterface::process_amt_parsed_fake_artist(" in interface_imp
 assert "void DiscogsInterface::parse_amt_page(" in interface_impl
 print("PASS: composite-search parser declarations are visible and C++-qualified correctly.")
 
+# Real authenticated advanced search can retain a parsed release in several
+# artist buckets, then read its ID to populate the Discogger cache. Moving
+# the loop-local shared_ptr into the FIRST bucket invalidates later reads.
+# Never move it into any artist bucket: the owning parsed set, UI and cache
+# share lifetime while the worker walks the complete response.
+advanced_search = interface_impl.split(
+    "void DiscogsInterface::process_amt_parsed_fake_artist(", 1
+)[1].split("void DiscogsInterface::parse_amt_page(", 1)[0]
+for add in (
+    "tmpArtist->master_releases.add_item(mr);",
+    "no_checkArtist->master_releases.add_item(mr);",
+    "tmpArtist->releases.add_item(r);",
+    "no_checkArtist->releases.add_item(r);",
+):
+    assert add in advanced_search, f"advanced search lost shared ownership: {add}"
+for moved in ("std::move(mr)", "std::move(r)"):
+    assert moved not in advanced_search, f"advanced search invalidates shared release: {moved}"
+assert "encode_mr(atoi(tmpArtist->id), atoi(mr->id))" in advanced_search
+assert "encode_mr(atoi(no_checkArtist->id), atoi(mr->id))" in advanced_search
+print("PASS: advanced live search safely retains shared master/release ownership.")
+
 # Restore the existing search/filter task base type and serialize its lock
 # counter transitions; do not confuse it with the separate async tag-write gate.
 task_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
