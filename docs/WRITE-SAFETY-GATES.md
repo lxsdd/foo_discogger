@@ -32,9 +32,11 @@ only in the disposable CI build, not in normal component builds.
 
 - A tag write and related artwork operations are **not one transaction**.
   Readback/fail-closed checks do not roll back a file already changed by a true
-  I/O failure, cancellation, process crash, or later artwork failure. A safe
-  continuation/rollback design and native fault-injection evidence remain
-  necessary before advertising atomic writes.
+  I/O failure, cancellation, process crash, or later artwork failure. The
+  artwork worker now warns on cancellation or fatal failure that earlier
+  images and any preceding tag commit may remain changed; this is diagnostic,
+  not rollback. A safe continuation/rollback design and native fault-injection
+  evidence remain necessary before advertising atomic writes.
 - Virtual CUE/subsong writes are deliberately refused; there is no validated
   embedded-CUE editor in Discogger. Preserving CUE data through tested physical
   FLAC writes is not equivalent to editing CUE metadata.

@@ -48,6 +48,9 @@ void foo_discogs_threaded_process_callback::on_done(HWND p_wnd, bool p_was_abort
 				[&](const char* message) { add_error(message, true); });
 		}
 		if (errors.get_count()) {
+			if (fatal_error) {
+				if (const char* context = fatal_failure_context()) add_error(context, true);
+			}
 			display_errors();
 			if (fatal_error) {
 				on_error(p_wnd);
@@ -482,6 +485,19 @@ download_art_task::download_art_task(pfc::string8 release_id, metadb_handle_list
     release_id(release_id), items(items), m_file_match(file_match),
     m_write_lease(write_lease ? std::move(write_lease) : discogger_write_safety::acquire_physical_write_lease()) {
     if (!m_write_lease) throw locked_task_exception("Another Discogger tag/artwork write is active");
+}
+
+const char* download_art_task::fatal_failure_context() const {
+    return "Artwork did not complete. Earlier sidecar or embedded images may already have changed; "
+           "any preceding tag commit is not rolled back. Inspect affected physical files before retrying.";
+}
+
+void download_art_task::on_abort(HWND) {
+    // The host reports cancellation without a fatal error. Sequential artwork
+    // operations may already have committed; never imply an all-or-nothing abort.
+    add_error("Artwork cancelled. Earlier sidecar or embedded images may already have changed; "
+              "any preceding tag commit is not rolled back. Inspect affected physical files before retrying.", true);
+    display_errors();
 }
 
 void download_art_task::start() {

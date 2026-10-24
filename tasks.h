@@ -35,6 +35,10 @@ protected:
 	// error callback. display errors if return true
 	virtual void on_error(HWND p_wnd) {}
 
+	// Fatal task errors may follow earlier physical writes. Derived writers can
+	// supply an actionable partial-commit warning before the single error popup.
+	virtual const char* fatal_failure_context() const { return nullptr; }
+
 private:
 	void run(threaded_process_status &p_status, abort_callback &p_abort) override final;
 	void on_done(HWND p_wnd, bool p_was_aborted) override final;
@@ -135,6 +139,8 @@ private:
     discogger_write_safety::async_write_gate::lease m_write_lease;
 
 	void safe_run(threaded_process_status &p_status, abort_callback &p_abort) override;
+	void on_abort(HWND p_wnd) override;
+	const char* fatal_failure_context() const override;
 };
 
 
