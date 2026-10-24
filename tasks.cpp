@@ -805,6 +805,19 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 	}
 }
 
+const char* download_art_paths_task::fatal_failure_context() const {
+    if (m_to_path_only) return nullptr; // A preview cannot write physical art.
+    return "Artwork did not complete. Earlier sidecar or embedded images may already have changed. "
+           "Inspect affected physical files before retrying.";
+}
+
+void download_art_paths_task::on_abort(HWND) {
+    if (m_to_path_only) return;
+    add_error("Artwork cancelled. Earlier sidecar or embedded images may already have changed. "
+              "Inspect affected physical files before retrying.", true);
+    display_errors();
+}
+
 void download_art_paths_task::on_success(HWND p_wnd) {
 
 	std::shared_ptr<std::vector<std::pair<pfc::string8, bit_array_bittable>>> vpaths = std::make_shared<std::vector<std::pair<pfc::string8, bit_array_bittable>>>(m_vres);

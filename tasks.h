@@ -164,6 +164,8 @@ private:
 	std::vector<std::pair<pfc::string8, bit_array_bittable>> m_vres;
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
+	void on_abort(HWND p_wnd) override;
+	const char* fatal_failure_context() const override;
 };
 
 
