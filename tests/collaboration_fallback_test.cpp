@@ -150,16 +150,16 @@ int main() {
     assert(encode_fallback_query(featured_ampersands[1]) ==
            "q=%22Sun%20%26%20Moon%22");
 
-    auto unicode_mix = build_fallback_plan("Björk", "Jóga", "Jóga (Howie B Main Mix)");
+    auto unicode_mix = build_fallback_plan("Björk", "Jóga", "Jóga (Howie B)");
     assert(unicode_mix.size() == 1);
     assert(encode_fallback_query(unicode_mix[0]) == "q=%22J%C3%B3ga%22");
-    auto unicode_artist = build_fallback_plan("Röyksopp", "Eple", "Eple (Original Edit)");
+    auto unicode_artist = build_fallback_plan("Röyksopp", "Eple", "Eple (Edit)");
     assert(unicode_artist.size() == 1 && unicode_artist[0].q == "Eple");
     auto distinct_release_track = build_fallback_plan("Bicep", "Glue EP", "Glue");
     assert(distinct_release_track.size() == 1);
     assert(distinct_release_track[0].q == "Glue EP" &&
            distinct_release_track[0].title.empty());
-    auto dotted_title = build_fallback_plan("Underworld", "Born Slippy .NUXX", "Born Slippy .NUXX");
+    auto dotted_title = build_fallback_plan("Underworld", "Born Slippy .NUXX", "Born Slippy / NUXX (Mix)");
     assert(dotted_title.size() == 1);
     assert(encode_fallback_query(dotted_title[0]) ==
            "q=%22Born%20Slippy%20.NUXX%22");

@@ -1939,9 +1939,10 @@ assert gui_host.count(";MinFields=") == 20
 for query in (
     "TITLE = 1000 Years & TRACK = 1000 Years (DJ Version) & ARTIST = Kyau & Albert X Maywave",
     "artist= Above & Beyond feat. Richard Bedford & title= Sun & Moon & track= Sun & Moon (Club Mix)",
-    "TRACK = Jóga (Howie B Main Mix) & ARTIST = Björk & TITLE = Jóga",
+    "TRACK = Jóga (Howie B) & ARTIST = Björk & TITLE = Jóga",
+    "ARTIST = Röyksopp & TITLE = Eple & TRACK = Eple (Edit)",
     "track= Glue & artist= Bicep & title= Glue EP",
-    "title= Born Slippy .NUXX & track= Born Slippy .NUXX & artist= Underworld",
+    "title= Born Slippy .NUXX & track= Born Slippy / NUXX (Mix) & artist= Underworld",
 ):
     assert query in gui_host
 assert "did not auto-show results without artist reselection." in gui_host
