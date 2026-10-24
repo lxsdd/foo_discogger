@@ -1915,7 +1915,7 @@ assert "'API_COHORT_TOTAL','API_COHORT_OK'" in gui_host
 assert "DISCOGGER_AUTHENTICATED_API_COHORT_" in gui_host
 assert "fewer than nine populated searches" in gui_host
 print("PASS: fourteen diversified and user-reported Discogs queries have per-case numeric OAuth evidence.")
-# Eight additional native GUI searches plus one no-purge repeat must use
+# Nineteen additional native GUI searches plus one no-purge repeat must use
 # actual Find Releases controls, observable remote objects and a whitelisted
 # runner-only public-ID selector, never a test-side tree presenter.
 assert "runner_qa_live_search_probe(const char* expected_release_id)" in gui_header
@@ -1926,12 +1926,26 @@ assert "Query='artist= Kyau & Albert X Maywave & title= 1000 Years & track= 1000
 assert "Unrecognized public release QA selector." in runner_commands
 assert 'expected_release_id == "38012673"' in runner_commands
 for name in ("kyau-original-composite", "kyau-maywave", "matt-fax-only-you", "matt-fax-till-you-let-go",
+             "kyau-reordered", "kyau-uppercase-fields", "sun-moon-ampersands", "bjork-utf8-reordered", "royksopp-utf8-mix",
+             "bicep-ep-track", "underworld-punctuation", "matt-fax-extended-reordered", "matt-fax-extended-three-fields", "chicane-featuring", "faithless-remix",
              "daft-punk", "chemical-brothers", "bjork-utf8",
              "royksopp-utf8", "daft-punk-cache-repeat"):
     assert "Name='" + name + "'" in gui_host
 assert "DISCOGGER_AUTHENTICATED_NATIVE_QUERY_" in gui_host
+assert "Complex native search parser dropped or rejected requested fields:" in gui_host
+assert "MinFields=" in gui_host and "PARSED_FIELDS" in gui_host
+assert "DISCOGGER_AUTHENTICATED_NATIVE_PARSE_" in gui_host
+assert gui_host.count(";MinFields=") == 20
+for query in (
+    "TITLE = 1000 Years & TRACK = 1000 Years (DJ Version) & ARTIST = Kyau & Albert X Maywave",
+    "artist= Above & Beyond feat. Richard Bedford & title= Sun & Moon & track= Sun & Moon (Club Mix)",
+    "TRACK = Jóga (Howie B Main Mix) & ARTIST = Björk & TITLE = Jóga",
+    "track= Glue & artist= Bicep & title= Glue EP",
+    "title= Born Slippy .NUXX & track= Born Slippy .NUXX & artist= Underworld",
+):
+    assert query in gui_host
 assert "did not auto-show results without artist reselection." in gui_host
-print("PASS: independent real native GUI search matrix and no-purge repeat are wired.")
+print("PASS: twenty native OAuth GUI cases verify original misses, complex parser fields and no-purge repeat.")
 
 
 

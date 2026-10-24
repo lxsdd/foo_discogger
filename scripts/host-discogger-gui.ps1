@@ -1061,15 +1061,28 @@ FILE "synthetic-side-b.wav" WAVE
             # Original user cases must actually populate the native release tree.
             # Prove both the precise previously failing composite query and the
             # independently observed Maywave workaround, with no artist click.
-            @{Id='37332711';Query='artist= Kyau & Albert X Maywave & title= 1000 Years & track= 1000 Years (Dj Version)';Name='kyau-original-composite'},
-            @{Id='37332711';Query='q= Maywave & title= 1000 Years';Name='kyau-maywave'},
-            @{Id='36397609';Query='artist= Matt Fax & title= Only You';Name='matt-fax-only-you'},
-            @{Id='36819730';Query='artist= Matt Fax & title= Till You Let Go';Name='matt-fax-till-you-let-go'},
-            @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk'},
-            @{Id='7809';Query='artist= The Chemical Brothers & title= Hey Boy Hey Girl';Name='chemical-brothers'},
-            @{Id='32559';Query='artist= Björk & title= Jóga';Name='bjork-utf8'},
-            @{Id='294906';Query='artist= Röyksopp & title= Eple';Name='royksopp-utf8'},
-            @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk-cache-repeat'}
+            @{Id='37332711';Query='artist= Kyau & Albert X Maywave & title= 1000 Years & track= 1000 Years (Dj Version)';Name='kyau-original-composite';MinFields=4},
+            @{Id='37332711';Query='q= Maywave & title= 1000 Years';Name='kyau-maywave';MinFields=3},
+            @{Id='36397609';Query='artist= Matt Fax & title= Only You';Name='matt-fax-only-you';MinFields=3},
+            @{Id='36819730';Query='artist= Matt Fax & title= Till You Let Go';Name='matt-fax-till-you-let-go';MinFields=3},
+            @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk';MinFields=3},
+            @{Id='7809';Query='artist= The Chemical Brothers & title= Hey Boy Hey Girl';Name='chemical-brothers';MinFields=3},
+            @{Id='32559';Query='artist= Björk & title= Jóga';Name='bjork-utf8';MinFields=3},
+            @{Id='294906';Query='artist= Röyksopp & title= Eple';Name='royksopp-utf8';MinFields=3},
+            # Stress field order/case, collaborations, UTF-8, remix descriptors,
+            # and titles where the release differs from the track.
+            @{Id='37332711';Query='track= 1000 Years (Dj Version) & title= 1000 Years & artist= Kyau & Albert X Maywave';Name='kyau-reordered';MinFields=4},
+            @{Id='37332711';Query='TITLE = 1000 Years & TRACK = 1000 Years (DJ Version) & ARTIST = Kyau & Albert X Maywave';Name='kyau-uppercase-fields';MinFields=4},
+            @{Id='2783977';Query='artist= Above & Beyond feat. Richard Bedford & title= Sun & Moon & track= Sun & Moon (Club Mix)';Name='sun-moon-ampersands';MinFields=4},
+            @{Id='32559';Query='TRACK = Jóga (Howie B Main Mix) & ARTIST = Björk & TITLE = Jóga';Name='bjork-utf8-reordered';MinFields=4},
+            @{Id='294906';Query='ARTIST = Röyksopp & TITLE = Eple & TRACK = Eple (Original Edit)';Name='royksopp-utf8-mix';MinFields=4},
+            @{Id='18278686';Query='track= Glue & artist= Bicep & title= Glue EP';Name='bicep-ep-track';MinFields=4},
+            @{Id='13584056';Query='title= Born Slippy .NUXX & track= Born Slippy .NUXX & artist= Underworld';Name='underworld-punctuation';MinFields=4},
+            @{Id='36397609';Query='track= Only You (Extended Mix) & artist= Matt Fax & title= Only You';Name='matt-fax-extended-reordered';MinFields=4},
+            @{Id='36819730';Query='title= Till You Let Go & track= Till You Let Go (Extended Mix) & artist= Matt Fax';Name='matt-fax-extended-three-fields';MinFields=4},
+            @{Id='18370';Query='artist= Chicane Featuring Maire Brennan & title= Saltwater & track= Saltwater (Original Mix)';Name='chicane-featuring';MinFields=4},
+            @{Id='82825';Query='artist= Faithless & title= Insomnia & track= Insomnia (Monster Mix)';Name='faithless-remix';MinFields=4},
+            @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk-cache-repeat';MinFields=3}
         )
         $expectedIdFile=Join-Path $dir 'qa-live-expected-id.txt'
         foreach($item in $nativeMatrix){
@@ -1144,6 +1157,12 @@ FILE "synthetic-side-b.wav" WAVE
                 $done=$matrixCounts['WORKER_SUCCESS'] -eq 1
             }
             if(-not $done){throw 'Native GUI matrix search worker did not finish.'}
+            if($matrixCounts['QUERY_DETECTED'] -ne 1 -or
+               $matrixCounts['QUERY_MINIMAL'] -ne 1 -or
+               $matrixCounts['EARLY_EXIT'] -ne 0 -or
+               $matrixCounts['PARSED_FIELDS'] -lt [int]$item.MinFields){
+                throw "Complex native search parser dropped or rejected requested fields: $($item.Name)"
+            }
             if($matrixCounts['BUTTON'] -ne 1 -or $matrixCounts['ROUTED'] -ne 1 -or
                 $matrixCounts['WORKER_ADVANCED'] -ne 1 -or
                 $matrixCounts['ARTISTS'] -lt 1 -or
@@ -1157,6 +1176,7 @@ FILE "synthetic-side-b.wav" WAVE
             if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
                 throw 'Native GUI matrix changed disposable audio bytes.'
             }
+            Write-Host "DISCOGGER_AUTHENTICATED_NATIVE_PARSE_${Architecture}_$($item.Name)=fields:$($matrixCounts['PARSED_FIELDS']) minimum:$($item.MinFields)"
             Write-Host "DISCOGGER_AUTHENTICATED_NATIVE_QUERY_${Architecture}_$($item.Name)=PASS"
         }
         if(Test-Path -LiteralPath $expectedIdFile){Remove-Item -LiteralPath $expectedIdFile -Force}

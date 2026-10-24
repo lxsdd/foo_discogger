@@ -137,6 +137,44 @@ int main() {
     assert(build_fallback_plan("", "Only You", "").empty());
     assert(build_fallback_plan("Matt Fax", "X", "").empty());
     assert(build_fallback_plan("Matt Fax", "", "Till You Let Go").size() == 1);
+    // Complex live-GUI cases also have deterministic, review-only recovery
+    // plans. These checks preserve Unicode/ampersands and release-vs-track
+    // semantics without depending on an upstream network response.
+    auto featured_ampersands = build_fallback_plan(
+        "Above & Beyond feat. Richard Bedford", "Sun & Moon", "Sun & Moon (Club Mix)");
+    assert(featured_ampersands.size() == 2);
+    assert(featured_ampersands[0].q == "Richard Bedford");
+    assert(featured_ampersands[0].title == "Sun & Moon");
+    assert(encode_fallback_query(featured_ampersands[0]) ==
+           "q=%22Richard%20Bedford%22&title=Sun%20%26%20Moon");
+    assert(encode_fallback_query(featured_ampersands[1]) ==
+           "q=%22Sun%20%26%20Moon%22");
+
+    auto unicode_mix = build_fallback_plan("Björk", "Jóga", "Jóga (Howie B Main Mix)");
+    assert(unicode_mix.size() == 1);
+    assert(encode_fallback_query(unicode_mix[0]) == "q=%22J%C3%B3ga%22");
+    auto unicode_artist = build_fallback_plan("Röyksopp", "Eple", "Eple (Original Edit)");
+    assert(unicode_artist.size() == 1 && unicode_artist[0].q == "Eple");
+    auto distinct_release_track = build_fallback_plan("Bicep", "Glue EP", "Glue");
+    assert(distinct_release_track.size() == 1);
+    assert(distinct_release_track[0].q == "Glue EP" &&
+           distinct_release_track[0].title.empty());
+    auto dotted_title = build_fallback_plan("Underworld", "Born Slippy .NUXX", "Born Slippy .NUXX");
+    assert(dotted_title.size() == 1);
+    assert(encode_fallback_query(dotted_title[0]) ==
+           "q=%22Born%20Slippy%20.NUXX%22");
+    assert(without_terminal_mix_suffix("Sun & Moon (Club Mix)") == "Sun & Moon");
+
+    // A title containing query-like text must stay ONE literal title value,
+    // not become a new Discogs filter or silently alter the original title.
+    auto reserved = build_fallback_plan(
+        "Kyau & Albert X Maywave", "1000 Years & title=Injected", "1000 Years (DJ Version)");
+    assert(reserved.size() == 2);
+    assert(encode_fallback_query(reserved[0]) ==
+           "q=%22Maywave%22&title=1000%20Years%20%26%20title%3DInjected");
+    assert(encode_fallback_query(reserved[1]) ==
+           "q=%221000%20Years%20%26%20title%3DInjected%22");
+
     std::vector<std::string> ids;
     assert(!already_seen_release_id(ids, "36397609"));
     assert(already_seen_release_id(ids, "36397609"));
