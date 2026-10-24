@@ -2056,3 +2056,25 @@ assert "m_track_mappings[i].enabled = false;" in match_entry
 assert match_entry.index("m_track_mappings[i].enabled = false;") < match_entry.index("tm.enabled = true;")
 assert "m_match_status != MATCH_SUCCESS" not in match_entry
 print("PASS: failed/ambiguous matching cannot silently enable positional assignments.")
+
+# The FIRST native search completion runs after potentially long remote I/O.
+# Its HWND guard must precede all dialog mutations, not only the follow-up
+# artist presentation callback. A window replacement must not receive stale
+# history updates, search text or release results.
+search_source = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+search_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
+search_header_body = search_header.split("class search_artist_process_callback", 1)[1].split(
+    "class expand_master_release_process_callback", 1)[0]
+search_start = search_source.split("void search_artist_process_callback::start(", 1)[1].split(
+    "void search_artist_process_callback::safe_run(", 1)[0]
+search_main = search_source.split("void search_artist_process_callback::on_success(", 1)[1].split(
+    "void search_artist_process_callback::on_abort(", 1)[0]
+assert "HWND m_owner_window = nullptr;" in search_header_body
+assert "m_owner_window = parent;" in search_start
+assert "PFC_ASSERT(core_api::is_main_thread());" in search_main
+assert search_main.count("::IsWindow(m_owner_window)") >= 2
+assert search_main.count("g_discogs->find_release_dialog->m_hWnd != m_owner_window") >= 2
+assert search_main.index("::IsWindow(m_owner_window)") < search_main.index("UpdateSearchQueryHasRun(")
+assert "task->start(m_owner_window);" in search_main
+assert "new service_impl_t<on_search_artist_done_process_callback>" in search_main
+print("PASS: modeless online search completion refuses closed/replaced Win32 dialog.")
