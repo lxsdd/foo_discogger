@@ -66,6 +66,31 @@ int main() {
     // these remain bounded, manual-review fallback candidates.
     auto duo = build_fallback_plan("Kyau & Albert", "1000 Years", "");
     assert(duo.size() == 2 && duo[0].q == "Albert");
+
+    // Identical partner and title values do not make these requests
+    // interchangeable: the first constrains Discogs release title and the
+    // second only searches the broad text index.
+    auto same_partner_title = build_fallback_plan(
+        "Producer feat. Sunrise", "Sunrise", "");
+    assert(same_partner_title.size() == 2);
+    assert(same_partner_title[0].label == "collaboration partner and title");
+    assert(same_partner_title[0].q == "Sunrise" &&
+           same_partner_title[0].title == "Sunrise");
+    assert(same_partner_title[1].label == "title-only discovery (review required)");
+    assert(same_partner_title[1].q == "Sunrise" &&
+           same_partner_title[1].title.empty());
+    assert(encode_fallback_query(same_partner_title[0]) ==
+           "q=%22Sunrise%22&title=Sunrise");
+    assert(encode_fallback_query(same_partner_title[1]) ==
+           "q=%22Sunrise%22");
+    // Version suffix normalization can produce the same partner/title token:
+    // both requests are still distinct and must never auto-confirm identity.
+    auto same_partner_version = build_fallback_plan(
+        "Producer x Sunrise", "Sunrise (Extended Mix)", "");
+    assert(same_partner_version.size() == 2);
+    assert(same_partner_version[0].title == "Sunrise (Extended Mix)");
+    assert(same_partner_version[1].q == "Sunrise" &&
+           same_partner_version[1].title.empty());
     // Short/generic release titles must not suppress a useful track search.
     // In particular, the Discogs title= filter refers to the RELEASE title,
     // not to the supplied track title. Such fallbacks must remain review-only.
