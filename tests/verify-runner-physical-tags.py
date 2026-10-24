@@ -725,7 +725,7 @@ def selftest_id3():
             )
             payload = b""
             for name, value in entries:
-                body = b"\\x03" + name.encode() + b"\\x00" + value.encode()
+                body = b"\x03" + name.encode() + b"\x00" + value.encode()
                 size = (len(body).to_bytes(4, "big") if version == 3
                         else ss(len(body)))
                 payload += b"TXXX" + size + bytes(2) + body
