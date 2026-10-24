@@ -263,7 +263,10 @@ def id3_standard_text_values(content):
         if encoding == 1 and not (raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff")):
             codec = "utf-16-le"
         try:
-            decoded = raw.decode(codec).lstrip("\ufeff").rstrip("\x00")
+            # The decoder consumes the UTF-16 encoding BOM. A further
+            # leading U+FEFF belongs to the physical text and must survive;
+            # lstrip() would conceal a destructive native metadata rewrite.
+            decoded = raw.decode(codec).rstrip("\x00")
         except UnicodeError as error:
             raise AssertionError("Corrupt ID3v2 standard text frame") from error
         values[(frame_id, decoded)] += 1
@@ -847,6 +850,29 @@ def selftest_id3():
         return b"ID3" + bytes((version, 0, 0)) + ss(len(frames)) + frames + b"Trance"
     original_text = text_tag(3, 1)
     verify_original_mp3_standard_text(original_text, text_tag(4, 3))
+    # P1 physical MP3 safety: the UTF-16 codec consumes its own encoding BOM,
+    # but a second BOM (or a UTF-8 leading U+FEFF) is user metadata. A writer
+    # silently removing it must fail the preservation gate, even across ID3
+    # version/encoding changes.
+    def leading_bom_title_tag(version, encoding, keep_bom):
+        title = ("\ufeff" if keep_bom else "") + "Synthetic Test"
+        frames = (text_frame(b"TIT2", title, version, encoding) +
+                  text_frame(b"TCON", "Trance", version, encoding))
+        return b"ID3" + bytes((version, 0, 0)) + ss(len(frames)) + frames
+    before_bom = leading_bom_title_tag(3, 1, True)
+    verify_original_mp3_standard_text(
+        before_bom, leading_bom_title_tag(4, 3, True))
+    for version, encoding in ((3, 1), (4, 3)):
+        original_bom = leading_bom_title_tag(version, encoding, True)
+        assert (b"TIT2", "\ufeffSynthetic Test") in id3_standard_text_values(original_bom)
+        try:
+            verify_original_mp3_standard_text(
+                original_bom, leading_bom_title_tag(version, encoding, False))
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Removed leading physical ID3 U+FEFF escaped audit")
+    print("DISCOGGER_ID3_STANDARD_TEXT_LEADING_BOM_PRESERVATION=PASS")
     # P1: toggling ID3 header unsynchronisation (or other unsupported bits)
     # changes the interpretation of identical frame bytes. Every physical
     # metadata reader must fail closed, for both supported ID3v2 versions.
