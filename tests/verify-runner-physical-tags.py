@@ -181,6 +181,15 @@ def verify_original_mp3_extended_header(before, after):
         raise AssertionError("Physical MP3 ID3v2 extended header changed or disappeared")
 
 
+def _drop_one_optional_id3_terminator(text):
+    """Ignore one legal trailing terminator, never erase empty value segments.
+
+    ID3 text may be terminated by one NUL. rstrip("\x00") hid the loss
+    of additional trailing empty values during a native metadata rewrite.
+    """
+    return text[:-1] if text.endswith("\x00") else text
+
+
 def id3_txxx_values(content):
     """Read actual TXXX descriptions/values, including UTF-16 ID3v2 frames."""
     version, offset, end = id3_frame_bounds(content)
@@ -234,7 +243,7 @@ def id3_txxx_values(content):
             value = value[1:]
         # TXXX descriptions are user-defined field names: whitespace is data.
         # Trimming it hides destructive renames and can spoof the QA marker.
-        decoded.append((name, value.rstrip("\x00")))
+        decoded.append((name, _drop_one_optional_id3_terminator(value)))
     if any(content[offset:end]):
         raise AssertionError("Truncated trailing ID3v2 TXXX frame")
     return decoded
@@ -284,7 +293,7 @@ def id3_standard_text_values(content):
             # The decoder consumes the UTF-16 encoding BOM. A further
             # leading U+FEFF belongs to the physical text and must survive;
             # lstrip() would conceal a destructive native metadata rewrite.
-            decoded = raw.decode(codec).rstrip("\x00")
+            decoded = _drop_one_optional_id3_terminator(raw.decode(codec))
         except UnicodeError as error:
             raise AssertionError("Corrupt ID3v2 standard text frame") from error
         values[(frame_id, decoded)] += 1
@@ -829,6 +838,39 @@ def selftest_id3():
             pass
         else:
             raise AssertionError("Case-only TXXX description rename escaped preservation audit")
+    # P1: a physical TXXX writer must not erase an additional trailing
+    # empty segment. Exactly one optional terminator may be normalized;
+    # rstrip() used to erase every trailing NUL and falsely certify a loss.
+    for trailing_version in (3, 4):
+        for trailing_encoding in (1, 3):
+            def trailing_frame(name, value):
+                codec = "utf-16" if trailing_encoding == 1 else "utf-8"
+                body = bytes((trailing_encoding,)) + (name + "\x00" + value).encode(codec)
+                length = (len(body).to_bytes(4, "big") if trailing_version == 3
+                          else ss(len(body)))
+                return b"TXXX" + length + bytes(2) + body
+            def trailing_tag(value):
+                entries = (
+                    ("DISCOGGER_QA_CUSTOM", "Keep original MP3 metadata"),
+                    ("REPLAYGAIN_TRACK_GAIN", "-5.00 dB"),
+                    ("REPLAYGAIN_TRACK_PEAK", "0.800000"),
+                    ("DJ USER KEY", value),
+                )
+                payload = b"".join(trailing_frame(k, v) for k, v in entries)
+                return (b"ID3" + bytes((trailing_version, 0, 0))
+                        + ss(len(payload)) + payload)
+            verify_original_mp3_txxx(trailing_tag("keep\x00"),
+                                     trailing_tag("keep"))
+            verify_original_mp3_txxx(trailing_tag("keep\x00\x00"),
+                                     trailing_tag("keep\x00\x00"))
+            try:
+                verify_original_mp3_txxx(trailing_tag("keep\x00\x00"),
+                                         trailing_tag("keep\x00"))
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Lost trailing TXXX empty segment escaped audit")
+    print("DISCOGGER_ID3_TXXX_TRAILING_EMPTY_SEGMENT_PRESERVED=PASS")
     marker = frame("DISCOGGER_QA_RUNNER", "RUNNER-VERIFIED")
     def with_qa_marker(marker_frames):
         payload = fields + marker_frames
@@ -957,6 +999,31 @@ def selftest_id3():
             frames += text_frame(b"TCON", genre, version, encoding)
         # Deliberate audio marker: a raw substring grep would falsely PASS.
         return b"ID3" + bytes((version, 0, 0)) + ss(len(frames)) + frames + b"Trance"
+    # P1: standard ID3 text must retain additional trailing empty
+    # segments, while a single optional terminator may be normalized.
+    for trailing_version, trailing_encoding in ((3, 1), (4, 3)):
+        def trailing_standard_tag(value):
+            payload = (text_frame(b"TIT2", value, trailing_version,
+                                  trailing_encoding) +
+                       text_frame(b"TCON", "Trance", trailing_version,
+                                  trailing_encoding))
+            return (b"ID3" + bytes((trailing_version, 0, 0))
+                    + ss(len(payload)) + payload)
+        verify_original_mp3_standard_text(
+            trailing_standard_tag("Synthetic Test\x00"),
+            trailing_standard_tag("Synthetic Test"))
+        verify_original_mp3_standard_text(
+            trailing_standard_tag("Synthetic Test\x00\x00"),
+            trailing_standard_tag("Synthetic Test\x00\x00"))
+        try:
+            verify_original_mp3_standard_text(
+                trailing_standard_tag("Synthetic Test\x00\x00"),
+                trailing_standard_tag("Synthetic Test\x00"))
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Lost trailing standard ID3 empty segment escaped audit")
+    print("DISCOGGER_ID3_STANDARD_TEXT_TRAILING_EMPTY_SEGMENT_PRESERVED=PASS")
     original_text = text_tag(3, 1)
     verify_original_mp3_standard_text(original_text, text_tag(4, 3))
     # P1 physical MP3 safety: the UTF-16 codec consumes its own encoding BOM,
