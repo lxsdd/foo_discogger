@@ -1995,3 +1995,53 @@ assert "m_track_mappings[i].enabled = false;" in match_entry
 assert match_entry.index("m_track_mappings[i].enabled = false;") < match_entry.index("tm.enabled = true;")
 assert "m_match_status != MATCH_SUCCESS" not in match_entry
 print("PASS: failed/ambiguous matching cannot silently enable positional assignments.")
+
+# Protected CI-only OAuth values must be consumed strictly from the runner
+# process environment; never committed, embedded, saved to Discogger config or
+# printed. Ordinary product builds retain the existing OAuth path unchanged.
+runner_fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")
+runner_gui = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in runner_fetcher
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in runner_gui
+for name in ("DISCOGS_OAUTH_CONSUMER_KEY", "DISCOGS_OAUTH_CONSUMER_SECRET",
+             "DISCOGS_OAUTH_ACCESS_TOKEN", "DISCOGS_OAUTH_TOKEN_SECRET"):
+    assert ('std::getenv("' + name + '")') in runner_fetcher
+    assert ('std::getenv("' + name + '")') in runner_gui
+assert 'throw foo_discogs_exception("Incomplete or unauthorized runner OAuth configuration.");' in runner_fetcher
+assert 'consumer = new OAuth::Consumer(CONSUMER_KEY, CONSUMER_SECRET);' in runner_fetcher
+assert 'oauth_token = token;' in runner_fetcher
+assert 'oauth_token_secret = token_secret;' in runner_fetcher
+assert 'return true;' in runner_gui.split('bool OAuthCheck(', 1)[1].split('#endif', 1)[0]
+print("PASS: protected runner OAuth is test-build-only and default Discogger behavior is preserved.")
+
+# The authenticated live path must drive real native Find Releases controls,
+# while the existing uncredentialed synthetic GUI coverage remains reusable.
+gui_script = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "[switch]$AuthorizedLive" in gui_script
+assert "DISCOGGER_AUTHENTICATED_GUI_SEARCH_$Architecture=PASS" in gui_script
+assert "[DiscoggerWindowTest]::ClickButton($searchButton)" in gui_script
+assert "CompanionMetadataIsolationDll" in gui_script
+assert "DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY" in gui_script
+print("PASS: authenticated runner GUI extension retains native controls and redacts crash details.")
+
+# The live QA path must identify itself rather than sending the upstream
+# unpublished application's placeholder user agent.
+assert 'foobar2000-discogger-protected-qa/1.0' in runner_fetcher
+assert 'char USER_AGENT[] = "User-Agent: <<user agent>>";' in runner_fetcher
+print("PASS: protected QA uses a fixed non-secret User-Agent while product behavior remains unchanged.")
+
+# Authenticated GUI validation must distinguish a populated artist list from
+# a populated release tree, and require a known exact live release identity.
+_live_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+_live_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+_live_qa = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+_live_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "m_alist.Get_Artists().get_count() == 1" in _live_dialog
+assert "ShowArtistSearchResults(only);" in _live_dialog
+assert "runner_qa_live_search_probe()" in _live_dialog and "runner_qa_live_search_probe()" in _live_header
+assert 'release->id.equals("38012673")' in _live_dialog
+assert "KNOWN_RELEASE_MATCHES=" in _live_qa and "qa-live-search-probe.txt" in _live_qa
+assert "Discogger QA live search probe" in _live_qa
+assert "KNOWN_RELEASE_MATCHES" in _live_host and "ARTISTS" in _live_host
+assert _live_host.index("qa-live-search-probe.txt") > _live_host.index("[DiscoggerWindowTest]::ClickButton($searchButton)")
+print("PASS: exact authenticated GUI artist/release identity and review-only auto-display contract.")

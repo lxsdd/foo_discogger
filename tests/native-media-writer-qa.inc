@@ -19,6 +19,7 @@ static const GUID qa_populated_gui_command = {0x4a1d5a15,0x9b8e,0x43a4,{0xa8,0x3
 static const GUID qa_stale_disk_command = {0x4a1d5a16,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_removal_command = {0x4a1d5a17,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_partial_audit_command = {0x4a1d5a18,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
+static const GUID qa_live_search_probe_command = {0x4a1d5a19,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 
 void run_disposable_media_writer_qa(t_uint32 format) {
     const char* github = std::getenv("GITHUB_ACTIONS");
@@ -271,6 +272,36 @@ void run_populated_search_gui_qa() {
 }
 
 
+void run_live_search_probe_qa() {
+    const char* actions = std::getenv("GITHUB_ACTIONS");
+    const char* runner = std::getenv("RUNNER_TEMP");
+    const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+    if (!actions || std::string(actions) != "true" || !runner || !location)
+        throw std::runtime_error("Live GUI inspection allowed only in ephemeral runner.");
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+    const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+    const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+    if (folder.native().size() <= prefix.size() ||
+        _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+        !std::filesystem::is_directory(folder))
+        throw std::runtime_error("Live GUI evidence must remain under runner temp.");
+    if (!g_discogs || !g_discogs->find_release_dialog)
+        throw std::runtime_error("Native Find Releases dialog is absent.");
+    const auto counts = g_discogs->find_release_dialog->runner_qa_live_search_probe();
+    const auto evidence = folder / "qa-live-search-probe.txt";
+    if (std::filesystem::exists(evidence))
+        throw std::runtime_error("Live GUI evidence already existed.");
+    std::ofstream out(evidence);
+    if (!out) throw std::runtime_error("Could not write live GUI evidence.");
+    // Counts and fixed public release identity only. Never record query,
+    // headers, OAuth values, responses, profile data or arbitrary error text.
+    out << "ARTISTS=" << counts[0] << '\n'
+        << "KNOWN_RELEASE_MATCHES=" << counts[1] << '\n'
+        << "TREE=" << counts[2] << '\n';
+    out.flush();
+    if (!out) throw std::runtime_error("Could not flush live GUI evidence.");
+}
+
 void run_disposable_stale_disk_qa() {
     const char* github = std::getenv("GITHUB_ACTIONS");
     const char* runner = std::getenv("RUNNER_TEMP");
@@ -519,23 +550,24 @@ void record_disposable_partial_qa_error(const char* reason) noexcept {
 
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
-    t_uint32 get_command_count() override { return 8; }
+    t_uint32 get_command_count() override { return 9; }
     GUID get_command(t_uint32 index) override {
         static const GUID commands[] = {
             qa_mp3_command, qa_flac_command, qa_targets_command, qa_batch_command,
             qa_populated_gui_command, qa_stale_disk_command, qa_removal_command,
-            qa_partial_audit_command
+            qa_partial_audit_command, qa_live_search_probe_command
         };
-        return index < 8 ? commands[index] : GUID{};
+        return index < 9 ? commands[index] : GUID{};
     }
     void get_name(t_uint32 index, pfc::string_base& out) override {
         static const char* names[] = {
             "Discogger QA MP3 write", "Discogger QA FLAC write",
             "Discogger QA unsafe targets", "Discogger QA incomplete batch",
             "Discogger QA populated GUI", "Discogger QA stale disk",
-            "Discogger QA unsafe removals", "Discogger QA injected partial"
+            "Discogger QA unsafe removals", "Discogger QA injected partial",
+            "Discogger QA live search probe"
         };
-        out = index < 8 ? names[index] : "Invalid Discogger QA command";
+        out = index < 9 ? names[index] : "Invalid Discogger QA command";
     }
     bool get_description(t_uint32, pfc::string_base& out) override {
         out = "Test-only physical metadata writer for disposable GitHub runner media.";
@@ -544,8 +576,9 @@ public:
     GUID get_parent() override { return mainmenu_groups::file; }
     void execute(t_uint32 index, service_ptr_t<service_base>) override {
         try {
-            if (index > 7) throw std::runtime_error("Invalid synthetic QA action.");
-            if (index == 7) run_disposable_partial_write_audit_qa();
+            if (index > 8) throw std::runtime_error("Invalid synthetic QA action.");
+            if (index == 8) run_live_search_probe_qa();
+            else if (index == 7) run_disposable_partial_write_audit_qa();
             else if (index == 6) run_disposable_unapproved_removal_qa();
             else if (index == 5) run_disposable_stale_disk_qa();
             else if (index == 4) run_populated_search_gui_qa();

@@ -2,7 +2,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidateSet('Win32','x64')][string]$Architecture,
-    [Parameter(Mandatory=$true)][string]$ComponentDll
+    [Parameter(Mandatory=$true)][string]$ComponentDll,
+    [string]$CompanionMetadataIsolationDll,
+    [switch]$AuthorizedLive
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -27,6 +29,23 @@ function Assert-PE([string]$File,[int]$Expected) {
 }
 $component=(Resolve-Path -LiteralPath $ComponentDll -ErrorAction Stop).Path
 Assert-PE $component $spec.PE
+$companion=$null
+if($CompanionMetadataIsolationDll){
+    $companion=(Resolve-Path -LiteralPath $CompanionMetadataIsolationDll -ErrorAction Stop).Path
+    Assert-PE $companion $spec.PE
+}
+if($AuthorizedLive){
+    # Credentials exist only in this protected workflow step's process memory.
+    # Missing/partial values fail closed without disclosing their contents.
+    $names=@('DISCOGS_OAUTH_CONSUMER_KEY','DISCOGS_OAUTH_CONSUMER_SECRET',
+        'DISCOGS_OAUTH_ACCESS_TOKEN','DISCOGS_OAUTH_TOKEN_SECRET')
+    foreach($name in $names){
+        if(-not [Environment]::GetEnvironmentVariable($name,'Process')){
+            throw 'Protected native GUI OAuth environment is incomplete.'
+        }
+    }
+}
+
 $db=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../foo_discogger.dll.db')).Path
 $signature=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($db),0,16)
 if ($signature -ne ("SQLite format 3"+[char]0)) { throw 'Invalid original Discogger configuration database template.' }
@@ -47,6 +66,18 @@ public static class DiscoggerWindowTest {
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowTextW(IntPtr hwnd,StringBuilder text,int length);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hwnd,int id);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern bool SetWindowTextW(IntPtr hwnd,string value);
+  public static int TreeCount(IntPtr hwnd) {
+    IntPtr result;
+    if(SendMessageTimeoutW(hwnd,0x1105,IntPtr.Zero,IntPtr.Zero,2,4000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Timed out reading native release tree count");
+    return checked((int)result.ToInt64());
+  }
+  public static void ClickButton(IntPtr hwnd) {
+    IntPtr result;
+    if(SendMessageTimeoutW(hwnd,0x00F5,IntPtr.Zero,IntPtr.Zero,2,4000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Timed out pressing native Search button");
+  }
   [DllImport("user32.dll")] static extern IntPtr SendMessageTimeoutW(IntPtr hwnd,uint msg,IntPtr w,IntPtr l,uint flags,uint timeout,out IntPtr result);
   public static string[] List(uint pid) {
     var list=new List<string>();
@@ -172,6 +203,10 @@ public static class DiscoggerWindowTest {
 }
 '@
 function Write-DiscoggerCrashEvidence {
+    if($AuthorizedLive){
+        Write-Host 'DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY'
+        return
+    }
     # All evidence is taken from this disposable host/profile and Windows'
     # application error event metadata, never from user libraries or tokens.
     Write-Host ('DISCOGGER_CRASH_WINDOWS='+([DiscoggerWindowTest]::AllVisible() -join '|'))
@@ -238,6 +273,9 @@ try {
     $components=Join-Path $hostDir 'components'
     New-Item -ItemType Directory -Path $components -Force | Out-Null
     Copy-Item -LiteralPath $component -Destination (Join-Path $components 'foo_discogger.dll')
+    if($companion){
+        Copy-Item -LiteralPath $companion -Destination (Join-Path $components 'foo_metadata_isolation.dll')
+    }
     # A full Discogger installation requires the upstream SQLite sidecar.
     # Seed the two known ephemeral portable-profile layouts, never a real profile.
     foreach($root in @($hostDir,(Join-Path $hostDir 'profile'))) {
@@ -327,8 +365,15 @@ FILE "synthetic-side-b.wav" WAVE
     Start-Sleep -Seconds 5
     $proc.Refresh()
     if($proc.HasExited){throw 'foobar exited while initializing Discogger.'}
-    if(-not @((Get-Process -Id $proc.Id).Modules | Where-Object {$_.ModuleName -ieq 'foo_discogger.dll'}).Count){
+    $loadedModules=@((Get-Process -Id $proc.Id).Modules | ForEach-Object {$_.ModuleName})
+    if(-not @($loadedModules | Where-Object {$_ -ieq 'foo_discogger.dll'}).Count){
         throw 'Discogger module is absent from host process.'
+    }
+    if($companion){
+        if(-not @($loadedModules | Where-Object {$_ -ieq 'foo_metadata_isolation.dll'}).Count){
+            throw 'Metadata Isolation companion is absent from native foobar host process.'
+        }
+        Write-Host "DISCOGGER_METADATA_ISOLATION_NATIVE_COLOAD_$Architecture=PASS"
     }
     # Validate the actual initialization side effect; absence of a visible
     # error dialog alone never proves that CONF.load() completed.
@@ -818,6 +863,95 @@ FILE "synthetic-side-b.wav" WAVE
         throw 'Injected partial test unexpectedly modified the second synthetic FLAC.'
     }
     Write-Host "DISCOGGER_PHYSICAL_INJECTED_PARTIAL_READBACK_$Architecture=PASS"
+
+    if($AuthorizedLive){
+        # Close the prior synthetic model and open a fresh ordinary Find Releases
+        # dialog. Never use a test-populated release list as live search evidence.
+        if(-not [DiscoggerWindowTest]::PostMessageW($activeDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+            throw 'Could not close synthetic Find Releases before live OAuth test.'
+        }
+        for($n=0;$n -lt 35;$n++){
+            Start-Sleep -Milliseconds 200
+            if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){break}
+        }
+        if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count){
+            throw 'Synthetic Find Releases window remained open before live search.'
+        }
+        $liveArgs='/context_command:"'+$chosenContextRoute+'" "'+$wav+'"'
+        $liveLauncher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $liveArgs -PassThru
+        if(-not $liveLauncher.WaitForExit(15000) -or $liveLauncher.ExitCode -ne 0){
+            throw 'Could not open fresh native Discogger Find Releases for live search.'
+        }
+        $liveDialog=[IntPtr]::Zero
+        for($n=0;$n -lt 40;$n++){
+            Start-Sleep -Milliseconds 250
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited before authenticated Find Releases search.'}
+            $found=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+            if($found.Length -eq 1){$liveDialog=$found[0];break}
+        }
+        if($liveDialog -eq [IntPtr]::Zero){throw 'Fresh native Find Releases dialog not found.'}
+        $searchEdit=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1083)
+        $searchButton=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1086)
+        $releaseTree=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1018)
+        if($searchEdit -eq [IntPtr]::Zero -or $searchButton -eq [IntPtr]::Zero -or
+            $releaseTree -eq [IntPtr]::Zero){throw 'Native Discogger search controls missing.'}
+        if([DiscoggerWindowTest]::TreeCount($releaseTree) -ne 0){
+            throw 'Fresh authenticated GUI search is not starting with an empty release tree.'
+        }
+        # This query is a known exact public release; the disposable profile has
+        # no Discogger search cache, so a populated tree requires a live request.
+        $query='artist= Estiva & title= Via Balearia'
+        if(-not [DiscoggerWindowTest]::SetWindowTextW($searchEdit,$query)){
+            throw 'Could not enter native authenticated Discogger search.'
+        }
+        [DiscoggerWindowTest]::ClickButton($searchButton)
+        $liveCount=0
+        for($n=0;$n -lt 120;$n++){
+            Start-Sleep -Milliseconds 500
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited during authenticated Discogger search.'}
+            $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
+            if($liveCount -gt 0){break}
+        }
+        # The search fills the artist list before the release tree. Inspect the
+        # exact, real result identity and open it via the native tree presenter.
+        $liveProbe=Join-Path $dir 'qa-live-search-probe.txt'
+        if(Test-Path -LiteralPath $liveProbe){throw 'Live-search probe evidence unexpectedly exists.'}
+        $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
+        if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
+            throw 'Could not dispatch native live-search result inspection.'
+        }
+        for($n=0;$n -lt 40;$n++){
+            Start-Sleep -Milliseconds 250
+            if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited during live-search result inspection.'}
+        }
+        if(-not (Test-Path -LiteralPath $liveProbe -PathType Leaf)){
+            throw 'Native live-search result inspection produced no evidence.'
+        }
+        $proof=Get-Content -LiteralPath $liveProbe -Raw
+        $counts=@{}
+        foreach($line in ($proof -split '\r?\n')){
+            if($line -match '^(ARTISTS|KNOWN_RELEASE_MATCHES|TREE)=(\d+)$'){
+                $counts[$Matches[1]]=[int]$Matches[2]
+            }
+        }
+        if($counts.Count -ne 3){throw 'Malformed native live-search count evidence.'}
+        Write-Host "DISCOGGER_AUTHENTICATED_GUI_RESULT_COUNTS_${Architecture}=artists:$($counts['ARTISTS']) known:$($counts['KNOWN_RELEASE_MATCHES']) tree:$($counts['TREE'])"
+        if($counts['ARTISTS'] -lt 1){throw 'Authenticated Discogger search returned no artist-list rows.'}
+        if($counts['KNOWN_RELEASE_MATCHES'] -lt 1){throw 'Authenticated Discogger results did not contain expected release 38012673.'}
+        $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
+        if($liveCount -lt 1 -or $counts['TREE'] -lt 1){
+            throw 'Authenticated Discogger result was not displayed in the native release tree.'
+        }
+        Write-Host "DISCOGGER_AUTHENTICATED_GUI_SEARCH_$Architecture=PASS"
+        # Search must be read-only even after the prior isolated writer tests.
+        if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
+            throw 'Authenticated Discogger search changed disposable WAVE data.'
+        }
+    }
 
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
