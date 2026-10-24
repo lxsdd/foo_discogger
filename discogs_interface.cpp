@@ -347,7 +347,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 					}
 				}
 				if (!mr_found) {
-					tmpArtist->master_releases.add_item(std::move(mr));
+					tmpArtist->master_releases.add_item(mr);
 					tmpArtist->search_order_master.add_item(true);
 				}
 
@@ -403,7 +403,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 			else {
 				no_checkArtist = it->second;
 			}
-			no_checkArtist->master_releases.add_item(std::move(mr));
+			no_checkArtist->master_releases.add_item(mr);
 			no_checkArtist->search_order_master.add_item(true);
 
 				size_t lkey = encode_mr(atoi(no_checkArtist->id), atoi(mr->id));
@@ -522,7 +522,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 				}
 				if (!r_found) {
 				
-					tmpArtist->releases.add_item(std::move(r));
+					tmpArtist->releases.add_item(r);
 					tmpArtist->search_order_master.add_item(false);
 				}
 
@@ -595,7 +595,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 				no_checkArtist = it->second;
 			}
 
-			no_checkArtist->releases.add_item(std::move(r));
+			no_checkArtist->releases.add_item(r);
 			no_checkArtist->search_order_master.add_item(false);
 
 			if (!bskip_preview_and_stats) {
