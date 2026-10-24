@@ -1267,6 +1267,7 @@ search_artist_process_callback::~search_artist_process_callback() {
 }
 
 void search_artist_process_callback::start(HWND parent) {
+    m_owner_window = parent;
 
 	pfc::string8 pop_title;
 	if (m_va) {
@@ -1313,8 +1314,14 @@ void search_artist_process_callback::safe_run(threaded_process_status &p_status,
 }
 
 void search_artist_process_callback::on_success(HWND p_wnd) {
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
+    PFC_ASSERT(core_api::is_main_thread());
+    // The modeless search can finish after the dialog was closed or replaced.
+    // Never update a new window with an obsolete search's cached results.
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        return;
+    CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
 
 	try {
 
@@ -1373,11 +1380,17 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
 			}
 		}
 
+        // History and search-mode updates can dispatch synchronous Win32
+        // messages. Recheck the original owner before scheduling presentation.
+        if (!::IsWindow(m_owner_window) || !g_discogs ||
+            !g_discogs->find_release_dialog ||
+            g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+            return;
 		service_ptr_t<on_search_artist_done_process_callback> task =
 			new service_impl_t<on_search_artist_done_process_callback>(m_artist_exact_matches, m_artist_other_matches, false,
 				res_cap);
 
-		task->start(find_dlg->m_hWnd);
+        task->start(m_owner_window);
 	}
 	catch (locked_task_exception e)
 	{
