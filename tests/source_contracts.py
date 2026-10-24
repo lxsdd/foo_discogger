@@ -631,6 +631,38 @@ assert "class write_tags_task : public foo_discogs_threaded_process_callback" in
 assert "acquire_physical_write_lease()" in task_header
 print("PASS: search/filter lock base and mutex-guarded counter transitions are wired.")
 
+# An advanced search already holds the operation lock while on_success
+# starts the presentation callback. That continuation must NOT reacquire it.
+assert "class search_artist_process_callback : public foo_discogs_threaded_locked_process_callback" in task_header
+assert "class on_search_artist_done_process_callback : public foo_discogs_threaded_process_callback" in task_header
+assert "class on_search_artist_done_process_callback : public foo_discogs_threaded_locked_process_callback" not in task_header
+tasks_implementation = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+parent_completion = tasks_implementation.split("void search_artist_process_callback::on_success(", 1)[1].split(
+    "void search_artist_process_callback::on_abort(", 1)[0]
+assert "new service_impl_t<on_search_artist_done_process_callback>(" in parent_completion
+print("PASS: search completion can display results without reacquiring its parent's operation lock.")
+
+# Empty-result status is also reached after restored or interrupted queries.
+# Never throw at("artist=") on an incomplete map, and never infer a size_t
+# limit from sizeof(size_t) (bytes versus bits). A unique advanced-search
+# artist with release previews must populate the tree without another click.
+status_start = release_dialog.index("pfc::string8 search_query_run_message(")
+status_end = release_dialog.index("void CFindReleaseDialog::on_search_artist_done(", status_start)
+status_text = release_dialog[status_start:status_end]
+assert 'qdm_search_query.find("artist=")' in status_text
+assert 'qdm_search_query.end()' in status_text
+assert 'qdm_search_query.at("artist=")' not in status_text
+assert 'constexpr size_t uncapped_threshold = SIZE_MAX - 100;' in status_text
+assert "pow(2, sv)" not in status_text
+result_body = release_dialog.split("void CFindReleaseDialog::on_search_artist_done(", 1)[1].split(
+    "void CFindReleaseDialog::OnTypeFilterTimer(", 1)[0]
+assert "(m_query_mode & SearchMode::AT)" in result_body
+assert "m_alist.Get_Artists().get_count() == 1" in result_body
+assert "only->releases.get_count() || only->master_releases.get_count()" in result_body
+assert "ShowArtistSearchResults(only);" in result_body
+assert "write_infos(" not in result_body
+print("PASS: incomplete searches fail safe and unique advanced results appear without retagging.")
+
 # Preserve conditional Wine light-theme redraw with current libPPUI:
 # repaint on initialization and focus transitions, without a paint-loop hook.
 edit_header = (root / "my_editwithbuttons.h").read_text(encoding="utf-8-sig")
