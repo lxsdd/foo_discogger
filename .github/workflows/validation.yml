@@ -9,6 +9,8 @@ on:
     branches:
       - master
       - work/portable-build-properties-20261018
+      # Runner-only review branch: NO OAuth token in push CI.
+      - test/current-discogger-native-oauth-qa-20261024
   pull_request:
     branches:
       - master

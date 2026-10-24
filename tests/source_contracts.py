@@ -1861,11 +1861,96 @@ runner_commands = (root / "tests/native-media-writer-qa.inc").read_text(encoding
 gui_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 assert "runner_qa_populated_search_rows()" in gui_header
 assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in gui_header
-assert "ShowArtistSearchResults(artist);" in gui_source
+assert "on_search_artist_done(two_artists, exact, false);" in gui_source
+assert "m_dctree.Get_Size() != 3" in gui_source
+assert "on_search_artist_done(changed_artists, exact, false);" in gui_source
+assert "m_dctree.Get_Size() != 1" in gui_source
+assert "ShowArtistSearchResults(artist);" not in gui_source
 assert 'IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED' in gui_source
 assert "run_populated_search_gui_qa()" in runner_commands
 assert "DISCOGGER_GUI_POPULATED_SYNTHETIC_RELEASES_" in gui_host
-print("PASS: runner-only real populated GUI artist/release path is wired.")
+# Keep every independently verified Discogs release in the *native* synthetic
+# search presenter, not just in a portable/API-only test.
+for release_id, title in (
+    ("38012673", "Via Balearia"),
+    ("37332711", "1000 Years"),
+    ("36397609", "Only You"),
+    ("36819730", "Till You Let Go"),
+    ("35534398", "Consciousness EP"),
+):
+    assert '{"' + release_id + '", "' + title + '"}' in gui_source
+assert "if (initial_tree != 5)" in gui_source
+assert "counts.first != 1 || counts.second != 5" in runner_commands
+assert "RELEASES=5" in runner_commands and "RELEASES=5" in gui_host
+# A read-only live probe must never create the very release-tree visibility
+# it is supposed to measure; this previously allowed false GUI acceptance.
+live_probe_body = gui_source.split(
+    "std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char* expected_release_id)", 1
+)[1].split(
+    "std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows()", 1
+)[0]
+assert "ShowArtistSearchResults" not in live_probe_body
+assert "matching_artist" not in live_probe_body
+print("PASS: five native release fixtures and read-only online GUI probe are wired.")
+# Require eleven diversified references plus three original user misses in both the
+# deterministic fallback suite and the protected-runner read-only API sampler.
+corpus_qa = (root / "tests/live-discogs-search-corpus-qa.h").read_text(encoding="utf-8-sig")
+for release_id in (
+    2844, 2783977, 7809, 32559, 3666, 294906, 13584056,
+    18370, 82825, 31623, 18278686, 37332711, 36397609, 36819730,
+):
+    assert "{" + str(release_id) + ", " in corpus_qa
+assert "std::array<search_case, 14>" in corpus_qa
+assert '#include "live-discogs-search-corpus-qa.h"' in runner_commands
+assert '#include "live-discogs-search-corpus-qa.h"' in (
+    root / "tests/collaboration_fallback_test.cpp"
+).read_text(encoding="utf-8-sig")
+assert "cohort_nonempty_mask" in runner_commands
+assert "cohort_known_mask" in runner_commands
+assert "API_COHORT_KNOWN_MASK=" in runner_commands
+assert "known_mask:$($counts['API_COHORT_KNOWN_MASK'])" in gui_host
+assert 'if (counts[1] != 0 && expected_release_id == "38012673")' in runner_commands
+assert "API_COHORT_TOTAL=" in runner_commands
+assert "'API_COHORT_TOTAL','API_COHORT_OK'" in gui_host
+assert "DISCOGGER_AUTHENTICATED_API_COHORT_" in gui_host
+assert "fewer than nine populated searches" in gui_host
+print("PASS: fourteen diversified and user-reported Discogs queries have per-case numeric OAuth evidence.")
+# Nineteen additional native GUI searches plus one no-purge repeat must use
+# actual Find Releases controls, observable remote objects and a whitelisted
+# runner-only public-ID selector, never a test-side tree presenter.
+assert "runner_qa_live_search_probe(const char* expected_release_id)" in gui_header
+assert "runner_qa_live_search_probe(const char* expected_release_id)" in gui_source
+assert "release->id.equals(expected_release_id)" in gui_source
+assert 'qa-live-expected-id.txt' in runner_commands and 'qa-live-expected-id.txt' in gui_host
+assert "Query='artist= Kyau & Albert X Maywave & title= 1000 Years & track= 1000 Years (Dj Version)'" in gui_host
+assert "Unrecognized public release QA selector." in runner_commands
+assert 'expected_release_id == "38012673"' in runner_commands
+for name in ("kyau-original-composite", "kyau-maywave", "matt-fax-only-you", "matt-fax-till-you-let-go",
+             "kyau-reordered", "kyau-uppercase-fields", "sun-moon-ampersands", "bjork-utf8-reordered", "royksopp-utf8-mix",
+             "bicep-ep-track", "underworld-punctuation", "matt-fax-extended-reordered", "matt-fax-extended-three-fields", "chicane-featuring", "faithless-remix",
+             "daft-punk", "chemical-brothers", "bjork-utf8",
+             "royksopp-utf8", "daft-punk-cache-repeat"):
+    assert "Name='" + name + "'" in gui_host
+assert "DISCOGGER_AUTHENTICATED_NATIVE_QUERY_" in gui_host
+assert "Complex native search parser dropped or rejected requested fields:" in gui_host
+assert "MinFields=" in gui_host and "PARSED_FIELDS" in gui_host
+assert "DISCOGGER_AUTHENTICATED_NATIVE_PARSE_" in gui_host
+assert gui_host.count(";MinFields=") == 20
+for query in (
+    "TITLE = 1000 Years & TRACK = 1000 Years (DJ Version) & ARTIST = Kyau & Albert X Maywave",
+    "artist= Above & Beyond feat. Richard Bedford & title= Sun & Moon & track= Sun & Moon (Club Mix)",
+    "TRACK = Jóga (Howie B) & ARTIST = Björk & TITLE = Jóga",
+    "ARTIST = Röyksopp & TITLE = Eple & TRACK = Eple (Edit)",
+    "track= Glue & artist= Bicep & title= Glue EP",
+    "title= Born Slippy .NUXX & track= Born Slippy / NUXX (Mix) & artist= Underworld",
+):
+    assert query in gui_host
+assert "did not auto-show results without artist reselection." in gui_host
+print("PASS: twenty native OAuth GUI cases verify original misses, complex parser fields and no-purge repeat.")
+
+
+
+
 
 # An independent physical file edit between preview and asynchronous commit
 # must cause the entire selected batch to be rejected before any write.
@@ -2084,3 +2169,67 @@ assert search_main.index("::IsWindow(m_owner_window)") < search_main.index("Upda
 assert "task->start(m_owner_window);" in search_main
 assert "new service_impl_t<on_search_artist_done_process_callback>" in search_main
 print("PASS: modeless online search completion refuses closed/replaced Win32 dialog.")
+
+# These test-only native GUI hooks are reviewed separately from production
+# Discogger. No tokens are embedded in the source or ordinary component, and
+# no secret-bearing branch is needed to run these static contract checks.
+qa_fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")
+qa_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+qa_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+qa_commands = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+qa_telemetry = (root / "tests/runner-live-search-telemetry.h").read_text(encoding="utf-8-sig")
+qa_script = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+oauth_impl = qa_fetcher.split("void Fetcher::set_oauth(", 1)[1].split(
+    "void Fetcher::init_oauth(", 1)[0]
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in oauth_impl
+assert 'std::getenv("GITHUB_ACTIONS")' in oauth_impl
+for oauth_name in ("DISCOGS_OAUTH_CONSUMER_KEY", "DISCOGS_OAUTH_CONSUMER_SECRET",
+                   "DISCOGS_OAUTH_ACCESS_TOKEN", "DISCOGS_OAUTH_TOKEN_SECRET"):
+    assert 'std::getenv("' + oauth_name + '")' in oauth_impl
+assert 'std::strcmp(runner, "true") != 0' in oauth_impl
+assert "Incomplete or unauthorized runner OAuth configuration." in oauth_impl
+assert "consumer = new OAuth::Consumer(CONSUMER_KEY, CONSUMER_SECRET);" in oauth_impl
+assert "runner_qa_live_search_probe(const char* expected_release_id)" in qa_dialog
+assert "runner_qa_live_search_probe(const char* expected_release_id);" in qa_header
+assert '#include "tests/runner-live-search-telemetry.h"' in qa_commands
+assert "run_live_search_probe_qa()" in qa_commands
+assert "namespace discogger_live_search_qa" in qa_telemetry
+assert "No queries, URLs, response bodies" in qa_telemetry
+assert "[switch]$AuthorizedLive" in qa_script
+assert "DISCOGGER_AUTHENTICATED_GUI_SEARCH_" in qa_script
+assert "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_" in qa_script
+assert "DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY" in qa_script
+assert "upload-artifact" not in qa_script
+print("PASS: protected OAuth1 native GUI test-only integration retains secretless production gates.")
+
+# Real worker-stage counters must be INCREMENTED at the production search
+# transitions under the runner-only compile gate. Merely declaring/printing
+# atomics silently returned zeros and caused a false failure in protected
+# live run 40101135502, despite the known release visible in the real tree.
+qa_tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+qa_search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+worker_task = qa_tasks.split("void search_artist_process_callback::safe_run(", 1)[1].split(
+    "void search_artist_process_callback::on_success(", 1)[0]
+assert '#include "tests/runner-live-search-telemetry.h"' in qa_tasks
+assert '#include "tests/runner-live-search-telemetry.h"' in qa_search
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in worker_task
+assert "discogger_live_search_qa::worker_started.fetch_add(1);" in worker_task
+assert "discogger_live_search_qa::worker_advanced.fetch_add(1);" in worker_task
+for marker, count in (
+    ("worker_success.fetch_add(1)", 1),
+    ("worker_error.fetch_add(1)", 1),
+    ("worker_abort.fetch_add(1)", 1),
+):
+    assert qa_tasks.count("discogger_live_search_qa::" + marker) == count
+parsed = qa_search.split("rppair_t DiscogsInterface::search_amt_artist(", 1)[1].split(
+    "pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(", 1)[0]
+for marker in ("response_pages.fetch_add(", "response_items.fetch_add(",
+               "parsed_masters.store(", "parsed_releases.store(", "query_limit.fetch_add("):
+    assert "discogger_live_search_qa::" + marker in parsed
+assert parsed.count("response_pages.fetch_add(") == 2
+assert parsed.count("response_items.fetch_add(") == 2
+assert parsed.count("query_limit.fetch_add(") == 2
+assert "json_array_size(results)" in parsed
+assert "RUNNER_MEDIA_QA" in parsed
+assert "WORKER_STARTED=" in qa_commands and "RESPONSE_PAGES=" in qa_commands
+print("PASS: protected live GUI instrumentation measures actual callback/API work rather than unwired zero counters.")

@@ -2,7 +2,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidateSet('Win32','x64')][string]$Architecture,
-    [Parameter(Mandatory=$true)][string]$ComponentDll
+    [Parameter(Mandatory=$true)][string]$ComponentDll,
+    [string]$CompanionMetadataIsolationDll,
+    [switch]$AuthorizedLive
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -27,6 +29,23 @@ function Assert-PE([string]$File,[int]$Expected) {
 }
 $component=(Resolve-Path -LiteralPath $ComponentDll -ErrorAction Stop).Path
 Assert-PE $component $spec.PE
+$companion=$null
+if($CompanionMetadataIsolationDll){
+    $companion=(Resolve-Path -LiteralPath $CompanionMetadataIsolationDll -ErrorAction Stop).Path
+    Assert-PE $companion $spec.PE
+}
+if($AuthorizedLive){
+    # Credentials exist only in this protected workflow step's process memory.
+    # Missing/partial values fail closed without disclosing their contents.
+    $names=@('DISCOGS_OAUTH_CONSUMER_KEY','DISCOGS_OAUTH_CONSUMER_SECRET',
+        'DISCOGS_OAUTH_ACCESS_TOKEN','DISCOGS_OAUTH_TOKEN_SECRET')
+    foreach($name in $names){
+        if(-not [Environment]::GetEnvironmentVariable($name,'Process')){
+            throw 'Protected native GUI OAuth environment is incomplete.'
+        }
+    }
+}
+
 $db=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../foo_discogger.dll.db')).Path
 $signature=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($db),0,16)
 if ($signature -ne ("SQLite format 3"+[char]0)) { throw 'Invalid original Discogger configuration database template.' }
@@ -47,6 +66,42 @@ public static class DiscoggerWindowTest {
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowTextW(IntPtr hwnd,StringBuilder text,int length);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hwnd,int id);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern bool SetWindowTextW(IntPtr hwnd,string value);
+  // Cross-process edit controls require WM_SETTEXT/WM_GETTEXT, not the
+  // SetWindowText/GetWindowText convenience APIs (Microsoft Win32 contract).
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)]
+  static extern IntPtr SendTextMessageTimeoutW(IntPtr hwnd,uint msg,IntPtr w,string text,uint flags,uint timeout,out IntPtr result);
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)]
+  static extern IntPtr ReadTextMessageTimeoutW(IntPtr hwnd,uint msg,IntPtr w,StringBuilder text,uint flags,uint timeout,out IntPtr result);
+  public static void SetEditText(IntPtr hwnd,string value) {
+    IntPtr result;
+    if(SendTextMessageTimeoutW(hwnd,0x000C,IntPtr.Zero,value,2,4000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Timed out setting native search edit text");
+  }
+  public static string EditText(IntPtr hwnd) {
+    var sb=new StringBuilder(1024);
+    IntPtr result;
+    if(ReadTextMessageTimeoutW(hwnd,0x000D,new IntPtr(sb.Capacity),sb,2,4000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Timed out reading native search edit text");
+    return sb.ToString();
+  }
+
+  public static string WindowText(IntPtr hwnd) {
+    var sb=new StringBuilder(1024);
+    GetWindowTextW(hwnd,sb,sb.Capacity);
+    return sb.ToString();
+  }
+  public static int TreeCount(IntPtr hwnd) {
+    IntPtr result;
+    if(SendMessageTimeoutW(hwnd,0x1105,IntPtr.Zero,IntPtr.Zero,2,4000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Timed out reading native release tree count");
+    return checked((int)result.ToInt64());
+  }
+  public static void ClickButton(IntPtr hwnd) {
+    IntPtr result;
+    if(SendMessageTimeoutW(hwnd,0x00F5,IntPtr.Zero,IntPtr.Zero,2,4000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Timed out pressing native Search button");
+  }
   [DllImport("user32.dll")] static extern IntPtr SendMessageTimeoutW(IntPtr hwnd,uint msg,IntPtr w,IntPtr l,uint flags,uint timeout,out IntPtr result);
   public static string[] List(uint pid) {
     var list=new List<string>();
@@ -172,6 +227,39 @@ public static class DiscoggerWindowTest {
 }
 '@
 function Write-DiscoggerCrashEvidence {
+    if($AuthorizedLive){
+        Write-Host 'DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY'
+        # Never expose minidumps, crash text, process memory, paths, requests or
+        # credentials. Only numeric Windows event metadata may reach CI logs.
+        try {
+            $proc.Refresh()
+            if($proc.HasExited){
+                Write-Host ('DISCOGGER_AUTHENTICATED_HOST_EXIT_CODE='+[int64]$proc.ExitCode)
+            }
+        } catch { Write-Host 'DISCOGGER_AUTHENTICATED_HOST_EXIT_CODE=UNAVAILABLE' }
+        try {
+            $events=@(Get-WinEvent -FilterHashtable @{
+                LogName='Application'; Id=1000
+                StartTime=[DateTime]::Now.AddMinutes(-10)
+            } -MaxEvents 20 -ErrorAction Stop |
+                Where-Object { $_.Properties.Count -ge 7 -and
+                    [string]$_.Properties[0].Value -eq 'foobar2000.exe' } |
+                Select-Object -First 1)
+            if($events.Count){
+                $event=$events[0]
+                $module=[IO.Path]::GetFileName([string]$event.Properties[3].Value)
+                if($module -notin @('foobar2000.exe','foo_discogger.dll','foo_metadata_isolation.dll')){
+                    $module='other'
+                }
+                $exception=[string]$event.Properties[6].Value
+                if($exception -notmatch '^(0x)?[0-9a-fA-F]{8}$'){$exception='UNKNOWN'}
+                Write-Host "DISCOGGER_AUTHENTICATED_CRASH_SIGNATURE=module:$module code:$exception"
+            } else {
+                Write-Host 'DISCOGGER_AUTHENTICATED_CRASH_SIGNATURE=NO_EVENT'
+            }
+        } catch { Write-Host 'DISCOGGER_AUTHENTICATED_CRASH_SIGNATURE=UNAVAILABLE' }
+        return
+    }
     # All evidence is taken from this disposable host/profile and Windows'
     # application error event metadata, never from user libraries or tokens.
     Write-Host ('DISCOGGER_CRASH_WINDOWS='+([DiscoggerWindowTest]::AllVisible() -join '|'))
@@ -238,6 +326,9 @@ try {
     $components=Join-Path $hostDir 'components'
     New-Item -ItemType Directory -Path $components -Force | Out-Null
     Copy-Item -LiteralPath $component -Destination (Join-Path $components 'foo_discogger.dll')
+    if($companion){
+        Copy-Item -LiteralPath $companion -Destination (Join-Path $components 'foo_metadata_isolation.dll')
+    }
     # A full Discogger installation requires the upstream SQLite sidecar.
     # Seed the two known ephemeral portable-profile layouts, never a real profile.
     foreach($root in @($hostDir,(Join-Path $hostDir 'profile'))) {
@@ -327,8 +418,15 @@ FILE "synthetic-side-b.wav" WAVE
     Start-Sleep -Seconds 5
     $proc.Refresh()
     if($proc.HasExited){throw 'foobar exited while initializing Discogger.'}
-    if(-not @((Get-Process -Id $proc.Id).Modules | Where-Object {$_.ModuleName -ieq 'foo_discogger.dll'}).Count){
+    $loadedModules=@((Get-Process -Id $proc.Id).Modules | ForEach-Object {$_.ModuleName})
+    if(-not @($loadedModules | Where-Object {$_ -ieq 'foo_discogger.dll'}).Count){
         throw 'Discogger module is absent from host process.'
+    }
+    if($companion){
+        if(-not @($loadedModules | Where-Object {$_ -ieq 'foo_metadata_isolation.dll'}).Count){
+            throw 'Metadata Isolation companion is absent from native foobar host process.'
+        }
+        Write-Host "DISCOGGER_METADATA_ISOLATION_NATIVE_COLOAD_$Architecture=PASS"
     }
     # Validate the actual initialization side effect; absence of a visible
     # error dialog alone never proves that CONF.load() completed.
@@ -465,7 +563,7 @@ FILE "synthetic-side-b.wav" WAVE
     if($reopenedLayoutError){throw ('Reopened Find Releases layout failed: '+$reopenedLayoutError)}
     Write-Host "DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS"
 
-    # Populate a real native Discogger GUI with four synthetic release objects.
+    # Populate a real native Discogger GUI with five synthetic release objects.
     # This validates actual artist filtering and release tree rendering, not
     # authenticated search or metadata commits.
     $guiEvidence=Join-Path $dir 'qa-populated-gui.txt'
@@ -479,7 +577,7 @@ FILE "synthetic-side-b.wav" WAVE
         Start-Sleep -Milliseconds 250
         if(Test-Path -LiteralPath $guiEvidence -PathType Leaf){
             $evidence=Get-Content -LiteralPath $guiEvidence -Raw
-            if($evidence.Contains('ARTISTS=1') -and $evidence.Contains('RELEASES=4')){
+            if($evidence.Contains('ARTISTS=1') -and $evidence.Contains('RELEASES=5')){
                 $populated=$true;break
             }
         }
@@ -818,6 +916,355 @@ FILE "synthetic-side-b.wav" WAVE
         throw 'Injected partial test unexpectedly modified the second synthetic FLAC.'
     }
     Write-Host "DISCOGGER_PHYSICAL_INJECTED_PARTIAL_READBACK_$Architecture=PASS"
+
+    if($AuthorizedLive){
+        # Close the prior synthetic model and open a fresh ordinary Find Releases
+        # dialog. Never use a test-populated release list as live search evidence.
+        if(-not [DiscoggerWindowTest]::PostMessageW($activeDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+            throw 'Could not close synthetic Find Releases before live OAuth test.'
+        }
+        for($n=0;$n -lt 35;$n++){
+            Start-Sleep -Milliseconds 200
+            if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){break}
+        }
+        if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count){
+            throw 'Synthetic Find Releases window remained open before live search.'
+        }
+        $liveArgs='/context_command:"'+$chosenContextRoute+'" "'+$wav+'"'
+        $liveLauncher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $liveArgs -PassThru
+        if(-not $liveLauncher.WaitForExit(15000) -or $liveLauncher.ExitCode -ne 0){
+            throw 'Could not open fresh native Discogger Find Releases for live search.'
+        }
+        $liveDialog=[IntPtr]::Zero
+        for($n=0;$n -lt 40;$n++){
+            Start-Sleep -Milliseconds 250
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited before authenticated Find Releases search.'}
+            $found=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+            if($found.Length -eq 1){$liveDialog=$found[0];break}
+        }
+        if($liveDialog -eq [IntPtr]::Zero){throw 'Fresh native Find Releases dialog not found.'}
+        $searchEdit=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1083)
+        $searchButton=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1086)
+        $releaseTree=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1018)
+        if($searchEdit -eq [IntPtr]::Zero -or $searchButton -eq [IntPtr]::Zero -or
+            $releaseTree -eq [IntPtr]::Zero){throw 'Native Discogger search controls missing.'}
+        if([DiscoggerWindowTest]::TreeCount($releaseTree) -ne 0){
+            throw 'Fresh authenticated GUI search is not starting with an empty release tree.'
+        }
+        # This query is a known exact public release; the disposable profile has
+        # no Discogger search cache, so a populated tree requires a live request.
+        $query='artist= Estiva & title= Via Balearia'
+        [DiscoggerWindowTest]::SetEditText($searchEdit,$query)
+        if([DiscoggerWindowTest]::EditText($searchEdit) -cne $query){
+            throw 'Native Search text did not match the submitted known fixture query.'
+        }
+        [DiscoggerWindowTest]::ClickButton($searchButton)
+        $postClickText=[DiscoggerWindowTest]::EditText($searchEdit)
+        Write-Host "DISCOGGER_AUTHENTICATED_UI_POSTCLICK_${Architecture}=length:$($postClickText.Length) retained:$([int]($postClickText -ceq $query))"
+        $liveCount=0
+        for($n=0;$n -lt 120;$n++){
+            Start-Sleep -Milliseconds 500
+            $proc.Refresh()
+            if($proc.HasExited){
+                Write-DiscoggerCrashEvidence
+                throw 'Host exited during authenticated Discogger search.'
+            }
+            $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
+            if($liveCount -gt 0){break}
+        }
+        # The search fills the artist list before the release tree. Inspect the
+        # exact, real result identity and open it via the native tree presenter.
+        $liveProbe=Join-Path $dir 'qa-live-search-probe.txt'
+        if(Test-Path -LiteralPath $liveProbe){throw 'Live-search probe evidence unexpectedly exists.'}
+        $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
+        if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
+            throw 'Could not dispatch native live-search result inspection.'
+        }
+        for($n=0;$n -lt 180;$n++){
+            Start-Sleep -Milliseconds 250
+            if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited during live-search result inspection.'}
+        }
+        if(-not (Test-Path -LiteralPath $liveProbe -PathType Leaf)){
+            throw 'Native live-search result inspection produced no evidence.'
+        }
+        $proof=Get-Content -LiteralPath $liveProbe -Raw
+        $expected=@('ARTISTS','KNOWN_RELEASE_MATCHES','TREE','BUTTON','ROUTED',
+            'INPUT_NONEMPTY','INPUT_NONEMPTY_CALLS','INPUT_EMPTY_CALLS',
+            'INPUT_MEMBER_VALID','INPUT_HWND_MATCH','INPUT_MEMBER_LENGTH','INPUT_LIVE_LENGTH',
+            'PARSED_FIELDS','QUERY_MINIMAL','QUERY_DETECTED',
+            'ALT_MODE','REPEAT_QUERY','EARLY_EXIT',
+            'WORKER_STARTED','WORKER_ADVANCED','WORKER_SUCCESS','WORKER_ERROR','WORKER_ABORT',
+            'RESPONSE_PAGES','RESPONSE_ITEMS','PARSED_MASTERS','PARSED_RELEASES',
+            'QUERY_LIMIT','API_IDENTITY','API_EXACT_OK','API_EXACT_ITEMS',
+            'API_EXACT_KNOWN','API_BROAD_OK','API_BROAD_ITEMS','API_BROAD_KNOWN',
+            'API_COHORT_TOTAL','API_COHORT_OK','API_COHORT_NONEMPTY','API_COHORT_KNOWN',
+            'API_COHORT_MASK','API_COHORT_KNOWN_MASK')
+        $counts=@{}
+        foreach($line in ($proof -split '\r?\n')){
+            if($line -match '^([A-Z_]+)=(\d+)$' -and $Matches[1] -in $expected){
+                $counts[$Matches[1]]=[int]$Matches[2]
+            }
+        }
+        if($counts.Count -ne $expected.Count){throw 'Malformed native live-search stage evidence.'}
+        Write-Host "DISCOGGER_AUTHENTICATED_GUI_RESULT_COUNTS_${Architecture}=artists:$($counts['ARTISTS']) known:$($counts['KNOWN_RELEASE_MATCHES']) tree:$($counts['TREE'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_SEARCH_STAGES_${Architecture}=button:$($counts['BUTTON']) routed:$($counts['ROUTED']) started:$($counts['WORKER_STARTED']) advanced:$($counts['WORKER_ADVANCED']) success:$($counts['WORKER_SUCCESS']) error:$($counts['WORKER_ERROR']) abort:$($counts['WORKER_ABORT']) pages:$($counts['RESPONSE_PAGES']) items:$($counts['RESPONSE_ITEMS']) masters:$($counts['PARSED_MASTERS']) releases:$($counts['PARSED_RELEASES']) capped:$($counts['QUERY_LIMIT'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_UI_BOUNDARY_${Architecture}=calls:$($counts['BUTTON']) nonempty:$($counts['INPUT_NONEMPTY_CALLS']) empty:$($counts['INPUT_EMPTY_CALLS']) member_valid:$($counts['INPUT_MEMBER_VALID']) hwnd_match:$($counts['INPUT_HWND_MATCH']) member_length:$($counts['INPUT_MEMBER_LENGTH']) live_length:$($counts['INPUT_LIVE_LENGTH'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_GUI_PARSE_${Architecture}=input:$($counts['INPUT_NONEMPTY']) fields:$($counts['PARSED_FIELDS']) minimal:$($counts['QUERY_MINIMAL']) query:$($counts['QUERY_DETECTED']) alt:$($counts['ALT_MODE']) retry:$($counts['REPEAT_QUERY']) exit:$($counts['EARLY_EXIT'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_API_PROBE_${Architecture}=identity:$($counts['API_IDENTITY']) exact_ok:$($counts['API_EXACT_OK']) exact_items:$($counts['API_EXACT_ITEMS']) exact_known:$($counts['API_EXACT_KNOWN']) broad_ok:$($counts['API_BROAD_OK']) broad_items:$($counts['API_BROAD_ITEMS']) broad_known:$($counts['API_BROAD_KNOWN'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_API_COHORT_${Architecture}=total:$($counts['API_COHORT_TOTAL']) completed:$($counts['API_COHORT_OK']) nonempty:$($counts['API_COHORT_NONEMPTY']) expected_on_page:$($counts['API_COHORT_KNOWN']) nonempty_mask:$($counts['API_COHORT_MASK']) known_mask:$($counts['API_COHORT_KNOWN_MASK'])"
+        if($counts['API_COHORT_TOTAL'] -ne 14 -or $counts['API_COHORT_OK'] -ne 14){
+            throw 'Authenticated independent Discogs query corpus was incomplete.'
+        }
+        # A few historic exact-format releases can be absent from the current
+        # search index; the full bitmap remains visible as *numeric* evidence.
+        # Detect systemic regressions while preserving individual diagnostics.
+        if($counts['API_COHORT_NONEMPTY'] -lt 9){
+            throw 'Authenticated independent Discogs query corpus had fewer than nine populated searches.'
+        }
+        if($counts['BUTTON'] -lt 1){throw 'Native Search button did not reach its actual Discogger handler.'}
+        if($counts['ROUTED'] -lt 1){throw ('Discogger Search handler did not route its parsed query; early-exit stage '+$counts['EARLY_EXIT']+'.')}
+        if($counts['WORKER_STARTED'] -lt 1){throw 'Discogger routed search but the asynchronous worker never started.'}
+        if($counts['WORKER_ADVANCED'] -lt 1){throw 'Discogger parsed advanced query was routed to plain artist-name search.'}
+        if($counts['WORKER_ERROR'] -gt 0){throw 'Discogger asynchronous search failed before publishing results.'}
+        if($counts['WORKER_ABORT'] -gt 0){throw 'Discogger asynchronous search was aborted.'}
+        if($counts['QUERY_LIMIT'] -gt 0){throw 'Discogger search was incorrectly stopped by its configured result cap.'}
+        if($counts['ARTISTS'] -lt 1){
+            if($counts['API_IDENTITY'] -lt 1){throw 'Discogger OAuth identity request failed independently of the GUI.'}
+            if($counts['API_EXACT_OK'] -lt 1 -and $counts['API_BROAD_OK'] -lt 1){
+                throw 'Discogger direct API search probes failed independently of the GUI.'
+            }
+            if($counts['RESPONSE_PAGES'] -gt 0 -and
+               ($counts['PARSED_MASTERS'] -gt 0 -or $counts['PARSED_RELEASES'] -gt 0)){
+                throw 'Discogger parsed actual releases but did not publish artist rows.'
+            }
+            throw 'Discogger worker completed but produced no artist-list rows.'
+        }
+        if($counts['KNOWN_RELEASE_MATCHES'] -lt 1){throw 'Authenticated Discogger results did not contain expected release 38012673.'}
+        $liveCount=[DiscoggerWindowTest]::TreeCount($releaseTree)
+        if($liveCount -lt 1 -or $counts['TREE'] -lt 1){
+            throw 'Authenticated Discogger result was not displayed in the native release tree.'
+        }
+        Write-Host "DISCOGGER_AUTHENTICATED_GUI_SEARCH_$Architecture=PASS"
+        # Search must be read-only even after the prior isolated writer tests.
+        if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
+            throw 'Authenticated Discogger search changed disposable WAVE data.'
+        }
+
+        # Extra *real* native Find Releases searches on a single running,
+        # disposable host. Close each prior dialog, preserve its SQLite cache,
+        # and require automatic tree publication without a QA presenter click.
+        # The final repeat exercises the cached-query/artist route.
+        $nativeMatrix=@(
+            # Original user cases must actually populate the native release tree.
+            # Prove both the precise previously failing composite query and the
+            # independently observed Maywave workaround, with no artist click.
+            @{Id='37332711';Query='artist= Kyau & Albert X Maywave & title= 1000 Years & track= 1000 Years (Dj Version)';Name='kyau-original-composite';MinFields=4},
+            @{Id='37332711';Query='q= Maywave & title= 1000 Years';Name='kyau-maywave';MinFields=3},
+            @{Id='36397609';Query='artist= Matt Fax & title= Only You';Name='matt-fax-only-you';MinFields=3},
+            @{Id='36819730';Query='artist= Matt Fax & title= Till You Let Go';Name='matt-fax-till-you-let-go';MinFields=3},
+            @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk';MinFields=3},
+            @{Id='7809';Query='artist= The Chemical Brothers & title= Hey Boy Hey Girl';Name='chemical-brothers';MinFields=3},
+            @{Id='32559';Query='artist= Björk & title= Jóga';Name='bjork-utf8';MinFields=3},
+            @{Id='294906';Query='artist= Röyksopp & title= Eple';Name='royksopp-utf8';MinFields=3},
+            # Stress field order/case, collaborations, UTF-8, remix descriptors,
+            # and titles where the release differs from the track.
+            @{Id='37332711';Query='track= 1000 Years (Dj Version) & title= 1000 Years & artist= Kyau & Albert X Maywave';Name='kyau-reordered';MinFields=4},
+            @{Id='37332711';Query='TITLE = 1000 Years & TRACK = 1000 Years (DJ Version) & ARTIST = Kyau & Albert X Maywave';Name='kyau-uppercase-fields';MinFields=4},
+            @{Id='2783977';Query='artist= Above & Beyond feat. Richard Bedford & title= Sun & Moon & track= Sun & Moon (Club Mix)';Name='sun-moon-ampersands';MinFields=4},
+            @{Id='32559';Query='TRACK = Jóga (Howie B) & ARTIST = Björk & TITLE = Jóga';Name='bjork-utf8-reordered';MinFields=4},
+            @{Id='294906';Query='ARTIST = Röyksopp & TITLE = Eple & TRACK = Eple (Edit)';Name='royksopp-utf8-mix';MinFields=4},
+            @{Id='18278686';Query='track= Glue & artist= Bicep & title= Glue EP';Name='bicep-ep-track';MinFields=4},
+            @{Id='13584056';Query='title= Born Slippy .NUXX & track= Born Slippy / NUXX (Mix) & artist= Underworld';Name='underworld-punctuation';MinFields=4},
+            @{Id='36397609';Query='track= Only You (Extended Mix) & artist= Matt Fax & title= Only You';Name='matt-fax-extended-reordered';MinFields=4},
+            @{Id='36819730';Query='title= Till You Let Go & track= Till You Let Go (Extended Mix) & artist= Matt Fax';Name='matt-fax-extended-three-fields';MinFields=4},
+            @{Id='18370';Query='artist= Chicane Featuring Maire Brennan & title= Saltwater & track= Saltwater (Original Mix)';Name='chicane-featuring';MinFields=4},
+            @{Id='82825';Query='artist= Faithless & title= Insomnia & track= Insomnia (Monster Mix)';Name='faithless-remix';MinFields=4},
+            @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk-cache-repeat';MinFields=3}
+        )
+        $expectedIdFile=Join-Path $dir 'qa-live-expected-id.txt'
+        foreach($item in $nativeMatrix){
+            if(-not [DiscoggerWindowTest]::PostMessageW($liveDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+                throw 'Could not close the preceding native query dialog.'
+            }
+            for($n=0;$n -lt 35;$n++){
+                Start-Sleep -Milliseconds 200
+                if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){break}
+            }
+            if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count){
+                throw 'Preceding native query dialog did not close.'
+            }
+            [IO.File]::WriteAllText($expectedIdFile,[string]$item.Id,[Text.Encoding]::ASCII)
+            $launcher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $liveArgs -PassThru
+            if(-not $launcher.WaitForExit(15000) -or $launcher.ExitCode -ne 0){
+                throw 'Could not open a fresh native Discogger GUI matrix dialog.'
+            }
+            $liveDialog=[IntPtr]::Zero
+            for($n=0;$n -lt 40;$n++){
+                Start-Sleep -Milliseconds 250
+                $proc.Refresh()
+                if($proc.HasExited){throw 'Host exited before a native GUI matrix query.'}
+                $found=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+                if($found.Length -eq 1){$liveDialog=$found[0];break}
+            }
+            if($liveDialog -eq [IntPtr]::Zero){throw 'Fresh native GUI matrix dialog missing.'}
+            $searchEdit=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1083)
+            $searchButton=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1086)
+            $releaseTree=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1018)
+            if($searchEdit -eq [IntPtr]::Zero -or $searchButton -eq [IntPtr]::Zero -or
+               $releaseTree -eq [IntPtr]::Zero -or
+               [DiscoggerWindowTest]::TreeCount($releaseTree) -ne 0){
+                throw 'GUI matrix case did not start with empty native controls.'
+            }
+            if(Test-Path -LiteralPath $liveProbe){Remove-Item -LiteralPath $liveProbe -Force}
+            [DiscoggerWindowTest]::SetEditText($searchEdit,[string]$item.Query)
+            if([DiscoggerWindowTest]::EditText($searchEdit) -cne [string]$item.Query){
+                throw 'Native GUI matrix query was altered during input.'
+            }
+            [DiscoggerWindowTest]::ClickButton($searchButton)
+            $done=$false
+            $matrixCounts=@{}
+            for($attempt=0;$attempt -lt 16 -and -not $done;$attempt++){
+                Start-Sleep -Seconds 4
+                $proc.Refresh()
+                if($proc.HasExited){
+                    Write-DiscoggerCrashEvidence
+                    throw 'Host exited during a native GUI matrix query.'
+                }
+                if(Test-Path -LiteralPath $liveProbe){Remove-Item -LiteralPath $liveProbe -Force}
+                $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
+                if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
+                    throw 'Native GUI matrix probe dispatch failed.'
+                }
+                for($n=0;$n -lt 80;$n++){
+                    Start-Sleep -Milliseconds 250
+                    if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
+                }
+                if(-not (Test-Path -LiteralPath $liveProbe -PathType Leaf)){
+                    throw 'Native GUI matrix probe evidence missing.'
+                }
+                $matrixCounts=@{}
+                foreach($line in ((Get-Content -LiteralPath $liveProbe -Raw) -split '\r?\n')){
+                    if($line -match '^([A-Z_]+)=(\d+)$'){
+                        $matrixCounts[$Matches[1]]=[int]$Matches[2]
+                    }
+                }
+                if($matrixCounts['WORKER_ERROR'] -gt 0 -or $matrixCounts['WORKER_ABORT'] -gt 0){
+                    throw 'Native GUI matrix worker failed or aborted.'
+                }
+                $done=$matrixCounts['WORKER_SUCCESS'] -eq 1
+            }
+            if(-not $done){throw 'Native GUI matrix search worker did not finish.'}
+            if($matrixCounts['QUERY_DETECTED'] -ne 1 -or
+               $matrixCounts['QUERY_MINIMAL'] -ne 1 -or
+               $matrixCounts['EARLY_EXIT'] -ne 0 -or
+               $matrixCounts['PARSED_FIELDS'] -lt [int]$item.MinFields){
+                throw "Complex native search parser dropped or rejected requested fields: $($item.Name)"
+            }
+            if($matrixCounts['BUTTON'] -ne 1 -or $matrixCounts['ROUTED'] -ne 1 -or
+                $matrixCounts['WORKER_ADVANCED'] -ne 1 -or
+                $matrixCounts['ARTISTS'] -lt 1 -or
+                $matrixCounts['KNOWN_RELEASE_MATCHES'] -lt 1){
+                throw 'Native GUI matrix did not find the expected public release identity.'
+            }
+            if($matrixCounts['TREE'] -lt 1 -or
+                [DiscoggerWindowTest]::TreeCount($releaseTree) -lt 1){
+                throw 'Native GUI matrix did not auto-show results without artist reselection.'
+            }
+            if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
+                throw 'Native GUI matrix changed disposable audio bytes.'
+            }
+            Write-Host "DISCOGGER_AUTHENTICATED_NATIVE_PARSE_${Architecture}_$($item.Name)=fields:$($matrixCounts['PARSED_FIELDS']) minimum:$($item.MinFields)"
+            Write-Host "DISCOGGER_AUTHENTICATED_NATIVE_QUERY_${Architecture}_$($item.Name)=PASS"
+        }
+        if(Test-Path -LiteralPath $expectedIdFile){Remove-Item -LiteralPath $expectedIdFile -Force}
+
+        # A fresh negative search must complete without a thrown no-results
+        # status or a stale tree from the successful search above.
+        if(-not [DiscoggerWindowTest]::PostMessageW($liveDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+            throw 'Could not close positive Find Releases before empty-result regression.'
+        }
+        for($n=0;$n -lt 35;$n++){
+            Start-Sleep -Milliseconds 200
+            if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){break}
+        }
+        if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count){
+            throw 'Positive Find Releases remained open before empty-result regression.'
+        }
+        $emptyLauncher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $liveArgs -PassThru
+        if(-not $emptyLauncher.WaitForExit(15000) -or $emptyLauncher.ExitCode -ne 0){
+            throw 'Could not open independent Find Releases for empty-result regression.'
+        }
+        $emptyDialog=[IntPtr]::Zero
+        for($n=0;$n -lt 40;$n++){
+            Start-Sleep -Milliseconds 250
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited before empty-result regression.'}
+            $found=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+            if($found.Length -eq 1){$emptyDialog=$found[0];break}
+        }
+        if($emptyDialog -eq [IntPtr]::Zero){throw 'Independent empty-result dialog not found.'}
+        $emptyEdit=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1083)
+        $emptyButton=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1086)
+        $emptyTree=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1018)
+        if($emptyEdit -eq [IntPtr]::Zero -or $emptyButton -eq [IntPtr]::Zero -or
+            $emptyTree -eq [IntPtr]::Zero -or [DiscoggerWindowTest]::TreeCount($emptyTree) -ne 0){
+            throw 'Independent empty-result controls were not ready.'
+        }
+        $emptyQuery='artist= DiscoggerQAImpossibleArtist251024 & title= DiscoggerQAImpossibleRelease251024'
+        [DiscoggerWindowTest]::SetEditText($emptyEdit,$emptyQuery)
+        if([DiscoggerWindowTest]::EditText($emptyEdit) -cne $emptyQuery){
+            throw 'Empty-result regression query was not set in the native edit.'
+        }
+        [DiscoggerWindowTest]::ClickButton($emptyButton)
+        Remove-Item -LiteralPath $liveProbe -Force
+        $emptyCompleted=$false
+        for($attempt=0;$attempt -lt 4 -and -not $emptyCompleted;$attempt++){
+            Start-Sleep -Seconds 10
+            $proc.Refresh()
+            if($proc.HasExited){
+                Write-DiscoggerCrashEvidence
+                throw 'Host exited while rendering an empty authenticated search.'
+            }
+            $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
+            if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
+                throw 'Could not inspect empty-result native search.'
+            }
+            for($n=0;$n -lt 80;$n++){
+                Start-Sleep -Milliseconds 250
+                if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
+            }
+            if(-not (Test-Path -LiteralPath $liveProbe -PathType Leaf)){
+                throw 'Empty-result native probe did not produce evidence.'
+            }
+            $emptyProof=Get-Content -LiteralPath $liveProbe -Raw
+            Remove-Item -LiteralPath $liveProbe -Force
+            $emptyCounts=@{}
+            foreach($line in ($emptyProof -split '\r?\n')){
+                if($line -match '^([A-Z_]+)=(\d+)$'){$emptyCounts[$Matches[1]]=[int]$Matches[2]}
+            }
+            if($emptyCounts['WORKER_ERROR'] -gt 0 -or $emptyCounts['WORKER_ABORT'] -gt 0){
+                throw 'Empty-result native search ended in worker error or abort.'
+            }
+            if($emptyCounts['WORKER_SUCCESS'] -eq 1){
+                if($emptyCounts['BUTTON'] -ne 1 -or $emptyCounts['ROUTED'] -ne 1 -or
+                   $emptyCounts['WORKER_ADVANCED'] -ne 1 -or $emptyCounts['ARTISTS'] -ne 0 -or
+                   $emptyCounts['TREE'] -ne 0 -or $emptyCounts['PARSED_RELEASES'] -ne 0 -or
+                   $emptyCounts['PARSED_MASTERS'] -ne 0 -or
+                   [DiscoggerWindowTest]::TreeCount($emptyTree) -ne 0){
+                    throw 'Empty-result search retained or published unexpected GUI rows.'
+                }
+                $emptyCompleted=$true
+            }
+        }
+        if(-not $emptyCompleted){throw 'Authenticated empty-result native search did not complete.'}
+        Write-Host "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_$Architecture=PASS"
+        if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
+            throw 'Empty-result Discogger search changed disposable WAVE data.'
+        }
+    }
 
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
