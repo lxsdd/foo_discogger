@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <string>
 #include <iterator>
+#include <array>
+#include "tests/runner-live-search-telemetry.h"
 
 namespace {
 static const GUID qa_mp3_command = {0x4a1d5a11,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
@@ -19,6 +21,7 @@ static const GUID qa_populated_gui_command = {0x4a1d5a15,0x9b8e,0x43a4,{0xa8,0x3
 static const GUID qa_stale_disk_command = {0x4a1d5a16,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_removal_command = {0x4a1d5a17,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_partial_audit_command = {0x4a1d5a18,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
+static const GUID qa_live_search_probe_command = {0x4a1d5a19,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 
 void run_disposable_media_writer_qa(t_uint32 format) {
     const char* github = std::getenv("GITHUB_ACTIONS");
@@ -271,6 +274,106 @@ void run_populated_search_gui_qa() {
 }
 
 
+void run_live_search_probe_qa() {
+    const char* actions = std::getenv("GITHUB_ACTIONS");
+    const char* runner = std::getenv("RUNNER_TEMP");
+    const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+    if (!actions || std::string(actions) != "true" || !runner || !location)
+        throw std::runtime_error("Live GUI inspection allowed only in ephemeral runner.");
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+    const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+    const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+    if (folder.native().size() <= prefix.size() ||
+        _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+        !std::filesystem::is_directory(folder))
+        throw std::runtime_error("Live GUI evidence must remain under runner temp.");
+    if (!g_discogs || !g_discogs->find_release_dialog)
+        throw std::runtime_error("Native Find Releases dialog is absent.");
+    const auto counts = g_discogs->find_release_dialog->runner_qa_live_search_probe();
+    // Independent read-only requests distinguish OAuth/transport failures from
+    // actual Discogger UI and result-model failures. Never record API bodies.
+    unsigned identity_ok = 0;
+    try {
+        abort_callback_dummy abort;
+        pfc::string8 body;
+        discogs_interface->fetcher->fetch_html(
+            "https://api.discogs.com/oauth/identity", "", body, abort);
+        JSONParser parsed(body);
+        const json_t* username = json_object_get(parsed.root, "username");
+        identity_ok = json_is_string(username) && json_string_length(username) > 0 ? 1u : 0u;
+    } catch (...) {}
+    const auto probe_search = [](const char* params) -> std::array<unsigned, 3> {
+        std::array<unsigned, 3> result{0, 0, 0};
+        try {
+            abort_callback_dummy abort;
+            pfc::string8 body;
+            discogs_interface->fetcher->fetch_html(
+                "https://api.discogs.com/database/search", params, body, abort);
+            JSONParser parsed(body);
+            const json_t* rows = json_object_get(parsed.root, "results");
+            if (!json_is_array(rows)) return result;
+            result[0] = 1;
+            result[1] = static_cast<unsigned>(
+                parsed.get_object_int("pagination", "items"));
+            for (size_t i = 0; i < json_array_size(rows); ++i) {
+                const json_t* record = json_array_get(rows, i);
+                const json_t* id = json_object_get(record, "id");
+                if (json_is_integer(id) && json_integer_value(id) == 38012673)
+                    result[2] = 1;
+            }
+        } catch (...) {}
+        return result;
+    };
+    const auto api_exact = probe_search(
+        "artist=Estiva&title=Via%20Balearia&per_page=100&page=1");
+    const auto api_broad = probe_search(
+        "q=%22Via%20Balearia%22&per_page=100&page=1");
+    const auto evidence = folder / "qa-live-search-probe.txt";
+    if (std::filesystem::exists(evidence))
+        throw std::runtime_error("Live GUI evidence already existed.");
+    std::ofstream out(evidence);
+    if (!out) throw std::runtime_error("Could not write live GUI evidence.");
+    // Counts and fixed public release identity only. Never record query,
+    // headers, OAuth values, responses, profile data or arbitrary error text.
+    out << "ARTISTS=" << counts[0] << '\n'
+        << "KNOWN_RELEASE_MATCHES=" << counts[1] << '\n'
+        << "TREE=" << counts[2] << '\n'
+        << "BUTTON=" << discogger_live_search_qa::button.load() << '\n'
+        << "INPUT_NONEMPTY=" << discogger_live_search_qa::input_nonempty.load() << '\n'
+        << "INPUT_NONEMPTY_CALLS=" << discogger_live_search_qa::input_nonempty_calls.load() << '\n'
+        << "INPUT_EMPTY_CALLS=" << discogger_live_search_qa::input_empty_calls.load() << '\n'
+        << "INPUT_MEMBER_VALID=" << discogger_live_search_qa::input_member_valid.load() << '\n'
+        << "INPUT_HWND_MATCH=" << discogger_live_search_qa::input_hwnd_match.load() << '\n'
+        << "INPUT_MEMBER_LENGTH=" << discogger_live_search_qa::input_member_length.load() << '\n'
+        << "INPUT_LIVE_LENGTH=" << discogger_live_search_qa::input_live_length.load() << '\n'
+        << "PARSED_FIELDS=" << discogger_live_search_qa::parsed_fields.load() << '\n'
+        << "QUERY_MINIMAL=" << discogger_live_search_qa::query_minimal.load() << '\n'
+        << "QUERY_DETECTED=" << discogger_live_search_qa::query_detected.load() << '\n'
+        << "ALT_MODE=" << discogger_live_search_qa::alt_mode.load() << '\n'
+        << "REPEAT_QUERY=" << discogger_live_search_qa::repeat_query.load() << '\n'
+        << "EARLY_EXIT=" << discogger_live_search_qa::early_exit.load() << '\n'
+        << "ROUTED=" << discogger_live_search_qa::routed.load() << '\n'
+        << "WORKER_STARTED=" << discogger_live_search_qa::worker_started.load() << '\n'
+        << "WORKER_ADVANCED=" << discogger_live_search_qa::worker_advanced.load() << '\n'
+        << "WORKER_SUCCESS=" << discogger_live_search_qa::worker_success.load() << '\n'
+        << "WORKER_ERROR=" << discogger_live_search_qa::worker_error.load() << '\n'
+        << "WORKER_ABORT=" << discogger_live_search_qa::worker_abort.load() << '\n'
+        << "RESPONSE_PAGES=" << discogger_live_search_qa::response_pages.load() << '\n'
+        << "RESPONSE_ITEMS=" << discogger_live_search_qa::response_items.load() << '\n'
+        << "PARSED_MASTERS=" << discogger_live_search_qa::parsed_masters.load() << '\n'
+        << "PARSED_RELEASES=" << discogger_live_search_qa::parsed_releases.load() << '\n'
+        << "QUERY_LIMIT=" << discogger_live_search_qa::query_limit.load() << '\n'
+        << "API_IDENTITY=" << identity_ok << '\n'
+        << "API_EXACT_OK=" << api_exact[0] << '\n'
+        << "API_EXACT_ITEMS=" << api_exact[1] << '\n'
+        << "API_EXACT_KNOWN=" << api_exact[2] << '\n'
+        << "API_BROAD_OK=" << api_broad[0] << '\n'
+        << "API_BROAD_ITEMS=" << api_broad[1] << '\n'
+        << "API_BROAD_KNOWN=" << api_broad[2] << '\n';
+    out.flush();
+    if (!out) throw std::runtime_error("Could not flush live GUI evidence.");
+}
+
 void run_disposable_stale_disk_qa() {
     const char* github = std::getenv("GITHUB_ACTIONS");
     const char* runner = std::getenv("RUNNER_TEMP");
@@ -519,23 +622,24 @@ void record_disposable_partial_qa_error(const char* reason) noexcept {
 
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
-    t_uint32 get_command_count() override { return 8; }
+    t_uint32 get_command_count() override { return 9; }
     GUID get_command(t_uint32 index) override {
         static const GUID commands[] = {
             qa_mp3_command, qa_flac_command, qa_targets_command, qa_batch_command,
             qa_populated_gui_command, qa_stale_disk_command, qa_removal_command,
-            qa_partial_audit_command
+            qa_partial_audit_command, qa_live_search_probe_command
         };
-        return index < 8 ? commands[index] : GUID{};
+        return index < 9 ? commands[index] : GUID{};
     }
     void get_name(t_uint32 index, pfc::string_base& out) override {
         static const char* names[] = {
             "Discogger QA MP3 write", "Discogger QA FLAC write",
             "Discogger QA unsafe targets", "Discogger QA incomplete batch",
             "Discogger QA populated GUI", "Discogger QA stale disk",
-            "Discogger QA unsafe removals", "Discogger QA injected partial"
+            "Discogger QA unsafe removals", "Discogger QA injected partial",
+            "Discogger QA live search probe"
         };
-        out = index < 8 ? names[index] : "Invalid Discogger QA command";
+        out = index < 9 ? names[index] : "Invalid Discogger QA command";
     }
     bool get_description(t_uint32, pfc::string_base& out) override {
         out = "Test-only physical metadata writer for disposable GitHub runner media.";
@@ -544,8 +648,9 @@ public:
     GUID get_parent() override { return mainmenu_groups::file; }
     void execute(t_uint32 index, service_ptr_t<service_base>) override {
         try {
-            if (index > 7) throw std::runtime_error("Invalid synthetic QA action.");
-            if (index == 7) run_disposable_partial_write_audit_qa();
+            if (index > 8) throw std::runtime_error("Invalid synthetic QA action.");
+            if (index == 8) run_live_search_probe_qa();
+            else if (index == 7) run_disposable_partial_write_audit_qa();
             else if (index == 6) run_disposable_unapproved_removal_qa();
             else if (index == 5) run_disposable_stale_disk_qa();
             else if (index == 4) run_populated_search_gui_qa();
