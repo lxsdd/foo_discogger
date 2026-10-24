@@ -99,6 +99,10 @@ def verify_original_flac_vorbis(before_fields, after_fields):
     Counters preserves exact byte values and multivalue multiplicity while
     tolerating harmless field reordering by the native metadata writer.
     """
+    # A pre-existing physical marker must not disappear from the diff merely
+    # because this test also uses the same reserved field as its write probe.
+    if "DISCOGGER_QA_RUNNER" in before_fields:
+        raise AssertionError("Original FLAC already contains reserved QA marker")
     def preserved(fields):
         return {key: Counter(values) for key, values in fields.items()
                 if key != "DISCOGGER_QA_RUNNER"}
@@ -299,6 +303,11 @@ def verify_original_mp3_standard_text(before, after):
 
 def verify_original_mp3_txxx(before, after):
     """Preserve physical custom TXXX and ReplayGain despite ID3 re-encoding."""
+    # Never exclude an existing user tag from the physical baseline. The
+    # reserved runner field may be added, but must not overwrite a prior one.
+    if any(name.upper() == "DISCOGGER_QA_RUNNER"
+           for name, _ in id3_txxx_values(before)):
+        raise AssertionError("Original MP3 already contains reserved QA marker")
     def existing(raw):
         # TXXX descriptions are user-defined physical names: preserve their
         # exact case. Uppercasing here concealed destructive case-only renames.
@@ -571,6 +580,18 @@ def selftest_flac_vorbis():
     updated = {**baseline, "GENRE": [b"House", b"Trance"],
                "DISCOGGER_QA_RUNNER": [b"RUNNER-VERIFIED"]}
     verify_original_flac_vorbis(baseline, updated)
+    # Previously the marker was always excluded, even when it was already
+    # present in the original physical Vorbis comments.
+    for previous in ([b"RUNNER-VERIFIED"], [b"STALE"],
+                     [b"RUNNER-VERIFIED", b"STALE"]):
+        original_with_marker = {**baseline, "DISCOGGER_QA_RUNNER": previous}
+        try:
+            verify_original_flac_vorbis(original_with_marker, updated)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Pre-existing physical FLAC QA marker escaped audit")
+    print("DISCOGGER_FLAC_QA_MARKER_BASELINE_GUARD=PASS")
     corrupted_cases = (
         {key: values for key, values in updated.items() if key != "ARTIST"},
         {**updated, "TITLE": [b"Unexpected replacement"]},
@@ -813,6 +834,19 @@ def selftest_id3():
         payload = fields + marker_frames
         return b"ID3" + bytes((3, 0, 0)) + ss(len(payload)) + payload
     verify_exact_mp3_runner_marker(with_qa_marker(marker))
+    # The QA marker is not an exception for a tag that already existed.
+    # Preserve this guarantee even for identical, stale, cased and duplicate
+    # original TXXX descriptions.
+    for prior in (marker, frame("DISCOGGER_QA_RUNNER", "STALE"),
+                  frame("discogger_qa_runner", "STALE"), marker + marker):
+        try:
+            verify_original_mp3_txxx(with_qa_marker(prior),
+                                     with_qa_marker(marker))
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Pre-existing physical MP3 QA marker escaped audit")
+    print("DISCOGGER_MP3_QA_MARKER_BASELINE_GUARD=PASS")
     for bad_marker in (b"", marker + marker,
                        marker + frame("DISCOGGER_QA_RUNNER", "STALE"),
                        frame("DISCOGGER_QA_RUNNER", "RUNNER-\ufeffVERIFIED"),
