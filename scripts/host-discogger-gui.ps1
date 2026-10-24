@@ -839,10 +839,16 @@ FILE "synthetic-side-b.wav" WAVE
             throw ("Native sidecar artwork QA failed at "+$stage)
         }
         if(Test-Path -LiteralPath $sidecarMarker -PathType Leaf){
-            $proof=(Get-Content -LiteralPath $sidecarMarker -Raw).Trim()
-            if($proof -ceq ("NOOP=PASS"+[char]10+"REPLACE=PASS"+[char]10+"EMPTY=DENIED")){
+            # C++ text-mode output is CRLF on Windows; compare logical lines,
+            # not a hard-coded LF byte sequence.
+            $proof=@(Get-Content -LiteralPath $sidecarMarker)
+            if($proof.Count -eq 3 -and
+               $proof[0] -ceq 'NOOP=PASS' -and
+               $proof[1] -ceq 'REPLACE=PASS' -and
+               $proof[2] -ceq 'EMPTY=DENIED'){
                 $sidecarPassed=$true;break
             }
+            throw 'Malformed runner-local sidecar success marker.'
         }
         $proc.Refresh()
         if($proc.HasExited){throw 'Host exited during sidecar artwork QA.'}
