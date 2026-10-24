@@ -21,6 +21,7 @@ static const GUID qa_stale_disk_command = {0x4a1d5a16,0x9b8e,0x43a4,{0xa8,0x33,0
 static const GUID qa_removal_command = {0x4a1d5a17,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_partial_audit_command = {0x4a1d5a18,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_sidecar_artwork_command = {0x4a1d5a19,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
+static const GUID qa_embedded_artwork_command = {0x4a1d5a1a,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 
 void run_disposable_media_writer_qa(t_uint32 format) {
     const char* github = std::getenv("GITHUB_ACTIONS");
@@ -617,16 +618,135 @@ void run_disposable_sidecar_artwork_qa() {
     if (!out) throw std::runtime_error("Cannot flush sidecar artwork QA.");
 }
 
+
+const char* qa_embedded_artwork_stage = "dispatch";
+void record_disposable_embedded_qa_error() noexcept {
+    try {
+        const char* actions = std::getenv("GITHUB_ACTIONS");
+        const char* runner = std::getenv("RUNNER_TEMP");
+        const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+        if (!actions || std::string(actions) != "true" || !runner || !location) return;
+        const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+        const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+        const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+        if (folder.native().size() <= prefix.size() ||
+            _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+            !std::filesystem::is_directory(folder)) return;
+        std::ofstream out(folder / "qa-embedded-error.txt");
+        if (out) out << "STAGE=" << qa_embedded_artwork_stage << '\n';
+    } catch (...) {}
+}
+void run_disposable_embedded_artwork_qa() {
+    qa_embedded_artwork_stage = "environment";
+    const char* actions = std::getenv("GITHUB_ACTIONS");
+    const char* runner = std::getenv("RUNNER_TEMP");
+    const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+    if (!actions || std::string(actions) != "true" || !runner || !location || !g_discogs)
+        throw std::runtime_error("Embedded artwork QA requires isolated Actions runner.");
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+    const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+    const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+    if (folder.native().size() <= prefix.size() ||
+        _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+        !std::filesystem::is_directory(folder))
+        throw std::runtime_error("Unsafe embedded artwork QA directory.");
+    qa_embedded_artwork_stage = "fixture";
+    const auto flac = folder / "synthetic-embedded.flac";
+    const auto marker = folder / "qa-embedded-artwork.txt";
+    if (!std::filesystem::is_regular_file(flac) || std::filesystem::is_symlink(flac) ||
+        std::filesystem::exists(marker))
+        throw std::runtime_error("Unsafe embedded artwork QA fixture.");
+    const auto units = flac.u8string();
+    const std::string url = "file://" + std::string(units.begin(), units.end());
+    auto item = metadb::get()->handle_create(url.c_str(), 0);
+    if (!item || item->get_subsong_index() != 0)
+        throw std::runtime_error("Embedded artwork QA lacks physical FLAC handle.");
+    abort_callback_dummy abort;
+    auto raw_file = [&]() {
+        std::ifstream in(flac, std::ios::binary);
+        if (!in) throw std::runtime_error("Cannot read synthetic FLAC artwork target.");
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    };
+    auto query_image = [&](GUID guid) {
+        album_art_editor_instance_ptr editor =
+            album_art_editor_v2::g_open(nullptr, item->get_path(), abort);
+        album_art_data_ptr data = editor->query(guid, abort);
+        if (!data.is_valid() || data->size() == 0)
+            throw std::runtime_error("Synthetic embedded picture is empty.");
+        return std::string(static_cast<const char*>(data->data()), data->size());
+    };
+    qa_embedded_artwork_stage = "read-front";
+    const auto front = query_image(album_art_ids::cover_front);
+    bool back_missing = false;
+    try { (void)query_image(album_art_ids::cover_back); }
+    catch (const exception_album_art_not_found&) { back_missing = true; }
+    if (!back_missing)
+        throw std::runtime_error("Synthetic FLAC unexpectedly has back cover.");
+    file_info_impl physical_before;
+    {
+        service_ptr_t<input_info_reader> reader;
+        input_entry::g_open_for_info_read(reader, nullptr, item->get_path(), abort);
+        reader->get_info(0, physical_before, abort);
+    }
+    MemoryBlock picture;
+    picture.set_size(front.size());
+    std::memcpy(picture.get_ptr(), front.data(), front.size());
+    const auto original_bytes = raw_file();
+    const auto original_time = std::filesystem::last_write_time(flac);
+    qa_embedded_artwork_stage = "front-noop";
+    g_discogs->embed_image(picture, item, album_art_ids::cover_front, abort);
+    if (raw_file() != original_bytes || std::filesystem::last_write_time(flac) != original_time)
+        throw std::runtime_error("Identical embedded front cover was rewritten.");
+    qa_embedded_artwork_stage = "back-add";
+    g_discogs->embed_image(picture, item, album_art_ids::cover_back, abort);
+    const auto updated_bytes = raw_file();
+    if (updated_bytes == original_bytes ||
+        query_image(album_art_ids::cover_front) != front ||
+        query_image(album_art_ids::cover_back) != front)
+        throw std::runtime_error("Synthetic embedded back-cover commit/readback failed.");
+    file_info_impl physical_after;
+    {
+        service_ptr_t<input_info_reader> reader;
+        input_entry::g_open_for_info_read(reader, nullptr, item->get_path(), abort);
+        reader->get_info(0, physical_after, abort);
+    }
+    qa_embedded_artwork_stage = "metadata";
+    if (!file_info::g_is_meta_equal(physical_before, physical_after) ||
+        !replaygain_info::g_equal(physical_before.get_replaygain(),
+                                 physical_after.get_replaygain()))
+        throw std::runtime_error("Embedded artwork commit changed physical FLAC tags.");
+    const auto updated_time = std::filesystem::last_write_time(flac);
+    qa_embedded_artwork_stage = "back-noop";
+    g_discogs->embed_image(picture, item, album_art_ids::cover_back, abort);
+    if (raw_file() != updated_bytes || std::filesystem::last_write_time(flac) != updated_time)
+        throw std::runtime_error("Repeated embedded back cover was rewritten.");
+    qa_embedded_artwork_stage = "empty-denial";
+    MemoryBlock empty;
+    bool denied = false;
+    try { g_discogs->embed_image(empty, item, album_art_ids::cover_back, abort); }
+    catch (const foo_discogs_exception&) { denied = true; }
+    if (!denied || raw_file() != updated_bytes ||
+        std::filesystem::last_write_time(flac) != updated_time)
+        throw std::runtime_error("Empty embedded artwork request changed FLAC.");
+    qa_embedded_artwork_stage = "evidence";
+    std::ofstream out(marker);
+    if (!out) throw std::runtime_error("Cannot record embedded artwork QA.");
+    out << "FRONT_NOOP=PASS\nBACK_ADDED=PASS\nBACK_NOOP=PASS\nEMPTY=DENIED\nMETA=UNCHANGED\n";
+    out.flush();
+    if (!out) throw std::runtime_error("Cannot flush embedded artwork QA.");
+}
+
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
-    t_uint32 get_command_count() override { return 9; }
+    t_uint32 get_command_count() override { return 10; }
     GUID get_command(t_uint32 index) override {
         static const GUID commands[] = {
             qa_mp3_command, qa_flac_command, qa_targets_command, qa_batch_command,
             qa_populated_gui_command, qa_stale_disk_command, qa_removal_command,
-            qa_partial_audit_command, qa_sidecar_artwork_command
+            qa_partial_audit_command, qa_sidecar_artwork_command,
+            qa_embedded_artwork_command
         };
-        return index < 9 ? commands[index] : GUID{};
+        return index < 10 ? commands[index] : GUID{};
     }
     void get_name(t_uint32 index, pfc::string_base& out) override {
         static const char* names[] = {
@@ -634,9 +754,9 @@ public:
             "Discogger QA unsafe targets", "Discogger QA incomplete batch",
             "Discogger QA populated GUI", "Discogger QA stale disk",
             "Discogger QA unsafe removals", "Discogger QA injected partial",
-            "Discogger QA sidecar artwork"
+            "Discogger QA sidecar artwork", "Discogger QA embedded artwork"
         };
-        out = index < 9 ? names[index] : "Invalid Discogger QA command";
+        out = index < 10 ? names[index] : "Invalid Discogger QA command";
     }
     bool get_description(t_uint32, pfc::string_base& out) override {
         out = "Test-only physical metadata writer for disposable GitHub runner media.";
@@ -645,8 +765,9 @@ public:
     GUID get_parent() override { return mainmenu_groups::file; }
     void execute(t_uint32 index, service_ptr_t<service_base>) override {
         try {
-            if (index > 8) throw std::runtime_error("Invalid synthetic QA action.");
-            if (index == 8) run_disposable_sidecar_artwork_qa();
+            if (index > 9) throw std::runtime_error("Invalid synthetic QA action.");
+            if (index == 9) run_disposable_embedded_artwork_qa();
+            else if (index == 8) run_disposable_sidecar_artwork_qa();
             else if (index == 7) run_disposable_partial_write_audit_qa();
             else if (index == 6) run_disposable_unapproved_removal_qa();
             else if (index == 5) run_disposable_stale_disk_qa();
@@ -657,10 +778,12 @@ public:
         } catch (const std::exception& e) {
             if (index == 7) record_disposable_partial_qa_error(e.what());
             if (index == 8) record_disposable_sidecar_qa_error();
+            if (index == 9) record_disposable_embedded_qa_error();
             console::printf("DISCOGGER_RUNNER_MEDIA_QA_ERROR: %s", e.what());
         } catch (...) {
             if (index == 7) record_disposable_partial_qa_error("unknown failure");
             if (index == 8) record_disposable_sidecar_qa_error();
+            if (index == 9) record_disposable_embedded_qa_error();
             console::print("DISCOGGER_RUNNER_MEDIA_QA_ERROR: unknown failure");
         }
     }

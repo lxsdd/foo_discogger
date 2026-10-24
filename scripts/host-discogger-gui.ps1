@@ -856,6 +856,42 @@ FILE "synthetic-side-b.wav" WAVE
     if(-not $sidecarPassed){throw 'Native sidecar artwork safety evidence missing.'}
     Write-Host "DISCOGGER_SIDECAR_ARTWORK_WRITE_NOOP_$Architecture=PASS"
 
+    # Exercise production embedded artwork on the disposable FLAC only.
+    $embeddedError=Join-Path $dir 'qa-embedded-error.txt'
+    $embeddedMarker=Join-Path $dir 'qa-embedded-artwork.txt'
+    if((Test-Path -LiteralPath $embeddedError) -or (Test-Path -LiteralPath $embeddedMarker)){
+        throw 'Embedded artwork QA marker already exists.'
+    }
+    $embeddedCommand=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA embedded artwork"' -PassThru
+    if(-not $embeddedCommand.WaitForExit(15000) -or $embeddedCommand.ExitCode -ne 0){
+        throw 'Could not dispatch native embedded artwork QA.'
+    }
+    $embeddedPassed=$false
+    for($n=0;$n -lt 60;$n++){
+        Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $embeddedError -PathType Leaf){
+            $stage=(Get-Content -LiteralPath $embeddedError -Raw).Trim()
+            if($stage -notmatch '^STAGE=[a-z-]+$'){throw 'Malformed runner-local embedded diagnostic.'}
+            throw ("Native embedded artwork QA failed at "+$stage)
+        }
+        if(Test-Path -LiteralPath $embeddedMarker -PathType Leaf){
+            $proof=@(Get-Content -LiteralPath $embeddedMarker)
+            if($proof.Count -eq 5 -and
+               $proof[0] -ceq 'FRONT_NOOP=PASS' -and
+               $proof[1] -ceq 'BACK_ADDED=PASS' -and
+               $proof[2] -ceq 'BACK_NOOP=PASS' -and
+               $proof[3] -ceq 'EMPTY=DENIED' -and
+               $proof[4] -ceq 'META=UNCHANGED'){
+                $embeddedPassed=$true;break
+            }
+            throw 'Malformed runner-local embedded success marker.'
+        }
+        $proc.Refresh()
+        if($proc.HasExited){throw 'Host exited during embedded artwork QA.'}
+    }
+    if(-not $embeddedPassed){throw 'Native embedded artwork safety evidence missing.'}
+    Write-Host "DISCOGGER_EMBEDDED_ARTWORK_WRITE_NOOP_$Architecture=PASS"
+
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
