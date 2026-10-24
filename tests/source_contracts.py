@@ -1874,7 +1874,13 @@ runner_commands = (root / "tests/native-media-writer-qa.inc").read_text(encoding
 gui_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 assert "runner_qa_populated_search_rows()" in gui_header
 assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in gui_header
-assert "ShowArtistSearchResults(artist);" in gui_source
+assert "combined_advanced_search_preview(artists)" in gui_source
+assert "ShowArtistSearchResults(preview);" in gui_source
+assert "runner_qa_live_search_probe(const char* expected_release_id)" in gui_source
+assert "run_live_search_probe_qa()" in runner_commands
+assert "[switch]$AuthorizedLive" in gui_host
+assert "DISCOGGER_AUTHENTICATED_GUI_SEARCH_" in gui_host
+assert "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_" in gui_host
 assert 'IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED' in gui_source
 assert "run_populated_search_gui_qa()" in runner_commands
 assert "DISCOGGER_GUI_POPULATED_SYNTHETIC_RELEASES_" in gui_host

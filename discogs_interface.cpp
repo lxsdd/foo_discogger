@@ -1,5 +1,8 @@
 #include "stdafx.h"
 #include "discogger_search_fallback.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
 #include <fstream>
 #include "discogger_cache_pages.h"
 #include <cstdlib>
@@ -656,6 +659,9 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 
 		pages = discogs_interface->get_all_pages(url, params, out_max_to_abort, p_abort, "Fetching query results...", p_status);
 		if (out_max_to_abort > max_to_abort) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::query_limit.fetch_add(1);
+#endif
 			return rppair_t({ out_max_to_abort,out_max_to_abort }, { 0,0 });
 		}
 
@@ -679,6 +685,15 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 	}
 
 	const size_t cpages = pages.get_count();
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::response_pages.fetch_add(static_cast<unsigned>(cpages));
+    for (size_t p = 0; p < cpages; ++p) {
+        const json_t* results = json_object_get(pages[p]->root, "results");
+        if (json_is_array(results))
+            discogger_live_search_qa::response_items.fetch_add(
+                static_cast<unsigned>(json_array_size(results)));
+    }
+#endif
 
 	bool bCacheSaved = true;
 	bool bmark_pending = false;
@@ -742,9 +757,22 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                 get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,
                     "Fetching bounded Discogs fallback candidates...", p_status);
             if (fallback_max > max_to_abort) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::query_limit.fetch_add(1);
+#endif
                 p_status.set_item("Fallback result limit exceeded; refine the search.");
                 break;
             }
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::response_pages.fetch_add(
+                static_cast<unsigned>(fallback_pages.get_count()));
+            for (size_t p = 0; p < fallback_pages.get_count(); ++p) {
+                const json_t* results = json_object_get(fallback_pages[p]->root, "results");
+                if (json_is_array(results))
+                    discogger_live_search_qa::response_items.fetch_add(
+                        static_cast<unsigned>(json_array_size(results)));
+            }
+#endif
             for (size_t i = 0; i < fallback_pages.get_count(); ++i) {
                 p_abort.check();
                 parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
@@ -760,6 +788,11 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 
 	va_res_cap.first = fake_artist->master_releases.get_count();
 	va_res_cap.second = fake_artist->releases.get_count();
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    // These are parsed preview candidates, never independently fetched probes.
+    discogger_live_search_qa::parsed_masters.store(static_cast<unsigned>(va_res_cap.first));
+    discogger_live_search_qa::parsed_releases.store(static_cast<unsigned>(va_res_cap.second));
+#endif
 
 	//to load while parsing
 	for (auto mr : pai.mva_masters) {

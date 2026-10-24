@@ -12,6 +12,9 @@
 #include "configuration_dialog.h"
 #include "crc.h"
 #include "tasks.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
 #include "discogger_preview_selection.h"
 #include "discogger_artist_load_ownership.h"
 #include "discogger_write_safety.h"
@@ -1318,12 +1321,19 @@ void search_artist_process_callback::start(HWND parent) {
 
 void search_artist_process_callback::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    // This is the actual worker entry, not just a button or task scheduling.
+    discogger_live_search_qa::worker_started.fetch_add(1);
+#endif
 	pfc::string8 msg;
 
 	msg << "fetching online artist list...";
 
  	if (m_va & SearchMode::AT) {
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+        discogger_live_search_qa::worker_advanced.fetch_add(1);
+#endif
 		m_res_searchquery = 
 				discogs_interface->search_amt_artist(m_search, m_qdm_search_query, m_artist_exact_matches, m_artist_other_matches, p_status, p_abort);
 	}
@@ -1343,6 +1353,10 @@ void search_artist_process_callback::safe_run(threaded_process_status &p_status,
 }
 
 void search_artist_process_callback::on_success(HWND p_wnd) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    // Completed callback means the worker finished, even if the window closed.
+    discogger_live_search_qa::worker_success.fetch_add(1);
+#endif
     PFC_ASSERT(core_api::is_main_thread());
     // The modeless search can finish after the dialog was closed or replaced.
     // Never update a new window with an obsolete search's cached results.
@@ -1429,10 +1443,16 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
 }
 
 void search_artist_process_callback::on_abort(HWND p_wnd) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_abort.fetch_add(1);
+#endif
 	//..
 }
 
 void search_artist_process_callback::on_error(HWND p_wnd) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_error.fetch_add(1);
+#endif
 	//..
 }
 
