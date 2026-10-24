@@ -290,7 +290,29 @@ void run_live_search_probe_qa() {
         throw std::runtime_error("Live GUI evidence must remain under runner temp.");
     if (!g_discogs || !g_discogs->find_release_dialog)
         throw std::runtime_error("Native Find Releases dialog is absent.");
-    const auto counts = g_discogs->find_release_dialog->runner_qa_live_search_probe();
+    std::string expected_release_id = "38012673";
+    const auto requested_id_file = folder / "qa-live-expected-id.txt";
+    if (std::filesystem::exists(requested_id_file)) {
+        if (!std::filesystem::is_regular_file(requested_id_file) ||
+            std::filesystem::is_symlink(requested_id_file))
+            throw std::runtime_error("Unsafe public release QA selector.");
+        std::ifstream input(requested_id_file);
+        if (!input || !std::getline(input, expected_release_id))
+            throw std::runtime_error("Unreadable public release QA selector.");
+        std::string extra;
+        if (std::getline(input, extra))
+            throw std::runtime_error("Multi-line public release QA selector.");
+        bool allowed = false;
+        for (const auto& entry : discogger_live_corpus_qa::cases) {
+            if (expected_release_id == std::to_string(entry.expected_release_id)) {
+                allowed = true;
+                break;
+            }
+        }
+        if (!allowed)
+            throw std::runtime_error("Unrecognized public release QA selector.");
+    }
+    const auto counts = g_discogs->find_release_dialog->runner_qa_live_search_probe(expected_release_id.c_str());
     // Independent read-only requests distinguish OAuth/transport failures from
     // actual Discogger UI and result-model failures. Never record API bodies.
     unsigned identity_ok = 0;
@@ -325,10 +347,15 @@ void run_live_search_probe_qa() {
         } catch (...) {}
         return result;
     };
-    const auto api_exact = probe_search(
-        "artist=Estiva&title=Via%20Balearia&per_page=100&page=1", 38012673);
-    const auto api_broad = probe_search(
-        "q=%22Via%20Balearia%22&per_page=100&page=1", 38012673);
+    std::array<unsigned, 3> api_exact{0, 0, 0}, api_broad{0, 0, 0};
+    // These fixed API baselines belong to the Estiva reference, not to each
+    // independently selected native GUI case (limit request load).
+    if (expected_release_id == "38012673") {
+        api_exact = probe_search(
+            "artist=Estiva&title=Via%20Balearia&per_page=100&page=1", 38012673);
+        api_broad = probe_search(
+            "q=%22Via%20Balearia%22&per_page=100&page=1", 38012673);
+    }
     // New independent public-search cohort: eleven varied release identities,
     // including collaborations, ampersands, UTF-8 and punctuation. Use actual
     // authenticated API requests only in the known-positive live-GUI probe,
@@ -336,7 +363,7 @@ void run_live_search_probe_qa() {
     unsigned cohort_ok = 0, cohort_nonempty = 0, cohort_known = 0;
     unsigned cohort_nonempty_mask = 0;
     const unsigned cohort_total = static_cast<unsigned>(discogger_live_corpus_qa::cases.size());
-    if (counts[1] != 0) {
+    if (counts[1] != 0 && expected_release_id == "38012673") {
         for (unsigned i = 0; i < cohort_total; ++i) {
             const auto& entry = discogger_live_corpus_qa::cases[i];
             const auto evidence = probe_search(entry.encoded_search_params, entry.expected_release_id);
@@ -390,7 +417,7 @@ void run_live_search_probe_qa() {
         << "API_BROAD_OK=" << api_broad[0] << '\n'
         << "API_BROAD_ITEMS=" << api_broad[1] << '\n'
         << "API_BROAD_KNOWN=" << api_broad[2] << '\n'
-        << "API_COHORT_TOTAL=" << (counts[1] != 0 ? cohort_total : 0) << '\n'
+        << "API_COHORT_TOTAL=" << (counts[1] != 0 && expected_release_id == "38012673" ? cohort_total : 0) << '\n'
         << "API_COHORT_OK=" << cohort_ok << '\n'
         << "API_COHORT_NONEMPTY=" << cohort_nonempty << '\n'
         << "API_COHORT_KNOWN=" << cohort_known << '\n'

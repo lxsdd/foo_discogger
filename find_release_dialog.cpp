@@ -1979,7 +1979,7 @@ void CFindReleaseDialog::UpdateArtistProfile(Artist_ptr artist) {
 
 
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
-std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
+std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char* expected_release_id) {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Live result inspection requires an open native Find Releases dialog.");
     const auto artists = m_alist.Get_Artists();
@@ -1989,20 +1989,20 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
         if (!artist) continue;
         for (size_t j = 0; j < artist->releases.get_count(); ++j) {
             const Release_ptr& release = artist->releases[j];
-            if (release && release->id.equals("38012673")) {
+            if (release && release->id.equals(expected_release_id)) {
                 ++known_release_matches;
             }
         }
         for (size_t j = 0; j < artist->master_releases.get_count(); ++j) {
             const MasterRelease_ptr& master = artist->master_releases[j];
             if (!master) continue;
-            if (master->main_release_id.equals("38012673")) {
+            if (master->main_release_id.equals(expected_release_id)) {
                 ++known_release_matches;
             }
             // Database-search releases may be grouped below a master even
             // when the known release is not that master's main release.
             for (const Release_ptr& subrelease : master->sub_releases) {
-                if (subrelease && subrelease->id.equals("38012673")) {
+                if (subrelease && subrelease->id.equals(expected_release_id)) {
                     ++known_release_matches;
                 }
             }

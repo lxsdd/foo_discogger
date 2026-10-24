@@ -570,7 +570,7 @@ private:
 public:
     // TEST-ONLY: available solely in the isolated runner component.
     std::pair<size_t, size_t> runner_qa_populated_search_rows();
-    std::array<size_t, 3> runner_qa_live_search_probe();
+    std::array<size_t, 3> runner_qa_live_search_probe(const char* expected_release_id);
 private:
 #endif
     void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append) {

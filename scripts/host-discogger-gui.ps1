@@ -1053,6 +1053,204 @@ FILE "synthetic-side-b.wav" WAVE
             throw 'Authenticated Discogger search changed disposable WAVE data.'
         }
 
+        # Extra *real* native Find Releases searches on a single running,
+        # disposable host. Close each prior dialog, preserve its SQLite cache,
+        # and require automatic tree publication without a QA presenter click.
+        # The final repeat exercises the cached-query/artist route.
+        $nativeMatrix=@(
+            @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk'},
+            @{Id='7809';Query='artist= The Chemical Brothers & title= Hey Boy Hey Girl';Name='chemical-brothers'},
+            @{Id='32559';Query='artist= Björk & title= Jóga';Name='bjork-utf8'},
+            @{Id='294906';Query='artist= Röyksopp & title= Eple';Name='royksopp-utf8'},
+            @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk-cache-repeat'}
+        )
+        $expectedIdFile=Join-Path $dir 'qa-live-expected-id.txt'
+        foreach($item in $nativeMatrix){
+            if(-not [DiscoggerWindowTest]::PostMessageW($liveDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+                throw 'Could not close the preceding native query dialog.'
+            }
+            for($n=0;$n -lt 35;$n++){
+                Start-Sleep -Milliseconds 200
+                if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){break}
+            }
+            if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count){
+                throw 'Preceding native query dialog did not close.'
+            }
+            [IO.File]::WriteAllText($expectedIdFile,[string]$item.Id,[Text.Encoding]::ASCII)
+            $launcher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $liveArgs -PassThru
+            if(-not $launcher.WaitForExit(15000) -or $launcher.ExitCode -ne 0){
+                throw 'Could not open a fresh native Discogger GUI matrix dialog.'
+            }
+            $liveDialog=[IntPtr]::Zero
+            for($n=0;$n -lt 40;$n++){
+                Start-Sleep -Milliseconds 250
+                $proc.Refresh()
+                if($proc.HasExited){throw 'Host exited before a native GUI matrix query.'}
+                $found=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+                if($found.Length -eq 1){$liveDialog=$found[0];break}
+            }
+            if($liveDialog -eq [IntPtr]::Zero){throw 'Fresh native GUI matrix dialog missing.'}
+            $searchEdit=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1083)
+            $searchButton=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1086)
+            $releaseTree=[DiscoggerWindowTest]::GetDlgItem($liveDialog,1018)
+            if($searchEdit -eq [IntPtr]::Zero -or $searchButton -eq [IntPtr]::Zero -or
+               $releaseTree -eq [IntPtr]::Zero -or
+               [DiscoggerWindowTest]::TreeCount($releaseTree) -ne 0){
+                throw 'GUI matrix case did not start with empty native controls.'
+            }
+            if(Test-Path -LiteralPath $liveProbe){Remove-Item -LiteralPath $liveProbe -Force}
+            [DiscoggerWindowTest]::SetEditText($searchEdit,[string]$item.Query)
+            if([DiscoggerWindowTest]::EditText($searchEdit) -cne [string]$item.Query){
+                throw 'Native GUI matrix query was altered during input.'
+            }
+            [DiscoggerWindowTest]::ClickButton($searchButton)
+            $done=$false
+            $matrixCounts=@{}
+            for($attempt=0;$attempt -lt 16 -and -not $done;$attempt++){
+                Start-Sleep -Seconds 4
+                $proc.Refresh()
+                if($proc.HasExited){
+                    Write-DiscoggerCrashEvidence
+                    throw 'Host exited during a native GUI matrix query.'
+                }
+                if(Test-Path -LiteralPath $liveProbe){Remove-Item -LiteralPath $liveProbe -Force}
+                $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
+                if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
+                    throw 'Native GUI matrix probe dispatch failed.'
+                }
+                for($n=0;$n -lt 80;$n++){
+                    Start-Sleep -Milliseconds 250
+                    if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
+                }
+                if(-not (Test-Path -LiteralPath $liveProbe -PathType Leaf)){
+                    throw 'Native GUI matrix probe evidence missing.'
+                }
+                $matrixCounts=@{}
+                foreach($line in ((Get-Content -LiteralPath $liveProbe -Raw) -split '\r?\n')){
+                    if($line -match '^([A-Z_]+)=(\d+)
+        # status or a stale tree from the successful search above.
+        if(-not [DiscoggerWindowTest]::PostMessageW($liveDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){
+            throw 'Could not close positive Find Releases before empty-result regression.'
+        }
+        for($n=0;$n -lt 35;$n++){
+            Start-Sleep -Milliseconds 200
+            if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count -eq 0){break}
+        }
+        if(@([DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)).Count){
+            throw 'Positive Find Releases remained open before empty-result regression.'
+        }
+        $emptyLauncher=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList $liveArgs -PassThru
+        if(-not $emptyLauncher.WaitForExit(15000) -or $emptyLauncher.ExitCode -ne 0){
+            throw 'Could not open independent Find Releases for empty-result regression.'
+        }
+        $emptyDialog=[IntPtr]::Zero
+        for($n=0;$n -lt 40;$n++){
+            Start-Sleep -Milliseconds 250
+            $proc.Refresh()
+            if($proc.HasExited){throw 'Host exited before empty-result regression.'}
+            $found=[DiscoggerWindowTest]::FindReleaseDialogs([uint32]$proc.Id)
+            if($found.Length -eq 1){$emptyDialog=$found[0];break}
+        }
+        if($emptyDialog -eq [IntPtr]::Zero){throw 'Independent empty-result dialog not found.'}
+        $emptyEdit=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1083)
+        $emptyButton=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1086)
+        $emptyTree=[DiscoggerWindowTest]::GetDlgItem($emptyDialog,1018)
+        if($emptyEdit -eq [IntPtr]::Zero -or $emptyButton -eq [IntPtr]::Zero -or
+            $emptyTree -eq [IntPtr]::Zero -or [DiscoggerWindowTest]::TreeCount($emptyTree) -ne 0){
+            throw 'Independent empty-result controls were not ready.'
+        }
+        $emptyQuery='artist= DiscoggerQAImpossibleArtist251024 & title= DiscoggerQAImpossibleRelease251024'
+        [DiscoggerWindowTest]::SetEditText($emptyEdit,$emptyQuery)
+        if([DiscoggerWindowTest]::EditText($emptyEdit) -cne $emptyQuery){
+            throw 'Empty-result regression query was not set in the native edit.'
+        }
+        [DiscoggerWindowTest]::ClickButton($emptyButton)
+        Remove-Item -LiteralPath $liveProbe -Force
+        $emptyCompleted=$false
+        for($attempt=0;$attempt -lt 4 -and -not $emptyCompleted;$attempt++){
+            Start-Sleep -Seconds 10
+            $proc.Refresh()
+            if($proc.HasExited){
+                Write-DiscoggerCrashEvidence
+                throw 'Host exited while rendering an empty authenticated search.'
+            }
+            $probeCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA live search probe"' -PassThru
+            if(-not $probeCmd.WaitForExit(15000) -or $probeCmd.ExitCode -ne 0){
+                throw 'Could not inspect empty-result native search.'
+            }
+            for($n=0;$n -lt 80;$n++){
+                Start-Sleep -Milliseconds 250
+                if(Test-Path -LiteralPath $liveProbe -PathType Leaf){break}
+            }
+            if(-not (Test-Path -LiteralPath $liveProbe -PathType Leaf)){
+                throw 'Empty-result native probe did not produce evidence.'
+            }
+            $emptyProof=Get-Content -LiteralPath $liveProbe -Raw
+            Remove-Item -LiteralPath $liveProbe -Force
+            $emptyCounts=@{}
+            foreach($line in ($emptyProof -split '\r?\n')){
+                if($line -match '^([A-Z_]+)=(\d+)$'){$emptyCounts[$Matches[1]]=[int]$Matches[2]}
+            }
+            if($emptyCounts['WORKER_ERROR'] -gt 0 -or $emptyCounts['WORKER_ABORT'] -gt 0){
+                throw 'Empty-result native search ended in worker error or abort.'
+            }
+            if($emptyCounts['WORKER_SUCCESS'] -eq 1){
+                if($emptyCounts['BUTTON'] -ne 1 -or $emptyCounts['ROUTED'] -ne 1 -or
+                   $emptyCounts['WORKER_ADVANCED'] -ne 1 -or $emptyCounts['ARTISTS'] -ne 0 -or
+                   $emptyCounts['TREE'] -ne 0 -or $emptyCounts['PARSED_RELEASES'] -ne 0 -or
+                   $emptyCounts['PARSED_MASTERS'] -ne 0 -or
+                   [DiscoggerWindowTest]::TreeCount($emptyTree) -ne 0){
+                    throw 'Empty-result search retained or published unexpected GUI rows.'
+                }
+                $emptyCompleted=$true
+            }
+        }
+        if(-not $emptyCompleted){throw 'Authenticated empty-result native search did not complete.'}
+        Write-Host "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_$Architecture=PASS"
+        if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
+            throw 'Empty-result Discogger search changed disposable WAVE data.'
+        }
+    }
+
+    if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
+    Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
+    Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
+    Write-Host "DISCOGGER_GUI_SYNTHETIC_WAV_NO_WRITE_$Architecture=PASS"
+    Write-Host "MEDIA_WRITE_SAFETY_$Architecture=NOT_TESTED"
+} finally {
+    if($null -ne $proc){
+        try {if(-not $proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction Stop}}
+        catch {Write-Warning 'Disposable foobar process could not be stopped.'}
+    }
+    if(Test-Path -LiteralPath $dir){Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue}
+}
+){
+                        $matrixCounts[$Matches[1]]=[int]$Matches[2]
+                    }
+                }
+                if($matrixCounts['WORKER_ERROR'] -gt 0 -or $matrixCounts['WORKER_ABORT'] -gt 0){
+                    throw 'Native GUI matrix worker failed or aborted.'
+                }
+                $done=$matrixCounts['WORKER_SUCCESS'] -eq 1
+            }
+            if(-not $done){throw 'Native GUI matrix search worker did not finish.'}
+            if($matrixCounts['BUTTON'] -ne 1 -or $matrixCounts['ROUTED'] -ne 1 -or
+                $matrixCounts['WORKER_ADVANCED'] -ne 1 -or
+                $matrixCounts['ARTISTS'] -lt 1 -or
+                $matrixCounts['KNOWN_RELEASE_MATCHES'] -lt 1){
+                throw 'Native GUI matrix did not find the expected public release identity.'
+            }
+            if($matrixCounts['TREE'] -lt 1 -or
+                [DiscoggerWindowTest]::TreeCount($releaseTree) -lt 1){
+                throw 'Native GUI matrix did not auto-show results without artist reselection.'
+            }
+            if((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne $wavHash){
+                throw 'Native GUI matrix changed disposable audio bytes.'
+            }
+            Write-Host "DISCOGGER_AUTHENTICATED_NATIVE_QUERY_${Architecture}_$($item.Name)=PASS"
+        }
+        if(Test-Path -LiteralPath $expectedIdFile){Remove-Item -LiteralPath $expectedIdFile -Force}
+
         # A fresh negative search must complete without a thrown no-results
         # status or a stale tree from the successful search above.
         if(-not [DiscoggerWindowTest]::PostMessageW($liveDialog,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){

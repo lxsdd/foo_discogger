@@ -1875,7 +1875,7 @@ assert "RELEASES=5" in runner_commands and "RELEASES=5" in gui_host
 # A read-only live probe must never create the very release-tree visibility
 # it is supposed to measure; this previously allowed false GUI acceptance.
 live_probe_body = gui_source.split(
-    "std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe()", 1
+    "std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char* expected_release_id)", 1
 )[1].split(
     "std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows()", 1
 )[0]
@@ -1896,12 +1896,29 @@ assert '#include "live-discogs-search-corpus-qa.h"' in (
     root / "tests/collaboration_fallback_test.cpp"
 ).read_text(encoding="utf-8-sig")
 assert "cohort_nonempty_mask" in runner_commands
-assert "if (counts[1] != 0)" in runner_commands
+assert 'if (counts[1] != 0 && expected_release_id == "38012673")' in runner_commands
 assert "API_COHORT_TOTAL=" in runner_commands
 assert "'API_COHORT_TOTAL','API_COHORT_OK'" in gui_host
 assert "DISCOGGER_AUTHENTICATED_API_COHORT_" in gui_host
 assert "fewer than nine populated searches" in gui_host
 print("PASS: eleven additional diversified public Discogs queries use runner-only numeric authenticated evidence.")
+# Four additional native GUI searches plus one no-purge repeat must use
+# actual Find Releases controls, observable remote objects and a whitelisted
+# runner-only public-ID selector, never a test-side tree presenter.
+assert "runner_qa_live_search_probe(const char* expected_release_id)" in gui_header
+assert "runner_qa_live_search_probe(const char* expected_release_id)" in gui_source
+assert "release->id.equals(expected_release_id)" in gui_source
+assert 'qa-live-expected-id.txt' in runner_commands and 'qa-live-expected-id.txt' in gui_host
+assert "Unrecognized public release QA selector." in runner_commands
+assert 'expected_release_id == "38012673"' in runner_commands
+for name in ("daft-punk", "chemical-brothers", "bjork-utf8",
+             "royksopp-utf8", "daft-punk-cache-repeat"):
+    assert "Name='" + name + "'" in gui_host
+assert "DISCOGGER_AUTHENTICATED_NATIVE_QUERY_" in gui_host
+assert "did not auto-show results without artist reselection." in gui_host
+print("PASS: independent real native GUI search matrix and no-purge repeat are wired.")
+
+
 
 
 
@@ -2142,8 +2159,8 @@ for oauth_name in ("DISCOGS_OAUTH_CONSUMER_KEY", "DISCOGS_OAUTH_CONSUMER_SECRET"
 assert 'std::strcmp(runner, "true") != 0' in oauth_impl
 assert "Incomplete or unauthorized runner OAuth configuration." in oauth_impl
 assert "consumer = new OAuth::Consumer(CONSUMER_KEY, CONSUMER_SECRET);" in oauth_impl
-assert "runner_qa_live_search_probe()" in qa_dialog
-assert "runner_qa_live_search_probe();" in qa_header
+assert "runner_qa_live_search_probe(const char* expected_release_id)" in qa_dialog
+assert "runner_qa_live_search_probe(const char* expected_release_id);" in qa_header
 assert '#include "tests/runner-live-search-telemetry.h"' in qa_commands
 assert "run_live_search_probe_qa()" in qa_commands
 assert "namespace discogger_live_search_qa" in qa_telemetry
