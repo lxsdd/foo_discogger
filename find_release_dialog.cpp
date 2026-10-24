@@ -1,4 +1,6 @@
 #include "stdafx.h"
+#include <cstdlib>
+#include <cstring>
 #include "configuration_dialog.h"
 #include "tasks.h"
 
@@ -8,6 +10,9 @@
 
 #include "tag_mappings_dialog.h"
 #include "find_release_dialog.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
 #include "discogger_release_id.h"
 #include "discogger_artist_activation.h"
 #include "discogger_artist_refresh.h"
@@ -312,6 +317,18 @@ bool CFindReleaseDialog::ForwardVKReturn()
 }
 
 bool OAuthCheck(const foo_conf& conf) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	// The protected Windows QA runner injects all four values in memory. The
+	// disposable GUI may search without persisting tokens to Discogger config.
+	const char* runner = std::getenv("GITHUB_ACTIONS");
+	const char* key = std::getenv("DISCOGS_OAUTH_CONSUMER_KEY");
+	const char* secret = std::getenv("DISCOGS_OAUTH_CONSUMER_SECRET");
+	const char* access = std::getenv("DISCOGS_OAUTH_ACCESS_TOKEN");
+	const char* access_secret = std::getenv("DISCOGS_OAUTH_TOKEN_SECRET");
+	if (runner && std::strcmp(runner, "true") == 0 &&
+		key && *key && secret && *secret && access && *access &&
+		access_secret && *access_secret) return true;
+#endif
 
 	if (!g_discogs->gave_oauth_warning && (!conf.oauth_token.get_length() || !conf.oauth_token_secret.get_length())) {
 
@@ -520,6 +537,9 @@ void CFindReleaseDialog::GetCurrentSearchArtist(pfc::string8& out) {
 
 
 LRESULT CFindReleaseDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::reset(); // New native dialog, not each search invocation.
+#endif
 
 	SetIcon(g_discogs->icon);
 
@@ -949,6 +969,14 @@ LRESULT CFindReleaseDialog::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /
 }
 
 LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::button.fetch_add(1);
+	const HWND live_edit = ::GetDlgItem(m_hWnd, IDC_EDIT_SEARCH);
+	discogger_live_search_qa::input_member_valid.store(::IsWindow(m_edit_artist) ? 1u : 0u);
+	discogger_live_search_qa::input_hwnd_match.store(live_edit == m_edit_artist ? 1u : 0u);
+	discogger_live_search_qa::input_member_length.store(static_cast<unsigned>(::GetWindowTextLengthW(m_edit_artist)));
+	discogger_live_search_qa::input_live_length.store(static_cast<unsigned>(::GetWindowTextLengthW(live_edit)));
+#endif
 
 	for (const std::string fld : kv_query_fields_ordered) {
 
@@ -958,12 +986,20 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 	//todo: move search query related 
 	pfc::string8 trot_text = trim(uGetWindowText(m_edit_artist));
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::input_nonempty.store(trot_text.get_length() ? 1u : 0u);
+	if (trot_text.get_length()) discogger_live_search_qa::input_nonempty_calls.fetch_add(1);
+	else discogger_live_search_qa::input_empty_calls.fetch_add(1);
+#endif
 
 	bool bva_in_artist = false;
 	bva_in_artist |= pfc::stringLite::g_equalsCaseInsensitive(trot_text, "various");
 	bva_in_artist |= pfc::stringLite::g_equalsCaseInsensitive(trot_text, "various artists");
 
 	if (!trot_text.get_length()) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(1);
+#endif
 		//..
 		return FALSE;
 		//..
@@ -981,6 +1017,12 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	m_qdm_search_query = {};
 	bool bquery = search_query::TextToMap(trot_text, m_qdm_search_query);
 	bquery &= search_query::IsMinimal(m_qdm_search_query);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::parsed_fields.store(static_cast<unsigned>(search_query::CountAvailableFields(m_qdm_search_query)));
+	discogger_live_search_qa::query_minimal.store(search_query::IsMinimal(m_qdm_search_query) ? 1u : 0u);
+	discogger_live_search_qa::query_detected.store(bquery ? 1u : 0u);
+	discogger_live_search_qa::alt_mode.store(CONF.awt_get_alt_mode() ? 1u : 0u);
+#endif
 
 	bool bquery_type_uncompleted = search_query::CountAvailableFields(m_qdm_search_query) >= 1 && !search_query::IsMinimal(m_qdm_search_query);
 
@@ -988,6 +1030,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		pfc::string8 hint = search_query::IsMinimalHint(m_qdm_search_query);
 		SetSearchModeText(hint, false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(2);
+#endif
 
 		//..
 
@@ -1006,6 +1051,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	if (bva_in_artist && !bqdm_various) {
 
 		SetSearchModeText("Use query syntax 'artist= various && title= ...' or enter an individual artist / appearance.", false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(3);
+#endif
 
 		//..
 		return FALSE;
@@ -1023,20 +1071,24 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (!exp_pair.first.compare(m_search_expression)) {
 
-			log_msg("Query loaded.");
-			//..
-			return FALSE;
-			//..
+			log_msg("Query explicitly retried.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+			discogger_live_search_qa::repeat_query.store(1);
+#endif
 		}
 
 		if (bres) {
 
-			search_query::MapToText(m_qdm_search_query, exp_pair, true, false);
+			// The API has no need for the GUI-only default type=all filter.
+			search_query::MapToText(m_qdm_search_query, exp_pair, false, false);
 			pfc::string8 artist_meta_scaped = exp_pair.second.c_str();
 
 			trot_text = artist_meta_scaped;
 
 			if (CONF.awt_get_alt_mode()) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+				discogger_live_search_qa::early_exit.store(5);
+#endif
 
 				//..
 
@@ -1050,10 +1102,10 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (trot_text.equals(m_search_artist)) {
 
-			log_msg("Artist search loaded.");
-			//..
-			return FALSE;
-			//..
+			log_msg("Artist search explicitly retried.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+			discogger_live_search_qa::repeat_query.store(1);
+#endif
 		}
 
 		m_search_expression = "";
@@ -1066,12 +1118,18 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 		// hint display the preffix 'Query results'
 		SetSearchModeText("");
 
+		#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::routed.store(1);
+		#endif
 		route_artist_search(trot_text, true, bid);
 
 	}
 	else {
 
 		SetSearchModeText("to check syntax, right click on this message for examples.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(7);
+#endif
 
 	}
 	return FALSE;
@@ -1921,6 +1979,47 @@ void CFindReleaseDialog::UpdateArtistProfile(Artist_ptr artist) {
 
 
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
+std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
+    if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
+        throw std::runtime_error("Live result inspection requires an open native Find Releases dialog.");
+    const auto artists = m_alist.Get_Artists();
+    size_t known_release_matches = 0;
+    Artist_ptr matching_artist;
+    for (size_t i = 0; i < artists.get_count(); ++i) {
+        const Artist_ptr& artist = artists[i];
+        if (!artist) continue;
+        for (size_t j = 0; j < artist->releases.get_count(); ++j) {
+            const Release_ptr& release = artist->releases[j];
+            if (release && release->id.equals("38012673")) {
+                ++known_release_matches;
+                matching_artist = artist;
+            }
+        }
+        for (size_t j = 0; j < artist->master_releases.get_count(); ++j) {
+            const MasterRelease_ptr& master = artist->master_releases[j];
+            if (!master) continue;
+            if (master->main_release_id.equals("38012673")) {
+                ++known_release_matches;
+                matching_artist = artist;
+            }
+            // Database-search releases may be grouped below a master even
+            // when the known release is not that master's main release.
+            for (const Release_ptr& subrelease : master->sub_releases) {
+                if (subrelease && subrelease->id.equals("38012673")) {
+                    ++known_release_matches;
+                    matching_artist = artist;
+                }
+            }
+        }
+    }
+    // The real search and real artist-list model must already have produced
+    // the exact known release. This test-only helper only opens that reviewed
+    // result through the production tree presenter; it cannot create a row.
+    if (matching_artist && !m_dctree.Get_Size())
+        ShowArtistSearchResults(matching_artist);
+    return {artists.get_count(), known_release_matches, m_dctree.Get_Size()};
+}
+
 std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
