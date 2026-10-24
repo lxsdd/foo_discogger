@@ -161,6 +161,21 @@ def id3_frame_bounds(content):
         offset += skip
     return version, offset, end
 
+def verify_original_mp3_extended_header(before, after):
+    """Fail closed if an ID3v2 writer drops or changes opaque extended metadata.
+
+    The frame readers intentionally skip extended headers. Without this
+    independent check, CRC/restriction/padding fields could disappear while
+    every visible TITLE, TXXX, APIC and opaque frame still compares equal.
+    A v2.3/v2.4 conversion with an extended header is not proven lossless.
+    """
+    original_version, original_offset, _ = id3_frame_bounds(before)
+    updated_version, updated_offset, _ = id3_frame_bounds(after)
+    original = before[10:original_offset]
+    updated = after[10:updated_offset]
+    if original != updated or (original and original_version != updated_version):
+        raise AssertionError("Physical MP3 ID3v2 extended header changed or disappeared")
+
 
 def id3_txxx_values(content):
     """Read actual TXXX descriptions/values, including UTF-16 ID3v2 frames."""
@@ -427,6 +442,7 @@ def verify(before: bytes, after: bytes, suffix):
     if suffix == ".mp3":
         if not before.startswith(b"ID3") or not after.startswith(b"ID3"):
             raise AssertionError("ID3v2 header lost")
+        verify_original_mp3_extended_header(before, after)
         for item in (b"Synthetic Test", b"Discogger QA", b"Trance"):
             if item not in after:
                 raise AssertionError(f"Original MP3 metadata missing after writer: {item!r}")
@@ -846,6 +862,24 @@ def selftest_id3():
         fake = b"ID3" + bytes((version, 0, 0x40)) + ss(len(payload)) + payload
         assert id3_apic_frames(fake) == [picture]
         assert id3_txxx_values(fake) == []
+        # P1 physical-tag gate: frame-only comparison used to ignore changes
+        # to the ID3v2 extended header itself (CRC/padding/restriction data).
+        # Preserve its exact bytes or fail closed; no real media is touched.
+        verify_original_mp3_extended_header(fake, fake)
+        changed_index = 10 + len(ext) - 1
+        changed_ext = (fake[:changed_index] +
+                       bytes((fake[changed_index] ^ 1,)) +
+                       fake[changed_index + 1:])
+        assert id3_apic_frames(changed_ext) == [picture]
+        no_ext = b"ID3" + bytes((version, 0, 0)) + ss(len(frame)) + frame
+        for old, new in ((fake, changed_ext), (fake, no_ext),
+                         (no_ext, fake)):
+            try:
+                verify_original_mp3_extended_header(old, new)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Changed/dropped ID3v2 extended header escaped audit")
         # Same APIC payload but altered flags is NOT an identical picture.
         # Likewise reject corrupt frame IDs, zero-size frames and stray bytes.
         bad_flags = fake.replace(b"APIC" + size + bytes(2),
@@ -1002,6 +1036,7 @@ def selftest_id3():
                 raise AssertionError("Lost/altered physical MP3 opaque frame escaped verifier")
     print("DISCOGGER_ID3_OPAQUE_FRAME_PRESERVATION_VERIFIER=PASS")
     print("DISCOGGER_ID3_STANDARD_TEXT_PRESERVATION_VERIFIER=PASS")
+    print("DISCOGGER_ID3_EXTENDED_HEADER_PRESERVATION=PASS")
     print("DISCOGGER_ID3_EXTENDED_APIC_VERIFIER=PASS")
     print("DISCOGGER_ID3_TXXX_UNICODE_VERIFIER=PASS")
     print("DISCOGGER_ID3_TXXX_FRAME_INTEGRITY_VERIFIER=PASS")
