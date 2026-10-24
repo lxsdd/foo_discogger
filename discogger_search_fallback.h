@@ -127,7 +127,10 @@ inline std::vector<fallback_candidate> build_fallback_plan(
     // structured query untouched. A track title must not masquerade as the
     // release title; only the broad text index is queried in that case.
     const std::string broad = without_terminal_mix_suffix(key);
-    if (broad.size() >= 3 && (plan.empty() || partner != broad))
+    // Even when the partner text equals the title, these are two *different*
+    // Discogs queries: q=partner&title=title versus q=title. Omitting the
+    // broad request hides relevant releases after an empty partner search.
+    if (broad.size() >= 3)
         plan.push_back({using_track_title ? "track-title discovery (review required)"
                                           : "title-only discovery (review required)", broad, ""});
     return plan;
