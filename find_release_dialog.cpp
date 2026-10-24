@@ -1134,10 +1134,14 @@ pfc::string8 search_query_run_message(const QueryDefMap qdm_search_query, const 
 		if (!out_va_cap.first && !out_va_cap.second) {
 			msg = "no entries found.";
 			if (m_query_mode & SearchMode::AT) {
-				pfc::string8 lwc = qdm_search_query.at("artist=").first.c_str();
-				if (lwc.toLower().equals("various artists")) {
-					msg << " Hint: use'artist= various' for VA compilations.";
-				}
+                // Restored/interrupted queries may not have a complete field map.
+                // Rendering "no entries found" must never throw a map exception.
+                const auto artist_field = qdm_search_query.find("artist=");
+                if (artist_field != qdm_search_query.end()) {
+                    pfc::string8 lwc = artist_field->second.first.c_str();
+                    if (lwc.toLower().equals("various artists"))
+                        msg << " Hint: use 'artist= various' for VA compilations.";
+                }
 			}
 		}
 		else if (out_va_cap.first < (SIZE_MAX - 100) && out_va_cap.second < (SIZE_MAX - 100)) {
@@ -1152,10 +1156,10 @@ pfc::string8 search_query_run_message(const QueryDefMap qdm_search_query, const 
 		else if (out_va_cap.first < HIWORD(CONF.query_max)/*kmax_items_q_results*/ || out_va_cap.second < HIWORD(CONF.query_max)/*kmax_items_q_results*/) {
 
 			//todo: rev stats
-			size_t sv = sizeof(out_va_cap.first);
-			size_t max_cap = static_cast<size_t>(pow(2, sv));
-
-			if (out_va_cap.first < (max_cap - 100) && out_va_cap.second < (max_cap - 100)) {
+            // sizeof(size_t) counts bytes, not the numeric maximum.
+            // SIZE_MAX is the caller's uncapped-result sentinel.
+            constexpr size_t uncapped_threshold = SIZE_MAX - 100;
+            if (out_va_cap.first < uncapped_threshold && out_va_cap.second < uncapped_threshold) {
 				//limitted results
 				msg = "max reached.";
 			}
@@ -1217,6 +1221,16 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 
 	if (!append) {
 		m_alist.fill_artist_list(b_chk_exact_matches, m_tracer.has_amr(), updrelsrc/*updRelSrc::ArtistSearch*/);
+
+        // If advanced search identified exactly one artist with release
+        // candidates, show the already loaded results without a second
+        // click. This only updates the preview tree; no tags are written.
+        // Keep multiple artists as a deliberate user review choice.
+        if ((m_query_mode & SearchMode::AT) && m_alist.Get_Artists().get_count() == 1) {
+            Artist_ptr only = m_alist.Get_Artists()[0];
+            if (only && (only->releases.get_count() || only->master_releases.get_count()))
+                ShowArtistSearchResults(only);
+        }
 
 		if (!m_alist.Get_Artists().get_count()) {
 			cupdRelSrc cupdsrc(updRelSrc::Undef);
