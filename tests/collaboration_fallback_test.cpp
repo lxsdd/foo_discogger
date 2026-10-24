@@ -1,4 +1,5 @@
 #include "../discogger_search_fallback.h"
+#include "live-discogs-search-corpus-qa.h"
 #include <cassert>
 #include <string>
 #include <vector>
@@ -38,6 +39,29 @@ int main() {
         assert(plan.back().q == example.title && plan.back().title.empty());
         assert(std::string(example.id).size() >= 8);
     }
+    // Independent, diverse public release references: test the SAME bounded
+    // search-plan builder with eleven original queries, not just user reports.
+    // These portable tests do not claim that Discogs live responses succeeded.
+    std::vector<long long> corpus_ids;
+    for (const auto& row : discogger_live_corpus_qa::cases) {
+        assert(row.expected_release_id > 0);
+        assert(std::string(row.encoded_search_params).find("per_page=100&page=1") != std::string::npos);
+        assert(std::find(corpus_ids.begin(), corpus_ids.end(), row.expected_release_id) == corpus_ids.end());
+        corpus_ids.push_back(row.expected_release_id);
+        const auto plan = build_fallback_plan(row.artist, row.release_title, row.track_title);
+        assert(!plan.empty() && plan.size() <= 2);
+        assert(plan.back().q == without_terminal_mix_suffix(row.release_title) ||
+               plan.back().q == without_terminal_mix_suffix(row.track_title));
+        assert(plan.back().title.empty());
+        const auto encoded = encode_fallback_query(plan.back());
+        assert(!encoded.empty() && encoded.rfind("q=%22", 0) == 0);
+        // Literal metadata separator characters must never become new filters.
+        assert(encoded.find(" & title=") == std::string::npos);
+    }
+    assert(corpus_ids.size() == 11);
+    assert(percent_encode_search_value("Björk – Jóga") ==
+           "Bj%C3%B6rk%20%E2%80%93%20J%C3%B3ga");
+    assert(percent_encode_search_value("Röyksopp") == "R%C3%B6yksopp");
     // Encode untrusted UTF-8 values before composing fixed query fields:
     // a literal " & title=" must never become an injected filter.
     assert(encode_fallback_query({"partner", "Maywave", "1000 Years"}) ==

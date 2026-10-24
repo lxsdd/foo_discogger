@@ -1882,6 +1882,28 @@ live_probe_body = gui_source.split(
 assert "ShowArtistSearchResults" not in live_probe_body
 assert "matching_artist" not in live_probe_body
 print("PASS: five native release fixtures and read-only online GUI probe are wired.")
+# Require all eleven *new* public Discogs references in both the
+# deterministic fallback suite and the protected-runner read-only API sampler.
+corpus_qa = (root / "tests/live-discogs-search-corpus-qa.h").read_text(encoding="utf-8-sig")
+for release_id in (
+    2844, 2783977, 7809, 32559, 3666, 294906, 13584056,
+    18370, 82825, 31623, 18278686,
+):
+    assert "{" + str(release_id) + ", " in corpus_qa
+assert "std::array<search_case, 11>" in corpus_qa
+assert '#include "live-discogs-search-corpus-qa.h"' in runner_commands
+assert '#include "live-discogs-search-corpus-qa.h"' in (
+    root / "tests/collaboration_fallback_test.cpp"
+).read_text(encoding="utf-8-sig")
+assert "cohort_nonempty_mask" in runner_commands
+assert "if (counts[1] != 0)" in runner_commands
+assert "API_COHORT_TOTAL=" in runner_commands
+assert "'API_COHORT_TOTAL','API_COHORT_OK'" in gui_host
+assert "DISCOGGER_AUTHENTICATED_API_COHORT_" in gui_host
+assert "fewer than nine populated searches" in gui_host
+print("PASS: eleven additional diversified public Discogs queries use runner-only numeric authenticated evidence.")
+
+
 
 # An independent physical file edit between preview and asynchronous commit
 # must cause the entire selected batch to be rejected before any write.

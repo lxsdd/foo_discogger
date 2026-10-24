@@ -999,7 +999,9 @@ FILE "synthetic-side-b.wav" WAVE
             'WORKER_STARTED','WORKER_ADVANCED','WORKER_SUCCESS','WORKER_ERROR','WORKER_ABORT',
             'RESPONSE_PAGES','RESPONSE_ITEMS','PARSED_MASTERS','PARSED_RELEASES',
             'QUERY_LIMIT','API_IDENTITY','API_EXACT_OK','API_EXACT_ITEMS',
-            'API_EXACT_KNOWN','API_BROAD_OK','API_BROAD_ITEMS','API_BROAD_KNOWN')
+            'API_EXACT_KNOWN','API_BROAD_OK','API_BROAD_ITEMS','API_BROAD_KNOWN',
+            'API_COHORT_TOTAL','API_COHORT_OK','API_COHORT_NONEMPTY','API_COHORT_KNOWN',
+            'API_COHORT_MASK')
         $counts=@{}
         foreach($line in ($proof -split '\r?\n')){
             if($line -match '^([A-Z_]+)=(\d+)$' -and $Matches[1] -in $expected){
@@ -1012,6 +1014,16 @@ FILE "synthetic-side-b.wav" WAVE
         Write-Host "DISCOGGER_AUTHENTICATED_UI_BOUNDARY_${Architecture}=calls:$($counts['BUTTON']) nonempty:$($counts['INPUT_NONEMPTY_CALLS']) empty:$($counts['INPUT_EMPTY_CALLS']) member_valid:$($counts['INPUT_MEMBER_VALID']) hwnd_match:$($counts['INPUT_HWND_MATCH']) member_length:$($counts['INPUT_MEMBER_LENGTH']) live_length:$($counts['INPUT_LIVE_LENGTH'])"
         Write-Host "DISCOGGER_AUTHENTICATED_GUI_PARSE_${Architecture}=input:$($counts['INPUT_NONEMPTY']) fields:$($counts['PARSED_FIELDS']) minimal:$($counts['QUERY_MINIMAL']) query:$($counts['QUERY_DETECTED']) alt:$($counts['ALT_MODE']) retry:$($counts['REPEAT_QUERY']) exit:$($counts['EARLY_EXIT'])"
         Write-Host "DISCOGGER_AUTHENTICATED_API_PROBE_${Architecture}=identity:$($counts['API_IDENTITY']) exact_ok:$($counts['API_EXACT_OK']) exact_items:$($counts['API_EXACT_ITEMS']) exact_known:$($counts['API_EXACT_KNOWN']) broad_ok:$($counts['API_BROAD_OK']) broad_items:$($counts['API_BROAD_ITEMS']) broad_known:$($counts['API_BROAD_KNOWN'])"
+        Write-Host "DISCOGGER_AUTHENTICATED_API_COHORT_${Architecture}=total:$($counts['API_COHORT_TOTAL']) completed:$($counts['API_COHORT_OK']) nonempty:$($counts['API_COHORT_NONEMPTY']) expected_on_page:$($counts['API_COHORT_KNOWN']) nonempty_mask:$($counts['API_COHORT_MASK'])"
+        if($counts['API_COHORT_TOTAL'] -ne 11 -or $counts['API_COHORT_OK'] -ne 11){
+            throw 'Authenticated independent Discogs query corpus was incomplete.'
+        }
+        # A few historic exact-format releases can be absent from the current
+        # search index; the full bitmap remains visible as *numeric* evidence.
+        # Detect systemic regressions while preserving individual diagnostics.
+        if($counts['API_COHORT_NONEMPTY'] -lt 9){
+            throw 'Authenticated independent Discogs query corpus had fewer than nine populated searches.'
+        }
         if($counts['BUTTON'] -lt 1){throw 'Native Search button did not reach its actual Discogger handler.'}
         if($counts['ROUTED'] -lt 1){throw ('Discogger Search handler did not route its parsed query; early-exit stage '+$counts['EARLY_EXIT']+'.')}
         if($counts['WORKER_STARTED'] -lt 1){throw 'Discogger routed search but the asynchronous worker never started.'}

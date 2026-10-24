@@ -10,6 +10,7 @@
 #include <string>
 #include <iterator>
 #include <array>
+#include "live-discogs-search-corpus-qa.h"
 #include "tests/runner-live-search-telemetry.h"
 
 namespace {
@@ -302,7 +303,7 @@ void run_live_search_probe_qa() {
         const json_t* username = json_object_get(parsed.root, "username");
         identity_ok = json_is_string(username) && json_string_length(username) > 0 ? 1u : 0u;
     } catch (...) {}
-    const auto probe_search = [](const char* params) -> std::array<unsigned, 3> {
+    const auto probe_search = [](const char* params, long long expected_id) -> std::array<unsigned, 3> {
         std::array<unsigned, 3> result{0, 0, 0};
         try {
             abort_callback_dummy abort;
@@ -318,16 +319,35 @@ void run_live_search_probe_qa() {
             for (size_t i = 0; i < json_array_size(rows); ++i) {
                 const json_t* record = json_array_get(rows, i);
                 const json_t* id = json_object_get(record, "id");
-                if (json_is_integer(id) && json_integer_value(id) == 38012673)
+                if (json_is_integer(id) && json_integer_value(id) == expected_id)
                     result[2] = 1;
             }
         } catch (...) {}
         return result;
     };
     const auto api_exact = probe_search(
-        "artist=Estiva&title=Via%20Balearia&per_page=100&page=1");
+        "artist=Estiva&title=Via%20Balearia&per_page=100&page=1", 38012673);
     const auto api_broad = probe_search(
-        "q=%22Via%20Balearia%22&per_page=100&page=1");
+        "q=%22Via%20Balearia%22&per_page=100&page=1", 38012673);
+    // New independent public-search cohort: eleven varied release identities,
+    // including collaborations, ampersands, UTF-8 and punctuation. Use actual
+    // authenticated API requests only in the known-positive live-GUI probe,
+    // never again in the empty-result probe (avoids duplicate rate-limit load).
+    unsigned cohort_ok = 0, cohort_nonempty = 0, cohort_known = 0;
+    unsigned cohort_nonempty_mask = 0;
+    const unsigned cohort_total = static_cast<unsigned>(discogger_live_corpus_qa::cases.size());
+    if (counts[1] != 0) {
+        for (unsigned i = 0; i < cohort_total; ++i) {
+            const auto& entry = discogger_live_corpus_qa::cases[i];
+            const auto evidence = probe_search(entry.encoded_search_params, entry.expected_release_id);
+            cohort_ok += evidence[0];
+            if (evidence[0] && evidence[1] > 0) {
+                ++cohort_nonempty;
+                cohort_nonempty_mask |= (1u << i);
+            }
+            cohort_known += evidence[2];
+        }
+    }
     const auto evidence = folder / "qa-live-search-probe.txt";
     if (std::filesystem::exists(evidence))
         throw std::runtime_error("Live GUI evidence already existed.");
@@ -369,7 +389,12 @@ void run_live_search_probe_qa() {
         << "API_EXACT_KNOWN=" << api_exact[2] << '\n'
         << "API_BROAD_OK=" << api_broad[0] << '\n'
         << "API_BROAD_ITEMS=" << api_broad[1] << '\n'
-        << "API_BROAD_KNOWN=" << api_broad[2] << '\n';
+        << "API_BROAD_KNOWN=" << api_broad[2] << '\n'
+        << "API_COHORT_TOTAL=" << (counts[1] != 0 ? cohort_total : 0) << '\n'
+        << "API_COHORT_OK=" << cohort_ok << '\n'
+        << "API_COHORT_NONEMPTY=" << cohort_nonempty << '\n'
+        << "API_COHORT_KNOWN=" << cohort_known << '\n'
+        << "API_COHORT_MASK=" << cohort_nonempty_mask << '\n';
     out.flush();
     if (!out) throw std::runtime_error("Could not flush live GUI evidence.");
 }
