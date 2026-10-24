@@ -1879,7 +1879,7 @@ for release_id, title in (
     ("35534398", "Consciousness EP"),
 ):
     assert '{"' + release_id + '", "' + title + '"}' in gui_source
-assert "if (releases != 5)" in gui_source
+assert "if (initial_tree != 5)" in gui_source
 assert "counts.first != 1 || counts.second != 5" in runner_commands
 assert "RELEASES=5" in runner_commands and "RELEASES=5" in gui_host
 # A read-only live probe must never create the very release-tree visibility
