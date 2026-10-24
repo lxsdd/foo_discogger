@@ -2110,3 +2110,35 @@ assert "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_" in qa_script
 assert "DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY" in qa_script
 assert "upload-artifact" not in qa_script
 print("PASS: protected OAuth1 native GUI test-only integration retains secretless production gates.")
+
+# Real worker-stage counters must be INCREMENTED at the production search
+# transitions under the runner-only compile gate. Merely declaring/printing
+# atomics silently returned zeros and caused a false failure in protected
+# live run 40101135502, despite the known release visible in the real tree.
+qa_tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+qa_search = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+worker_task = qa_tasks.split("void search_artist_process_callback::safe_run(", 1)[1].split(
+    "void search_artist_process_callback::on_success(", 1)[0]
+assert '#include "tests/runner-live-search-telemetry.h"' in qa_tasks
+assert '#include "tests/runner-live-search-telemetry.h"' in qa_search
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in worker_task
+assert "discogger_live_search_qa::worker_started.fetch_add(1);" in worker_task
+assert "discogger_live_search_qa::worker_advanced.fetch_add(1);" in worker_task
+for marker, count in (
+    ("worker_success.fetch_add(1)", 1),
+    ("worker_error.fetch_add(1)", 1),
+    ("worker_abort.fetch_add(1)", 1),
+):
+    assert qa_tasks.count("discogger_live_search_qa::" + marker) == count
+parsed = qa_search.split("rppair_t DiscogsInterface::search_amt_artist(", 1)[1].split(
+    "pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(", 1)[0]
+for marker in ("response_pages.fetch_add(", "response_items.fetch_add(",
+               "parsed_masters.store(", "parsed_releases.store(", "query_limit.fetch_add("):
+    assert "discogger_live_search_qa::" + marker in parsed
+assert parsed.count("response_pages.fetch_add(") == 2
+assert parsed.count("response_items.fetch_add(") == 2
+assert parsed.count("query_limit.fetch_add(") == 2
+assert "json_array_size(results)" in parsed
+assert "RUNNER_MEDIA_QA" in parsed
+assert "WORKER_STARTED=" in qa_commands and "RESPONSE_PAGES=" in qa_commands
+print("PASS: protected live GUI instrumentation measures actual callback/API work rather than unwired zero counters.")
