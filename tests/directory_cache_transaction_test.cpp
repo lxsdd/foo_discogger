@@ -25,6 +25,39 @@ int main() {
       assert(tx.ready()); put(tx.staging_directory() / "page-0/root.json", "old");
       assert(tx.publish("old-marker")); }
     assert(read(active / "page-0/root.json") == "old");
+    assert(discogger_cache::cache_has_marker(active));
+    { discogger_cache::directory_cache_transaction tx(base / "marker-only");
+      assert(tx.ready()); assert(!tx.publish("")); }
+    assert(!fs::exists(base / "marker-only"));
+    { discogger_cache::directory_cache_transaction tx(base / "empty-payload");
+      assert(tx.ready()); put(tx.staging_directory() / "root.json", "");
+      assert(!tx.publish("marker")); }
+    assert(!fs::exists(base / "empty-payload"));
+    { discogger_cache::directory_cache_transaction tx(base / "gap");
+      assert(tx.ready());
+      put(tx.staging_directory() / "page-0/root.json", "zero");
+      put(tx.staging_directory() / "page-2/root.json", "two");
+      assert(!tx.publish("marker")); }
+    assert(!fs::exists(base / "gap"));
+    { discogger_cache::directory_cache_transaction tx(base / "complete");
+      assert(tx.ready());
+      put(tx.staging_directory() / "page-0/root.json", "zero");
+      put(tx.staging_directory() / "page-1/root.json", "one");
+      assert(tx.publish("")); }
+    assert(discogger_cache::cache_has_marker(base / "complete"));
+    fs::copy(base / "complete", discogger_cache::cache_backup_path(base / "complete"),
+             fs::copy_options::recursive);
+    fs::remove(base / "complete/page-1/root.json");
+    assert(!discogger_cache::cache_has_marker(base / "complete"));
+    assert(discogger_cache::recover_cache_directory(base / "complete"));
+    assert(read(base / "complete/page-1/root.json") == "one");
+    assert(!fs::exists(discogger_cache::cache_backup_path(base / "complete")));
+    fs::copy(active, discogger_cache::cache_backup_path(active),
+             fs::copy_options::recursive);
+    fs::remove(active / "page-0/root.json");
+    assert(discogger_cache::recover_cache_directory(active));
+    assert(read(active / "page-0/root.json") == "old");
+    assert(!fs::exists(discogger_cache::cache_backup_path(active)));
     { discogger_cache::directory_cache_transaction tx(active);
       assert(tx.ready()); put(tx.staging_directory() / "page-0/root.json", "partial");
       // Serialization failed, no publication; destructor discards stage.

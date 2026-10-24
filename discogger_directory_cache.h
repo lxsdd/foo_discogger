@@ -1,5 +1,8 @@
 #pragma once
 #include "discogger_atomic_cache_file.h"
+#include "discogger_cache_pages.h"
+#include <algorithm>
+#include <vector>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -18,11 +21,42 @@ inline std::mutex& directory_cache_mutex() {
 inline fs::path cache_backup_path(const fs::path& active) {
     fs::path p = active; p += ".rollback"; return p;
 }
+// A completed marker does not prove that the JSON payload survived.
+inline bool cache_payload_file(const fs::path& path) {
+    std::error_code ec;
+    if (fs::is_symlink(path, ec) || ec) return false;
+    if (!fs::is_regular_file(path, ec) || ec) return false;
+    const auto size = fs::file_size(path, ec);
+    return !ec && size != 0;
+}
 inline bool cache_has_marker(const fs::path& root) {
     std::error_code ec;
-    return fs::is_directory(root, ec) && !ec &&
-        fs::is_regular_file(root / "taskreg.txt", ec) && !ec &&
-        !fs::is_symlink(root / "taskreg.txt", ec) && !ec;
+    if (!fs::is_directory(root, ec) || ec ||
+        fs::is_symlink(root, ec) || ec) return false;
+    const fs::path marker = root / "taskreg.txt";
+    // Empty markers are intentional for transient entity caches.
+    if (!fs::is_regular_file(marker, ec) || ec ||
+        fs::is_symlink(marker, ec) || ec) return false;
+    const fs::path single = root / "root.json";
+    if (fs::exists(single, ec)) return !ec && cache_payload_file(single);
+    if (ec) return false;
+    // A missing later page must not cause the last complete rollback to
+    // be deleted merely because the new cache has a completed marker.
+    std::vector<std::size_t> indexes;
+    for (fs::directory_iterator it(root, ec), last; !ec && it != last;
+         it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (name.rfind("page-", 0) != 0) continue;
+        std::size_t index = 0;
+        if (!parse_cache_page_folder(name, index) ||
+            it->is_symlink(ec) || ec ||
+            !it->is_directory(ec) || ec ||
+            !cache_payload_file(it->path() / "root.json")) return false;
+        indexes.push_back(index);
+    }
+    if (ec) return false;
+    std::sort(indexes.begin(), indexes.end());
+    return complete_cache_page_sequence(indexes);
 }
 inline bool recover_cache_unlocked(const fs::path& active) {
     const fs::path backup = cache_backup_path(active);
