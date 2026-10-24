@@ -2078,3 +2078,35 @@ assert search_main.index("::IsWindow(m_owner_window)") < search_main.index("Upda
 assert "task->start(m_owner_window);" in search_main
 assert "new service_impl_t<on_search_artist_done_process_callback>" in search_main
 print("PASS: modeless online search completion refuses closed/replaced Win32 dialog.")
+
+# These test-only native GUI hooks are reviewed separately from production
+# Discogger. No tokens are embedded in the source or ordinary component, and
+# no secret-bearing branch is needed to run these static contract checks.
+qa_fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")
+qa_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+qa_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+qa_commands = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+qa_telemetry = (root / "tests/runner-live-search-telemetry.h").read_text(encoding="utf-8-sig")
+qa_script = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+oauth_impl = qa_fetcher.split("void Fetcher::set_oauth(", 1)[1].split(
+    "void Fetcher::init_oauth(", 1)[0]
+assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in oauth_impl
+assert 'std::getenv("GITHUB_ACTIONS")' in oauth_impl
+for oauth_name in ("DISCOGS_OAUTH_CONSUMER_KEY", "DISCOGS_OAUTH_CONSUMER_SECRET",
+                   "DISCOGS_OAUTH_ACCESS_TOKEN", "DISCOGS_OAUTH_TOKEN_SECRET"):
+    assert 'std::getenv("' + oauth_name + '")' in oauth_impl
+assert 'std::strcmp(runner, "true") != 0' in oauth_impl
+assert "Incomplete or unauthorized runner OAuth configuration." in oauth_impl
+assert "consumer = new OAuth::Consumer(CONSUMER_KEY, CONSUMER_SECRET);" in oauth_impl
+assert "runner_qa_live_search_probe()" in qa_dialog
+assert "runner_qa_live_search_probe();" in qa_header
+assert '#include "tests/runner-live-search-telemetry.h"' in qa_commands
+assert "run_live_search_probe_qa()" in qa_commands
+assert "namespace discogger_live_search_qa" in qa_telemetry
+assert "No queries, URLs, response bodies" in qa_telemetry
+assert "[switch]$AuthorizedLive" in qa_script
+assert "DISCOGGER_AUTHENTICATED_GUI_SEARCH_" in qa_script
+assert "DISCOGGER_AUTHENTICATED_EMPTY_RESULT_" in qa_script
+assert "DISCOGGER_AUTHENTICATED_CRASH_DETAILS=WITHHELD_FOR_SECRET_SAFETY" in qa_script
+assert "upload-artifact" not in qa_script
+print("PASS: protected OAuth1 native GUI test-only integration retains secretless production gates.")
