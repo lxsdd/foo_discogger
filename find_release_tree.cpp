@@ -800,6 +800,10 @@ void CFindReleaseTree::on_get_artist_done(cupdRelSrc cupdsrc, const Artist_ptr a
 
 	bool bskip = m_dlg->m_qdm_search_query.size() ? b_qdm_skip : b_no_qdm_skip;
 	bskip |= b_same_artist_instance;
+	// Search preview artist ID 0 is a synthetic bucket, not a stable artist.
+	// A repeated or refreshed search must render its new release candidates.
+	if (cupdsrc == updRelSrc::ArtistSearchAT && artist && artist_id == 0)
+		bskip = b_same_artist_instance;
 
 	if (bskip) {
 		//Still same 194 ?

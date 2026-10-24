@@ -18,8 +18,60 @@
 #include "discogger_artist_refresh.h"
 #include "discogs_interface.h"
 #include "discogger_search_visibility.h"
+#include <unordered_set>
 
 namespace ol = Offline;
+
+namespace {
+// Advanced Discogs searches can match releases under several artist identities.
+// The search tree is a preview, not an artist selection or a tagging decision.
+// Keep the original artist list for explicit selection while displaying every
+// already fetched result (once per Discogs ID) without another API request.
+Artist_ptr combined_advanced_search_preview(const pfc::array_t<Artist_ptr>& artists) {
+    Artist_ptr preview = std::make_shared<Artist>("0"); // existing search preview sentinel
+    preview->name = "Search results across artists";
+    preview->loaded_preview = true;
+    // A search response is partial; do not advertise an authoritative artist catalog.
+    preview->loaded_releases = false;
+    std::unordered_set<std::string> seen_masters, seen_releases;
+    auto append_master = [&](const MasterRelease_ptr& master) {
+        if (master && seen_masters.emplace(master->id.get_ptr()).second) {
+            preview->master_releases.append_single(master);
+            preview->search_order_master.append_single(true);
+        }
+    };
+    auto append_release = [&](const Release_ptr& release) {
+        if (release && seen_releases.emplace(release->id.get_ptr()).second) {
+            preview->releases.append_single(release);
+            preview->search_order_master.append_single(false);
+        }
+    };
+
+    for (size_t i = 0; i < artists.get_count(); ++i) {
+        const Artist_ptr& artist = artists[i];
+        if (!artist) continue;
+        size_t master_idx = 0, release_idx = 0;
+        for (size_t order = 0; order < artist->search_order_master.get_count(); ++order) {
+            if (artist->search_order_master[order]) {
+                if (master_idx < artist->master_releases.get_count())
+                    append_master(artist->master_releases[master_idx]);
+                ++master_idx;
+            } else {
+                if (release_idx < artist->releases.get_count())
+                    append_release(artist->releases[release_idx]);
+                ++release_idx;
+            }
+        }
+        // Defensive: an incomplete upstream order array must not hide results.
+        while (master_idx < artist->master_releases.get_count())
+            append_master(artist->master_releases[master_idx++]);
+        while (release_idx < artist->releases.get_count())
+            append_release(artist->releases[release_idx++]);
+    }
+    return preview;
+}
+} // namespace
+
 
 // find release
 // {F924481B-17A0-423F-B1A6-07293DC46810}
@@ -1280,14 +1332,20 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 	if (!append) {
 		m_alist.fill_artist_list(b_chk_exact_matches, m_tracer.has_amr(), updrelsrc/*updRelSrc::ArtistSearch*/);
 
-        // If advanced search identified exactly one artist with release
-        // candidates, show the already loaded results without a second
-        // click. This only updates the preview tree; no tags are written.
-        // Keep multiple artists as a deliberate user review choice.
-        if ((m_query_mode & SearchMode::AT) && m_alist.Get_Artists().get_count() == 1) {
-            Artist_ptr only = m_alist.Get_Artists()[0];
-            if (only && (only->releases.get_count() || only->master_releases.get_count()))
-                ShowArtistSearchResults(only);
+        // Publish advanced search results immediately even when the response
+        // spans several artists. The artist list remains available for review;
+        // this read-only preview neither selects a tagging target nor writes tags.
+        if (m_query_mode & SearchMode::AT) {
+            const auto& artists = m_alist.Get_Artists();
+            if (artists.get_count() == 1) {
+                Artist_ptr only = artists[0];
+                if (only && (only->releases.get_count() || only->master_releases.get_count()))
+                    ShowArtistSearchResults(only);
+            } else if (artists.get_count() > 1) {
+                Artist_ptr preview = combined_advanced_search_preview(artists);
+                if (preview->releases.get_count() || preview->master_releases.get_count())
+                    ShowArtistSearchResults(preview);
+            }
         }
 
 		if (!m_alist.Get_Artists().get_count()) {
@@ -2016,10 +2074,11 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char
 std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
-    // Construct the *real* in-memory Discogger artist and release objects,
-    // without a network call, cache mutation or music-file write. All five
-    // identities were separately confirmed by authorized Discogs API CI.
-    Artist_ptr artist = std::make_shared<Artist>("0"); // search-results bucket
+    const size_t previous_mode = m_query_mode;
+    m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
+
+    // Preserve the five cross-provider identities from the original fixture.
+    Artist_ptr artist = std::make_shared<Artist>("0");
     artist->name = "Discogger synthetic search results";
     artist->loaded_preview = true;
     artist->loaded_releases = true;
@@ -2039,17 +2098,74 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     }
     pfc::array_t<Artist_ptr> alternatives, exact;
     alternatives.append_single(artist);
-    // Exercise the real "no exact artist; show alternatives" handling.
     CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
     on_search_artist_done(exact, alternatives, false);
     if (m_alist.Get_Artists().get_count() != 1 ||
         IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED)
         throw std::runtime_error("Native populated alternative artist list/filter failed.");
-    ShowArtistSearchResults(artist);
-    const size_t releases = m_dctree.Get_Size();
-    if (releases != 5)
-        throw std::runtime_error("Native populated release tree did not contain five releases.");
-    return {m_alist.Get_Artists().get_count(), releases};
+    // No manual ShowArtistSearchResults call: callback must populate the real tree.
+    const size_t initial_tree = m_dctree.Get_Size();
+    if (initial_tree != 5)
+        throw std::runtime_error("Native auto-preview did not publish five synthetic releases.");
+
+    // Multiple artist matches, mixed masters/releases, and duplicate IDs.
+    Artist_ptr first = std::make_shared<Artist>("101");
+    first->name = "First search match";
+    Release_ptr first_release = std::make_shared<Release>("2844");
+    first_release->title = "One More Time";
+    first_release->loaded_preview = true;
+    first->releases.append_single(first_release);
+    first->search_order_master.append_single(false);
+    MasterRelease_ptr first_master = std::make_shared<MasterRelease>("901");
+    first_master->title = "Synthetic master";
+    first_master->loaded_preview = true;
+    first->master_releases.append_single(first_master);
+    first->search_order_master.append_single(true);
+
+    Artist_ptr second = std::make_shared<Artist>("102");
+    second->name = "Second search match";
+    Release_ptr duplicate_release = std::make_shared<Release>("2844");
+    duplicate_release->title = "One More Time duplicate";
+    duplicate_release->loaded_preview = true;
+    second->releases.append_single(duplicate_release);
+    second->search_order_master.append_single(false);
+    Release_ptr second_release = std::make_shared<Release>("7809");
+    second_release->title = "Hey Boy Hey Girl";
+    second_release->loaded_preview = true;
+    second->releases.append_single(second_release);
+    second->search_order_master.append_single(false);
+    MasterRelease_ptr duplicate_master = std::make_shared<MasterRelease>("901");
+    duplicate_master->title = "Synthetic master duplicate";
+    duplicate_master->loaded_preview = true;
+    second->master_releases.append_single(duplicate_master);
+    second->search_order_master.append_single(true);
+
+    pfc::array_t<Artist_ptr> two_artists;
+    two_artists.append_single(first);
+    two_artists.append_single(second);
+    on_search_artist_done(two_artists, exact, false);
+    if (m_alist.Get_Artists().get_count() != 2 || m_dctree.Get_Size() != 3)
+        throw std::runtime_error("Multi-artist auto-preview did not deduplicate and display three releases/masters.");
+
+    // Same ID 0 preview sentinel, a new query result: must replace stale tree.
+    Artist_ptr refreshed = std::make_shared<Artist>("103");
+    Release_ptr new_release = std::make_shared<Release>("32559");
+    new_release->title = "Joga";
+    new_release->loaded_preview = true;
+    refreshed->releases.append_single(new_release);
+    refreshed->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> changed_artists;
+    changed_artists.append_single(refreshed);
+    changed_artists.append_single(std::make_shared<Artist>("104"));
+    on_search_artist_done(changed_artists, exact, false);
+    if (m_dctree.Get_Size() != 1)
+        throw std::runtime_error("Repeated multi-artist search retained an obsolete preview tree.");
+
+    on_search_artist_done(exact, alternatives, false);
+    if (m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Returning to a single search bucket did not refresh results.");
+    m_query_mode = previous_mode;
+    return {1, initial_tree};
 }
 #endif
 

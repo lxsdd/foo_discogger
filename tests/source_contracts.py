@@ -657,12 +657,18 @@ assert 'constexpr size_t uncapped_threshold = SIZE_MAX - 100;' in status_text
 assert "pow(2, sv)" not in status_text
 result_body = completion_dialog.split("void CFindReleaseDialog::on_search_artist_done(", 1)[1].split(
     "void CFindReleaseDialog::OnTypeFilterTimer(", 1)[0]
-assert "(m_query_mode & SearchMode::AT)" in result_body
-assert "m_alist.Get_Artists().get_count() == 1" in result_body
+assert "m_query_mode & SearchMode::AT" in result_body
+assert "artists.get_count() == 1" in result_body
 assert "only->releases.get_count() || only->master_releases.get_count()" in result_body
 assert "ShowArtistSearchResults(only);" in result_body
+assert "artists.get_count() > 1" in result_body
+assert "combined_advanced_search_preview(artists)" in result_body
+assert "ShowArtistSearchResults(preview);" in result_body
 assert "write_infos(" not in result_body
-print("PASS: incomplete searches fail safe and unique advanced results appear without retagging.")
+assert "std::unordered_set<std::string> seen_masters, seen_releases;" in completion_dialog
+assert "preview->search_order_master.append_single(true);" in completion_dialog
+assert "preview->search_order_master.append_single(false);" in completion_dialog
+print("PASS: advanced searches auto-preview all artist candidates with ID dedup and no tagging.")
 
 # Preserve conditional Wine light-theme redraw with current libPPUI:
 # repaint on initialization and focus transitions, without a paint-loop hook.
@@ -1855,7 +1861,11 @@ runner_commands = (root / "tests/native-media-writer-qa.inc").read_text(encoding
 gui_host = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 assert "runner_qa_populated_search_rows()" in gui_header
 assert "#if defined(DISCOGGER_RUNNER_MEDIA_QA)" in gui_header
-assert "ShowArtistSearchResults(artist);" in gui_source
+assert "on_search_artist_done(two_artists, exact, false);" in gui_source
+assert "m_dctree.Get_Size() != 3" in gui_source
+assert "on_search_artist_done(changed_artists, exact, false);" in gui_source
+assert "m_dctree.Get_Size() != 1" in gui_source
+assert "ShowArtistSearchResults(artist);" not in gui_source
 assert 'IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED' in gui_source
 assert "run_populated_search_gui_qa()" in runner_commands
 assert "DISCOGGER_GUI_POPULATED_SYNTHETIC_RELEASES_" in gui_host
