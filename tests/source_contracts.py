@@ -670,6 +670,19 @@ assert "preview->search_order_master.append_single(true);" in completion_dialog
 assert "preview->search_order_master.append_single(false);" in completion_dialog
 print("PASS: advanced searches auto-preview all artist candidates with ID dedup and no tagging.")
 
+# A deliberate repeat must traverse the real search path (including cache refresh),
+# and GUI-only type=all must not be serialized into the Discogs API request.
+search_click = completion_dialog.split("LRESULT CFindReleaseDialog::OnButtonSearch(", 1)[1].split(
+    "void CFindReleaseDialog::on_get_artist_done(", 1)[0]
+for marker in ('if (!exp_pair.first.compare(m_search_expression)) {',
+               'if (trot_text.equals(m_search_artist)) {'):
+    repeat_block = search_click.split(marker, 1)[1].split("}", 1)[0]
+    assert "return FALSE;" not in repeat_block
+assert 'search_query::MapToText(m_qdm_search_query, exp_pair, false, false);' in search_click
+assert 'search_query::MapToText(m_qdm_search_query, exp_pair, true, false);' not in search_click
+print("PASS: explicit repeated searches remain routable and omit GUI-only API type.")
+
+
 # Preserve conditional Wine light-theme redraw with current libPPUI:
 # repaint on initialization and focus transitions, without a paint-loop hook.
 edit_header = (root / "my_editwithbuttons.h").read_text(encoding="utf-8-sig")

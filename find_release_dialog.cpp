@@ -1075,15 +1075,12 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (!exp_pair.first.compare(m_search_expression)) {
 
-			log_msg("Query loaded.");
-			//..
-			return FALSE;
-			//..
+			log_msg("Query explicitly retried.");
 		}
 
 		if (bres) {
 
-			search_query::MapToText(m_qdm_search_query, exp_pair, true, false);
+			search_query::MapToText(m_qdm_search_query, exp_pair, false, false);
 			pfc::string8 artist_meta_scaped = exp_pair.second.c_str();
 
 			trot_text = artist_meta_scaped;
@@ -1102,10 +1099,7 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (trot_text.equals(m_search_artist)) {
 
-			log_msg("Artist search loaded.");
-			//..
-			return FALSE;
-			//..
+			log_msg("Artist search explicitly retried.");
 		}
 
 		m_search_expression = "";
