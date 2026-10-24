@@ -39,6 +39,18 @@ int main() {
       put(tx.staging_directory() / "page-2/root.json", "two");
       assert(!tx.publish("marker")); }
     assert(!fs::exists(base / "gap"));
+    // A completed stamp without a rollback may still hide a missing page.
+    // Recovery must leave it intact for re-fetch, but the read gate must
+    // reject it until the contiguous payload is complete.
+    const fs::path incomplete = base / "incomplete-no-backup";
+    put(incomplete / "taskreg.txt", "complete-stamp");
+    put(incomplete / "page-0/root.json", "first");
+    put(incomplete / "page-2/root.json", "third");
+    assert(discogger_cache::recover_cache_directory(incomplete));
+    assert(!discogger_cache::cache_has_marker(incomplete));
+    assert(read(incomplete / "page-0/root.json") == "first");
+    put(incomplete / "page-1/root.json", "second");
+    assert(discogger_cache::cache_has_marker(incomplete));
     { discogger_cache::directory_cache_transaction tx(base / "complete");
       assert(tx.ready());
       put(tx.staging_directory() / "page-0/root.json", "zero");

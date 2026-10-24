@@ -1094,6 +1094,13 @@ config = (root / "configuration_dialog.cpp").read_text(encoding="utf-8-sig")
 conf_code = (root / "conf.cpp").read_text(encoding="utf-8-sig")
 assert "fs::last_write_time(complete, ec)" in cache
 assert "check_download(out_relative_path, expired, gfFrom)" in cache
+# The offline reader must reject a stamped but incomplete page directory,
+# including the no-rollback case where recovery correctly leaves it in place.
+read_gate = cache.split("bool static check_download(", 1)[1].split(
+    "static pfc::string8 staged_cache_json_path(", 1)[0]
+assert "discogger_cache::cache_has_marker(root)" in read_gate
+assert read_gate.index("discogger_cache::cache_has_marker(root)") < read_gate.index(
+    "fs::last_write_time(complete, ec)")
 assert "discogger_cache::ttl(" in cache
 assert "CACHE_EXPIRATION" not in cache and "CACHE_EXPIRATION" not in config
 assert "_read(jf, buffer, src_length_checked)" not in cache

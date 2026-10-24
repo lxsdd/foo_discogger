@@ -225,6 +225,9 @@ namespace Offline {
         out_expired = false;
         std::error_code ec;
         const fs::path root = fs::u8path(path.c_str());
+        // A timestamp alone is not evidence that every paged JSON file
+        // survived an interrupted download. Treat incomplete caches as misses.
+        if (!discogger_cache::cache_has_marker(root)) return false;
         const fs::path loading = root / MARK_LOADING_NAME.c_str();
         const fs::path complete = root / MARK_CHECK_NAME.c_str();
         if (fs::exists(loading, ec) || ec) return false;
