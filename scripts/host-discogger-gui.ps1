@@ -822,6 +822,8 @@ FILE "synthetic-side-b.wav" WAVE
     # Call the production sidecar writer only on a newly generated runner-local
     # fixture. Its native QA command verifies exact replacement, identical
     # byte/timestamp no-op and rejection of an empty update.
+    $sidecarError=Join-Path $dir 'qa-sidecar-error.txt'
+    if(Test-Path -LiteralPath $sidecarError){throw 'Sidecar artwork error marker already exists.'}
     $sidecarMarker=Join-Path $dir 'qa-sidecar-artwork.txt'
     if(Test-Path -LiteralPath $sidecarMarker){throw 'Sidecar artwork marker already exists.'}
     $sidecarCommand=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA sidecar artwork"' -PassThru
@@ -831,6 +833,11 @@ FILE "synthetic-side-b.wav" WAVE
     $sidecarPassed=$false
     for($n=0;$n -lt 60;$n++){
         Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $sidecarError -PathType Leaf){
+            $stage=(Get-Content -LiteralPath $sidecarError -Raw).Trim()
+            if($stage -notmatch '^STAGE=[a-z-]+$'){throw 'Malformed runner-local sidecar diagnostic.'}
+            throw ("Native sidecar artwork QA failed at "+$stage)
+        }
         if(Test-Path -LiteralPath $sidecarMarker -PathType Leaf){
             $proof=(Get-Content -LiteralPath $sidecarMarker -Raw).Trim()
             if($proof -ceq ("NOOP=PASS"+[char]10+"REPLACE=PASS"+[char]10+"EMPTY=DENIED")){

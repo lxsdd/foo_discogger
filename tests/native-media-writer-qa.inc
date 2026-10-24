@@ -520,7 +520,27 @@ void record_disposable_partial_qa_error(const char* reason) noexcept {
 }
 
 
+static thread_local const char* qa_sidecar_artwork_stage = "dispatch";
+
+void record_disposable_sidecar_qa_error() noexcept {
+    try {
+        const char* actions = std::getenv("GITHUB_ACTIONS");
+        const char* runner = std::getenv("RUNNER_TEMP");
+        const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+        if (!actions || std::string(actions) != "true" || !runner || !location) return;
+        const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+        const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+        const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+        if (folder.native().size() <= prefix.size() ||
+            _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+            !std::filesystem::is_directory(folder)) return;
+        std::ofstream out(folder / "qa-sidecar-error.txt");
+        if (out) out << "STAGE=" << qa_sidecar_artwork_stage << '\n';
+    } catch (...) {}
+}
+
 void run_disposable_sidecar_artwork_qa() {
+    qa_sidecar_artwork_stage = "environment";
     const char* actions = std::getenv("GITHUB_ACTIONS");
     const char* runner = std::getenv("RUNNER_TEMP");
     const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
@@ -533,6 +553,7 @@ void run_disposable_sidecar_artwork_qa() {
         _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
         !std::filesystem::is_directory(folder))
         throw std::runtime_error("Unsafe sidecar artwork QA directory.");
+    qa_sidecar_artwork_stage = "fixture-create";
     const auto sidecar = folder / "synthetic-cover.jpg";
     const auto marker = folder / "qa-sidecar-artwork.txt";
     if (std::filesystem::exists(sidecar) || std::filesystem::exists(marker))
@@ -565,18 +586,22 @@ void run_disposable_sidecar_artwork_qa() {
     abort_callback_dummy abort;
     auto original_buffer = buffer_for(original);
     const auto original_time = std::filesystem::last_write_time(sidecar);
+    qa_sidecar_artwork_stage = "first-noop";
     g_discogs->write_image(original_buffer, host_path, abort);
     if (bytes() != original || std::filesystem::last_write_time(sidecar) != original_time)
         throw std::runtime_error("Identical sidecar artwork was rewritten.");
     auto replacement_buffer = buffer_for(replacement);
+    qa_sidecar_artwork_stage = "replacement";
     g_discogs->write_image(replacement_buffer, host_path, abort);
     if (bytes() != replacement)
         throw std::runtime_error("Sidecar artwork replacement did not commit.");
     const auto replacement_time = std::filesystem::last_write_time(sidecar);
+    qa_sidecar_artwork_stage = "second-noop";
     g_discogs->write_image(replacement_buffer, host_path, abort);
     if (bytes() != replacement ||
         std::filesystem::last_write_time(sidecar) != replacement_time)
         throw std::runtime_error("Repeated sidecar artwork was rewritten.");
+    qa_sidecar_artwork_stage = "empty-denial";
     MemoryBlock empty;
     bool denied = false;
     try { g_discogs->write_image(empty, host_path, abort); }
@@ -584,6 +609,7 @@ void run_disposable_sidecar_artwork_qa() {
     if (!denied || bytes() != replacement ||
         std::filesystem::last_write_time(sidecar) != replacement_time)
         throw std::runtime_error("Empty sidecar artwork request changed existing file.");
+    qa_sidecar_artwork_stage = "evidence";
     std::ofstream out(marker);
     if (!out) throw std::runtime_error("Cannot record sidecar artwork QA.");
     out << "NOOP=PASS\nREPLACE=PASS\nEMPTY=DENIED\n";
@@ -630,9 +656,11 @@ public:
             else run_disposable_media_writer_qa(index);
         } catch (const std::exception& e) {
             if (index == 7) record_disposable_partial_qa_error(e.what());
+            if (index == 8) record_disposable_sidecar_qa_error();
             console::printf("DISCOGGER_RUNNER_MEDIA_QA_ERROR: %s", e.what());
         } catch (...) {
             if (index == 7) record_disposable_partial_qa_error("unknown failure");
+            if (index == 8) record_disposable_sidecar_qa_error();
             console::print("DISCOGGER_RUNNER_MEDIA_QA_ERROR: unknown failure");
         }
     }
