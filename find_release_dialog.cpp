@@ -1984,7 +1984,6 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
         throw std::runtime_error("Live result inspection requires an open native Find Releases dialog.");
     const auto artists = m_alist.Get_Artists();
     size_t known_release_matches = 0;
-    Artist_ptr matching_artist;
     for (size_t i = 0; i < artists.get_count(); ++i) {
         const Artist_ptr& artist = artists[i];
         if (!artist) continue;
@@ -1992,7 +1991,6 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
             const Release_ptr& release = artist->releases[j];
             if (release && release->id.equals("38012673")) {
                 ++known_release_matches;
-                matching_artist = artist;
             }
         }
         for (size_t j = 0; j < artist->master_releases.get_count(); ++j) {
@@ -2000,23 +1998,18 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe() {
             if (!master) continue;
             if (master->main_release_id.equals("38012673")) {
                 ++known_release_matches;
-                matching_artist = artist;
             }
             // Database-search releases may be grouped below a master even
             // when the known release is not that master's main release.
             for (const Release_ptr& subrelease : master->sub_releases) {
                 if (subrelease && subrelease->id.equals("38012673")) {
                     ++known_release_matches;
-                    matching_artist = artist;
                 }
             }
         }
     }
-    // The real search and real artist-list model must already have produced
-    // the exact known release. This test-only helper only opens that reviewed
-    // result through the production tree presenter; it cannot create a row.
-    if (matching_artist && !m_dctree.Get_Size())
-        ShowArtistSearchResults(matching_artist);
+    // Observe only. The real search must publish its own tree; the QA
+    // inspector must not call the presenter and mask a missing auto-display.
     return {artists.get_count(), known_release_matches, m_dctree.Get_Size()};
 }
 
@@ -2024,7 +2017,7 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
     // Construct the *real* in-memory Discogger artist and release objects,
-    // without a network call, cache mutation or music-file write. All four
+    // without a network call, cache mutation or music-file write. All five
     // identities were separately confirmed by authorized Discogs API CI.
     Artist_ptr artist = std::make_shared<Artist>("0"); // search-results bucket
     artist->name = "Discogger synthetic search results";
@@ -2034,7 +2027,8 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         {"38012673", "Via Balearia"},
         {"37332711", "1000 Years"},
         {"36397609", "Only You"},
-        {"36819730", "Till You Let Go"}
+        {"36819730", "Till You Let Go"},
+        {"35534398", "Consciousness EP"}
     };
     for (const auto& record : known) {
         Release_ptr release = std::make_shared<Release>(record.first);
@@ -2053,8 +2047,8 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         throw std::runtime_error("Native populated alternative artist list/filter failed.");
     ShowArtistSearchResults(artist);
     const size_t releases = m_dctree.Get_Size();
-    if (releases != 4)
-        throw std::runtime_error("Native populated release tree did not contain four releases.");
+    if (releases != 5)
+        throw std::runtime_error("Native populated release tree did not contain five releases.");
     return {m_alist.Get_Artists().get_count(), releases};
 }
 #endif

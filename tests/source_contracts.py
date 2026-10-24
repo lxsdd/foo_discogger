@@ -1859,7 +1859,29 @@ assert "ShowArtistSearchResults(artist);" in gui_source
 assert 'IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED' in gui_source
 assert "run_populated_search_gui_qa()" in runner_commands
 assert "DISCOGGER_GUI_POPULATED_SYNTHETIC_RELEASES_" in gui_host
-print("PASS: runner-only real populated GUI artist/release path is wired.")
+# Keep every independently verified Discogs release in the *native* synthetic
+# search presenter, not just in a portable/API-only test.
+for release_id, title in (
+    ("38012673", "Via Balearia"),
+    ("37332711", "1000 Years"),
+    ("36397609", "Only You"),
+    ("36819730", "Till You Let Go"),
+    ("35534398", "Consciousness EP"),
+):
+    assert '{"' + release_id + '", "' + title + '"}' in gui_source
+assert "if (releases != 5)" in gui_source
+assert "counts.first != 1 || counts.second != 5" in runner_commands
+assert "RELEASES=5" in runner_commands and "RELEASES=5" in gui_host
+# A read-only live probe must never create the very release-tree visibility
+# it is supposed to measure; this previously allowed false GUI acceptance.
+live_probe_body = gui_source.split(
+    "std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe()", 1
+)[1].split(
+    "std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows()", 1
+)[0]
+assert "ShowArtistSearchResults" not in live_probe_body
+assert "matching_artist" not in live_probe_body
+print("PASS: five native release fixtures and read-only online GUI probe are wired.")
 
 # An independent physical file edit between preview and asynchronous commit
 # must cause the entire selected batch to be rejected before any write.

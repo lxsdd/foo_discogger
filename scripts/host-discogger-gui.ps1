@@ -563,7 +563,7 @@ FILE "synthetic-side-b.wav" WAVE
     if($reopenedLayoutError){throw ('Reopened Find Releases layout failed: '+$reopenedLayoutError)}
     Write-Host "DISCOGGER_GUI_PERSISTENCE_$Architecture=PASS"
 
-    # Populate a real native Discogger GUI with four synthetic release objects.
+    # Populate a real native Discogger GUI with five synthetic release objects.
     # This validates actual artist filtering and release tree rendering, not
     # authenticated search or metadata commits.
     $guiEvidence=Join-Path $dir 'qa-populated-gui.txt'
@@ -577,7 +577,7 @@ FILE "synthetic-side-b.wav" WAVE
         Start-Sleep -Milliseconds 250
         if(Test-Path -LiteralPath $guiEvidence -PathType Leaf){
             $evidence=Get-Content -LiteralPath $guiEvidence -Raw
-            if($evidence.Contains('ARTISTS=1') -and $evidence.Contains('RELEASES=4')){
+            if($evidence.Contains('ARTISTS=1') -and $evidence.Contains('RELEASES=5')){
                 $populated=$true;break
             }
         }

@@ -261,14 +261,14 @@ void run_populated_search_gui_qa() {
     if (!g_discogs || !g_discogs->find_release_dialog)
         throw std::runtime_error("Native Discogger Find Releases is not open.");
     const auto counts = g_discogs->find_release_dialog->runner_qa_populated_search_rows();
-    if (counts.first != 1 || counts.second != 4)
-        throw std::runtime_error("Native GUI did not populate one artist and four releases.");
+    if (counts.first != 1 || counts.second != 5)
+        throw std::runtime_error("Native GUI did not populate one artist and five releases.");
     const auto evidence = folder / "qa-populated-gui.txt";
     if (std::filesystem::exists(evidence))
         throw std::runtime_error("Synthetic GUI evidence already existed.");
     std::ofstream out(evidence);
     if (!out) throw std::runtime_error("Could not write synthetic GUI evidence.");
-    out << "ARTISTS=1\\nRELEASES=4\\n";
+    out << "ARTISTS=1\\nRELEASES=5\\n";
     out.flush();
     if (!out) throw std::runtime_error("Could not flush synthetic GUI evidence.");
 }
