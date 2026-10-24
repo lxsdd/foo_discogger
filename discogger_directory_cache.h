@@ -70,6 +70,10 @@ inline bool recover_cache_unlocked(const fs::path& active) {
     if (active_exists && (fs::is_symlink(active, ec) || ec)) return false;
     if (backup_exists && (fs::is_symlink(backup, ec) || ec)) return false;
     if (!backup_exists) return true;
+    // A corrupt rollback is not a safe replacement for a damaged active
+    // cache. Preserve both directories for diagnosis/retry instead of
+    // deleting the active cache and promoting incomplete backup data.
+    if (!cache_has_marker(backup)) return false;
     if (active_exists && cache_has_marker(active)) {
         fs::remove_all(backup, ec);
         return !ec;

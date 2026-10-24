@@ -52,6 +52,24 @@ int main() {
     assert(discogger_cache::recover_cache_directory(base / "complete"));
     assert(read(base / "complete/page-1/root.json") == "one");
     assert(!fs::exists(discogger_cache::cache_backup_path(base / "complete")));
+    // A damaged rollback must never replace or delete the current cache.
+    const fs::path damaged = base / "damaged-rollback";
+    { discogger_cache::directory_cache_transaction tx(damaged);
+      assert(tx.ready()); put(tx.staging_directory() / "page-0/root.json", "original");
+      assert(tx.publish("original-marker")); }
+    const fs::path damaged_backup = discogger_cache::cache_backup_path(damaged);
+    fs::copy(damaged, damaged_backup, fs::copy_options::recursive);
+    fs::remove(damaged_backup / "page-0/root.json");
+    fs::remove(damaged / "taskreg.txt");
+    assert(!discogger_cache::recover_cache_directory(damaged));
+    assert(read(damaged / "page-0/root.json") == "original");
+    assert(!fs::exists(damaged / "taskreg.txt"));
+    assert(!fs::exists(damaged_backup / "page-0/root.json"));
+    put(damaged_backup / "page-0/root.json", "restored");
+    assert(discogger_cache::recover_cache_directory(damaged));
+    assert(read(damaged / "page-0/root.json") == "restored");
+    assert(read(damaged / "taskreg.txt") == "original-marker");
+    assert(!fs::exists(damaged_backup));
     fs::copy(active, discogger_cache::cache_backup_path(active),
              fs::copy_options::recursive);
     fs::remove(active / "page-0/root.json");
