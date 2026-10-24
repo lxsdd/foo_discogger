@@ -199,11 +199,10 @@ def id3_txxx_values(content):
             payload = raw.decode(codec)
         except UnicodeError as error:
             raise AssertionError("Corrupt Unicode TXXX frame") from error
-        # A BOM at the beginning is an encoding marker; a BOM *inside* a
-        # custom field is data. Globally removing U+FEFF would falsely certify
-        # an SDK write that silently deleted a user tag character.
-        if payload.startswith("\ufeff"):
-            payload = payload[1:]
+        # The UTF-16 decoder already consumes the encoding BOM. A U+FEFF
+        # remaining in decoded text, even as its first character, is real
+        # physical metadata. Stripping it could hide a destructive rename
+        # or falsely accept a BOM-prefixed runner marker.
         # A TXXX frame without the required description/value separator is
         # malformed, not a field that may be silently ignored during a
         # physical metadata preservation audit. Keep a legitimate empty value.
@@ -684,6 +683,48 @@ def selftest_id3():
         pass
     else:
         raise AssertionError("Deleted interior TXXX BOM escaped preservation audit")
+    # P1: the UTF-16 decoder consumes its encoding BOM; any additional
+    # leading U+FEFF in a TXXX description is a physical character. UTF-8
+    # and UTF-16BE likewise have no implicit BOM removal here. A writer
+    # deleting this character must fail, and a BOM-prefixed QA marker must
+    # never masquerade as the exact runner-only marker.
+    for version in (3, 4):
+        def leading_description_tag(name, encoding, value="unchanged"):
+            entries = (
+                ("DISCOGGER_QA_CUSTOM", "Keep original MP3 metadata", 3),
+                ("REPLAYGAIN_TRACK_GAIN", "-5.00 dB", 3),
+                ("REPLAYGAIN_TRACK_PEAK", "0.800000", 3),
+                (name, value, encoding),
+            )
+            frames = []
+            for description, text, enc in entries:
+                codec = {1: "utf-16", 2: "utf-16-be", 3: "utf-8"}[enc]
+                body = bytes((enc,)) + (description + "\x00" + text).encode(codec)
+                size = len(body).to_bytes(4, "big") if version == 3 else ss(len(body))
+                frames.append(b"TXXX" + size + bytes(2) + body)
+            payload = b"".join(frames)
+            return b"ID3" + bytes((version, 0, 0)) + ss(len(payload)) + payload
+
+        for encoding in (1, 2, 3):
+            original_leading = leading_description_tag("\ufeffDJ USER KEY", encoding)
+            without_leading = leading_description_tag("DJ USER KEY", encoding)
+            assert ("\ufeffDJ USER KEY", "unchanged") in id3_txxx_values(original_leading)
+            verify_original_mp3_txxx(original_leading, original_leading)
+            try:
+                verify_original_mp3_txxx(original_leading, without_leading)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Removed leading physical TXXX U+FEFF escaped audit")
+            spoofed = leading_description_tag(
+                "\ufeffDISCOGGER_QA_RUNNER", encoding, "RUNNER-VERIFIED")
+            try:
+                verify_exact_mp3_runner_marker(spoofed)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("BOM-prefixed physical QA marker escaped audit")
+    print("DISCOGGER_ID3_TXXX_LEADING_BOM_PRESERVATION=PASS")
     # A writer may not silently trim whitespace from custom ID3 field names.
     # Previous .strip() normalized these two distinct physical descriptions.
     spaced_original = custom_tag(fields + frame(" DJ USER KEY ", "unchanged"))
