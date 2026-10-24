@@ -646,15 +646,16 @@ print("PASS: search completion can display results without reacquiring its paren
 # Never throw at("artist=") on an incomplete map, and never infer a size_t
 # limit from sizeof(size_t) (bytes versus bits). A unique advanced-search
 # artist with release previews must populate the tree without another click.
-status_start = release_dialog.index("pfc::string8 search_query_run_message(")
-status_end = release_dialog.index("void CFindReleaseDialog::on_search_artist_done(", status_start)
-status_text = release_dialog[status_start:status_end]
+completion_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+status_start = completion_dialog.index("pfc::string8 search_query_run_message(")
+status_end = completion_dialog.index("void CFindReleaseDialog::on_search_artist_done(", status_start)
+status_text = completion_dialog[status_start:status_end]
 assert 'qdm_search_query.find("artist=")' in status_text
 assert 'qdm_search_query.end()' in status_text
 assert 'qdm_search_query.at("artist=")' not in status_text
 assert 'constexpr size_t uncapped_threshold = SIZE_MAX - 100;' in status_text
 assert "pow(2, sv)" not in status_text
-result_body = release_dialog.split("void CFindReleaseDialog::on_search_artist_done(", 1)[1].split(
+result_body = completion_dialog.split("void CFindReleaseDialog::on_search_artist_done(", 1)[1].split(
     "void CFindReleaseDialog::OnTypeFilterTimer(", 1)[0]
 assert "(m_query_mode & SearchMode::AT)" in result_body
 assert "m_alist.Get_Artists().get_count() == 1" in result_body
