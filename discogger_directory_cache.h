@@ -38,23 +38,29 @@ inline bool cache_has_marker(const fs::path& root) {
     if (!fs::is_regular_file(marker, ec) || ec ||
         fs::is_symlink(marker, ec) || ec) return false;
     const fs::path single = root / "root.json";
-    if (fs::exists(single, ec)) return !ec && cache_payload_file(single);
+    const bool has_single = fs::exists(single, ec);
     if (ec) return false;
-    // A missing later page must not cause the last complete rollback to
-    // be deleted merely because the new cache has a completed marker.
+    // Entity caches have root.json; paginated caches have page-N/root.json.
+    // A mixed or unexpected directory is not a complete cache, even when
+    // its completion marker exists. Otherwise recovery could delete the
+    // last valid rollback before the offline reader rejects the new cache.
     std::vector<std::size_t> indexes;
     for (fs::directory_iterator it(root, ec), last; !ec && it != last;
          it.increment(ec)) {
         const std::string name = it->path().filename().string();
-        if (name.rfind("page-", 0) != 0) continue;
-        std::size_t index = 0;
-        if (!parse_cache_page_folder(name, index) ||
-            it->is_symlink(ec) || ec ||
-            !it->is_directory(ec) || ec ||
-            !cache_payload_file(it->path() / "root.json")) return false;
-        indexes.push_back(index);
+        if (it->is_symlink(ec) || ec) return false;
+        if (it->is_directory(ec)) {
+            if (ec || has_single) return false;
+            std::size_t index = 0;
+            if (!parse_cache_page_folder(name, index) ||
+                !cache_payload_file(it->path() / "root.json")) return false;
+            indexes.push_back(index);
+        } else {
+            if (ec || name.rfind("page-", 0) == 0) return false;
+        }
     }
     if (ec) return false;
+    if (has_single) return cache_payload_file(single);
     std::sort(indexes.begin(), indexes.end());
     return complete_cache_page_sequence(indexes);
 }

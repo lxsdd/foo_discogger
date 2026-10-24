@@ -51,6 +51,31 @@ int main() {
     assert(read(incomplete / "page-0/root.json") == "first");
     put(incomplete / "page-1/root.json", "second");
     assert(discogger_cache::cache_has_marker(incomplete));
+    // A mixed entity/paged cache must not delete a complete rollback merely
+    // because the root.json file and completion stamp both exist.
+    const fs::path mixed = base / "mixed-root-and-pages";
+    put(mixed / "taskreg.txt", "mixed-stamp");
+    put(mixed / "root.json", "misleading-entity");
+    put(mixed / "page-0/root.json", "misleading-page");
+    assert(!discogger_cache::cache_has_marker(mixed));
+    fs::copy(active, discogger_cache::cache_backup_path(mixed),
+             fs::copy_options::recursive);
+    assert(discogger_cache::recover_cache_directory(mixed));
+    assert(read(mixed / "page-0/root.json") == "old");
+    assert(!fs::exists(mixed / "root.json"));
+    assert(!fs::exists(discogger_cache::cache_backup_path(mixed)));
+    // The offline page reader rejects unexpected subdirectories. The
+    // completion gate must agree and retain the last good rollback.
+    const fs::path rogue = base / "unexpected-cache-directory";
+    put(rogue / "taskreg.txt", "rogue-stamp");
+    put(rogue / "page-0/root.json", "plausible-page");
+    put(rogue / "unexpected/root.json", "unreadable-extra");
+    assert(!discogger_cache::cache_has_marker(rogue));
+    fs::copy(active, discogger_cache::cache_backup_path(rogue),
+             fs::copy_options::recursive);
+    assert(discogger_cache::recover_cache_directory(rogue));
+    assert(read(rogue / "page-0/root.json") == "old");
+    assert(!fs::exists(rogue / "unexpected"));
     { discogger_cache::directory_cache_transaction tx(base / "complete");
       assert(tx.ready());
       put(tx.staging_directory() / "page-0/root.json", "zero");
