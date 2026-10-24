@@ -703,7 +703,7 @@ def selftest_id3():
     # physical metadata and could falsely certify tag preservation.
     for bom_version in (3, 4):
         for frame_id, reader, payload in (
-            (b"TXXX", id3_txxx_values, "DJ USER KEY\\x00unchanged"),
+            (b"TXXX", id3_txxx_values, "DJ USER KEY\x00unchanged"),
             (b"TIT2", id3_standard_text_values, "Synthetic Test"),
         ):
             def bom_tag(raw):
