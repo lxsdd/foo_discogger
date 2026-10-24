@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <string>
 #include <iterator>
+#include <cstring>
 
 namespace {
 static const GUID qa_mp3_command = {0x4a1d5a11,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
@@ -19,6 +20,7 @@ static const GUID qa_populated_gui_command = {0x4a1d5a15,0x9b8e,0x43a4,{0xa8,0x3
 static const GUID qa_stale_disk_command = {0x4a1d5a16,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_removal_command = {0x4a1d5a17,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 static const GUID qa_partial_audit_command = {0x4a1d5a18,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
+static const GUID qa_sidecar_artwork_command = {0x4a1d5a19,0x9b8e,0x43a4,{0xa8,0x33,0x6b,0x8c,0x32,0x6d,0x21,0x10}};
 
 void run_disposable_media_writer_qa(t_uint32 format) {
     const char* github = std::getenv("GITHUB_ACTIONS");
@@ -517,25 +519,98 @@ void record_disposable_partial_qa_error(const char* reason) noexcept {
     } catch (...) {}
 }
 
+
+void run_disposable_sidecar_artwork_qa() {
+    const char* actions = std::getenv("GITHUB_ACTIONS");
+    const char* runner = std::getenv("RUNNER_TEMP");
+    const char* location = std::getenv("DISCOGGER_QA_MEDIA_DIR");
+    if (!actions || std::string(actions) != "true" || !runner || !location || !g_discogs)
+        throw std::runtime_error("Sidecar artwork QA requires isolated Actions runner.");
+    const auto root = std::filesystem::weakly_canonical(std::filesystem::u8path(runner));
+    const auto folder = std::filesystem::weakly_canonical(std::filesystem::u8path(location));
+    const auto prefix = root.native() + std::filesystem::path::preferred_separator;
+    if (folder.native().size() <= prefix.size() ||
+        _wcsnicmp(folder.c_str(), prefix.c_str(), prefix.size()) != 0 ||
+        !std::filesystem::is_directory(folder))
+        throw std::runtime_error("Unsafe sidecar artwork QA directory.");
+    const auto sidecar = folder / "synthetic-cover.jpg";
+    const auto marker = folder / "qa-sidecar-artwork.txt";
+    if (std::filesystem::exists(sidecar) || std::filesystem::exists(marker))
+        throw std::runtime_error("Sidecar artwork QA fixture unexpectedly exists.");
+    // These bytes are generated for this test; no user artwork or media is read.
+    const std::string original = "synthetic-sidecar-original";
+    const std::string replacement = "synthetic-sidecar-replaced";
+    {
+        std::ofstream out(sidecar, std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("Cannot create disposable sidecar.");
+        out.write(original.data(), static_cast<std::streamsize>(original.size()));
+        out.flush();
+        if (!out) throw std::runtime_error("Cannot flush disposable sidecar.");
+    }
+    if (!std::filesystem::is_regular_file(sidecar) || std::filesystem::is_symlink(sidecar))
+        throw std::runtime_error("Unsafe disposable sidecar target.");
+    const auto units = sidecar.u8string();
+    const pfc::string8 host_path(std::string(units.begin(), units.end()).c_str());
+    auto bytes = [&]() {
+        std::ifstream in(sidecar, std::ios::binary);
+        if (!in) throw std::runtime_error("Cannot read disposable sidecar.");
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    };
+    auto buffer_for = [](const std::string& value) {
+        MemoryBlock buffer;
+        buffer.set_size(value.size());
+        std::memcpy(buffer.get_ptr(), value.data(), value.size());
+        return buffer;
+    };
+    abort_callback_dummy abort;
+    auto original_buffer = buffer_for(original);
+    const auto original_time = std::filesystem::last_write_time(sidecar);
+    g_discogs->write_image(original_buffer, host_path, abort);
+    if (bytes() != original || std::filesystem::last_write_time(sidecar) != original_time)
+        throw std::runtime_error("Identical sidecar artwork was rewritten.");
+    auto replacement_buffer = buffer_for(replacement);
+    g_discogs->write_image(replacement_buffer, host_path, abort);
+    if (bytes() != replacement)
+        throw std::runtime_error("Sidecar artwork replacement did not commit.");
+    const auto replacement_time = std::filesystem::last_write_time(sidecar);
+    g_discogs->write_image(replacement_buffer, host_path, abort);
+    if (bytes() != replacement ||
+        std::filesystem::last_write_time(sidecar) != replacement_time)
+        throw std::runtime_error("Repeated sidecar artwork was rewritten.");
+    MemoryBlock empty;
+    bool denied = false;
+    try { g_discogs->write_image(empty, host_path, abort); }
+    catch (const foo_discogs_exception&) { denied = true; }
+    if (!denied || bytes() != replacement ||
+        std::filesystem::last_write_time(sidecar) != replacement_time)
+        throw std::runtime_error("Empty sidecar artwork request changed existing file.");
+    std::ofstream out(marker);
+    if (!out) throw std::runtime_error("Cannot record sidecar artwork QA.");
+    out << "NOOP=PASS\nREPLACE=PASS\nEMPTY=DENIED\n";
+    out.flush();
+    if (!out) throw std::runtime_error("Cannot flush sidecar artwork QA.");
+}
+
 class discogger_runner_media_commands : public mainmenu_commands {
 public:
-    t_uint32 get_command_count() override { return 8; }
+    t_uint32 get_command_count() override { return 9; }
     GUID get_command(t_uint32 index) override {
         static const GUID commands[] = {
             qa_mp3_command, qa_flac_command, qa_targets_command, qa_batch_command,
             qa_populated_gui_command, qa_stale_disk_command, qa_removal_command,
-            qa_partial_audit_command
+            qa_partial_audit_command, qa_sidecar_artwork_command
         };
-        return index < 8 ? commands[index] : GUID{};
+        return index < 9 ? commands[index] : GUID{};
     }
     void get_name(t_uint32 index, pfc::string_base& out) override {
         static const char* names[] = {
             "Discogger QA MP3 write", "Discogger QA FLAC write",
             "Discogger QA unsafe targets", "Discogger QA incomplete batch",
             "Discogger QA populated GUI", "Discogger QA stale disk",
-            "Discogger QA unsafe removals", "Discogger QA injected partial"
+            "Discogger QA unsafe removals", "Discogger QA injected partial",
+            "Discogger QA sidecar artwork"
         };
-        out = index < 8 ? names[index] : "Invalid Discogger QA command";
+        out = index < 9 ? names[index] : "Invalid Discogger QA command";
     }
     bool get_description(t_uint32, pfc::string_base& out) override {
         out = "Test-only physical metadata writer for disposable GitHub runner media.";
@@ -544,8 +619,9 @@ public:
     GUID get_parent() override { return mainmenu_groups::file; }
     void execute(t_uint32 index, service_ptr_t<service_base>) override {
         try {
-            if (index > 7) throw std::runtime_error("Invalid synthetic QA action.");
-            if (index == 7) run_disposable_partial_write_audit_qa();
+            if (index > 8) throw std::runtime_error("Invalid synthetic QA action.");
+            if (index == 8) run_disposable_sidecar_artwork_qa();
+            else if (index == 7) run_disposable_partial_write_audit_qa();
             else if (index == 6) run_disposable_unapproved_removal_qa();
             else if (index == 5) run_disposable_stale_disk_qa();
             else if (index == 4) run_populated_search_gui_qa();

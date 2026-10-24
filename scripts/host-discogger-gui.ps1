@@ -819,6 +819,30 @@ FILE "synthetic-side-b.wav" WAVE
     }
     Write-Host "DISCOGGER_PHYSICAL_INJECTED_PARTIAL_READBACK_$Architecture=PASS"
 
+    # Call the production sidecar writer only on a newly generated runner-local
+    # fixture. Its native QA command verifies exact replacement, identical
+    # byte/timestamp no-op and rejection of an empty update.
+    $sidecarMarker=Join-Path $dir 'qa-sidecar-artwork.txt'
+    if(Test-Path -LiteralPath $sidecarMarker){throw 'Sidecar artwork marker already exists.'}
+    $sidecarCommand=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA sidecar artwork"' -PassThru
+    if(-not $sidecarCommand.WaitForExit(15000) -or $sidecarCommand.ExitCode -ne 0){
+        throw 'Could not dispatch native sidecar artwork QA.'
+    }
+    $sidecarPassed=$false
+    for($n=0;$n -lt 60;$n++){
+        Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $sidecarMarker -PathType Leaf){
+            $proof=(Get-Content -LiteralPath $sidecarMarker -Raw).Trim()
+            if($proof -ceq ("NOOP=PASS"+[char]10+"REPLACE=PASS"+[char]10+"EMPTY=DENIED")){
+                $sidecarPassed=$true;break
+            }
+        }
+        $proc.Refresh()
+        if($proc.HasExited){throw 'Host exited during sidecar artwork QA.'}
+    }
+    if(-not $sidecarPassed){throw 'Native sidecar artwork safety evidence missing.'}
+    Write-Host "DISCOGGER_SIDECAR_ARTWORK_WRITE_NOOP_$Architecture=PASS"
+
     if((Get-FileHash -LiteralPath $db -Algorithm SHA256).Hash -ne $dbHash){throw 'Original DB template changed.'}
     Write-Host "DISCOGGER_GUI_DIALOG_$Architecture=PASS"
     Write-Host "DISCOGGER_GUI_CONTROLS_$Architecture=PASS"
