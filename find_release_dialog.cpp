@@ -13,8 +13,60 @@
 #include "discogger_artist_refresh.h"
 #include "discogs_interface.h"
 #include "discogger_search_visibility.h"
+#include <unordered_set>
 
 namespace ol = Offline;
+
+namespace {
+// Advanced Discogs searches can match releases under several artist identities.
+// The search tree is a preview, not an artist selection or a tagging decision.
+// Keep the original artist list for explicit selection while displaying every
+// already fetched result (once per Discogs ID) without another API request.
+Artist_ptr combined_advanced_search_preview(const pfc::array_t<Artist_ptr>& artists) {
+    Artist_ptr preview = std::make_shared<Artist>("0"); // existing search preview sentinel
+    preview->name = "Search results across artists";
+    preview->loaded_preview = true;
+    // A search response is partial; do not advertise an authoritative artist catalog.
+    preview->loaded_releases = false;
+    std::unordered_set<std::string> seen_masters, seen_releases;
+    auto append_master = [&](const MasterRelease_ptr& master) {
+        if (master && seen_masters.emplace(master->id.get_ptr()).second) {
+            preview->master_releases.append_single(master);
+            preview->search_order_master.append_single(true);
+        }
+    };
+    auto append_release = [&](const Release_ptr& release) {
+        if (release && seen_releases.emplace(release->id.get_ptr()).second) {
+            preview->releases.append_single(release);
+            preview->search_order_master.append_single(false);
+        }
+    };
+
+    for (size_t i = 0; i < artists.get_count(); ++i) {
+        const Artist_ptr& artist = artists[i];
+        if (!artist) continue;
+        size_t master_idx = 0, release_idx = 0;
+        for (size_t order = 0; order < artist->search_order_master.get_count(); ++order) {
+            if (artist->search_order_master[order]) {
+                if (master_idx < artist->master_releases.get_count())
+                    append_master(artist->master_releases[master_idx]);
+                ++master_idx;
+            } else {
+                if (release_idx < artist->releases.get_count())
+                    append_release(artist->releases[release_idx]);
+                ++release_idx;
+            }
+        }
+        // Defensive: an incomplete upstream order array must not hide results.
+        while (master_idx < artist->master_releases.get_count())
+            append_master(artist->master_releases[master_idx++]);
+        while (release_idx < artist->releases.get_count())
+            append_release(artist->releases[release_idx++]);
+    }
+    return preview;
+}
+} // namespace
+
 
 // find release
 // {F924481B-17A0-423F-B1A6-07293DC46810}
@@ -1222,14 +1274,20 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 	if (!append) {
 		m_alist.fill_artist_list(b_chk_exact_matches, m_tracer.has_amr(), updrelsrc/*updRelSrc::ArtistSearch*/);
 
-        // If advanced search identified exactly one artist with release
-        // candidates, show the already loaded results without a second
-        // click. This only updates the preview tree; no tags are written.
-        // Keep multiple artists as a deliberate user review choice.
-        if ((m_query_mode & SearchMode::AT) && m_alist.Get_Artists().get_count() == 1) {
-            Artist_ptr only = m_alist.Get_Artists()[0];
-            if (only && (only->releases.get_count() || only->master_releases.get_count()))
-                ShowArtistSearchResults(only);
+        // Publish advanced search results immediately even when the response
+        // spans several artists. The artist list remains available for review;
+        // this read-only preview neither selects a tagging target nor writes tags.
+        if (m_query_mode & SearchMode::AT) {
+            const auto& artists = m_alist.Get_Artists();
+            if (artists.get_count() == 1) {
+                Artist_ptr only = artists[0];
+                if (only && (only->releases.get_count() || only->master_releases.get_count()))
+                    ShowArtistSearchResults(only);
+            } else if (artists.get_count() > 1) {
+                Artist_ptr preview = combined_advanced_search_preview(artists);
+                if (preview->releases.get_count() || preview->master_releases.get_count())
+                    ShowArtistSearchResults(preview);
+            }
         }
 
 		if (!m_alist.Get_Artists().get_count()) {
