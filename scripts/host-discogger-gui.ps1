@@ -1059,7 +1059,9 @@ FILE "synthetic-side-b.wav" WAVE
         # The final repeat exercises the cached-query/artist route.
         $nativeMatrix=@(
             # Original user cases must actually populate the native release tree.
-            # The Maywave query is the independently observed live search fallback.
+            # Prove both the precise previously failing composite query and the
+            # independently observed Maywave workaround, with no artist click.
+            @{Id='37332711';Query='artist= Kyau & Albert X Maywave & title= 1000 Years & track= 1000 Years (Dj Version)';Name='kyau-original-composite'},
             @{Id='37332711';Query='q= Maywave & title= 1000 Years';Name='kyau-maywave'},
             @{Id='36397609';Query='artist= Matt Fax & title= Only You';Name='matt-fax-only-you'},
             @{Id='36819730';Query='artist= Matt Fax & title= Till You Let Go';Name='matt-fax-till-you-let-go'},
