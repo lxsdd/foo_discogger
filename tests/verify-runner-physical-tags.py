@@ -296,10 +296,31 @@ def verify_original_mp3_txxx(before, after):
         if original[(name, value)] != 1:
             raise AssertionError("Synthetic MP3 lacks custom/ReplayGain fixture: " + name)
     observed = existing(after)
-    if original != observed:
+    # foobar's MP3 writer canonicalizes the *standard* ReplayGain TXXX
+    # descriptions (their field names are case-insensitive in foobar's tag
+    # model). This is not a custom-field rename: only these two standard
+    # identifiers may differ in letter case during a real metadata update.
+    # Values and multiplicity remain exact. All custom TXXX names, including
+    # case, whitespace and interior BOMs, remain strictly protected.
+    replaygain_names = {"REPLAYGAIN_TRACK_GAIN", "REPLAYGAIN_TRACK_PEAK"}
+    def canonicalize_standard_replaygain(fields):
+        normalized = Counter()
+        seen_spelling = {}
+        for (name, value), count in fields.items():
+            canonical = name.upper()
+            if canonical in replaygain_names:
+                prior = seen_spelling.setdefault(canonical, name)
+                if prior != name:
+                    # Different physical TXXX descriptions would collapse to
+                    # one SDK field: do not certify this lossy transformation.
+                    raise AssertionError("Ambiguous ReplayGain TXXX description aliases")
+                name = canonical
+            normalized[(name, value)] += count
+        return normalized
+    if canonicalize_standard_replaygain(original) != canonicalize_standard_replaygain(observed):
         # Only classify the difference. Never print values, file paths or
-        # user-defined tag names into a public CI log. Case-only changes are
-        # still destructive physical rewrites and must remain a hard failure.
+        # user-defined tag names into a public CI log. Custom case-only
+        # rewrites are still destructive and remain a hard failure.
         def folded(fields):
             return Counter((name.casefold(), value) for (name, value), count
                            in fields.items() for _ in range(count))
@@ -693,6 +714,34 @@ def selftest_id3():
         original_case = case_tag("DJ User Key")
         renamed_case = case_tag("DJ USER KEY")
         verify_original_mp3_txxx(original_case, original_case)
+        # Standard ReplayGain capitalization is normalized by foobar on MP3
+        # metadata updates. Only that known normalization is permitted.
+        def standard_replaygain_case(name_gain, name_peak):
+            entries = (
+                ("DISCOGGER_QA_CUSTOM", "Keep original MP3 metadata"),
+                (name_gain, "-5.00 dB"),
+                (name_peak, "0.800000"),
+                ("DJ User Key", "unchanged"),
+            )
+            payload = b""
+            for name, value in entries:
+                body = b"\\x03" + name.encode() + b"\\x00" + value.encode()
+                size = (len(body).to_bytes(4, "big") if version == 3
+                        else ss(len(body)))
+                payload += b"TXXX" + size + bytes(2) + body
+            return b"ID3" + bytes((version, 0, 0)) + ss(len(payload)) + payload
+        canonical_rg = standard_replaygain_case(
+            "replaygain_track_gain", "replaygain_track_peak")
+        verify_original_mp3_txxx(original_case, canonical_rg)
+        # Two differently-cased original fields must never be conflated.
+        duplicate_rg = custom_tag(fields + frame(
+            "replaygain_track_gain", "-5.00 dB"))
+        try:
+            verify_original_mp3_txxx(duplicate_rg, canonical_rg)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("Colliding ReplayGain aliases escaped preservation audit")
         try:
             verify_original_mp3_txxx(original_case, renamed_case)
         except AssertionError:
@@ -731,6 +780,7 @@ def selftest_id3():
                        (name.casefold(), value) for name, value in
                        id3_txxx_values(case_tag("DJ USER KEY")))
     print("DISCOGGER_ID3_TXXX_DESCRIPTION_CASE_PRESERVATION=PASS")
+    print("DISCOGGER_STANDARD_REPLAYGAIN_CASE_NORMALIZATION=PASS")
     print("DISCOGGER_ID3_TXXX_INTERIOR_BOM_PRESERVATION=PASS")
     for corrupted in (original.replace(b"0.800000", b"0.700000"),
                       b"ID3" + bytes((3, 0, 0)) + ss(len(fields)-1) + fields[:-1]):
