@@ -273,6 +273,7 @@ public:
 
 private:
 	pfc::string8 m_search;
+    HWND m_owner_window = nullptr; // Captured before the online worker starts.
 	bool m_dlgbutton = false;
 	const int m_va;
 	QueryDefMap m_qdm_search_query = {};
