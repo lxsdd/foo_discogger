@@ -222,7 +222,7 @@ def id3_txxx_values(content):
             raise AssertionError("Unsupported TXXX text encoding")
         codec = codecs[enc]
         if enc == 1 and not (raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff")):
-            codec = "utf-16-le"
+            raise AssertionError("ID3v2 TXXX UTF-16 byte-order mark missing")
         try:
             payload = raw.decode(codec)
         except UnicodeError as error:
@@ -288,7 +288,7 @@ def id3_standard_text_values(content):
         raw = payload[1:]
         codec = codecs[encoding]
         if encoding == 1 and not (raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff")):
-            codec = "utf-16-le"
+            raise AssertionError("ID3v2 standard text UTF-16 byte-order mark missing")
         try:
             # The decoder consumes the UTF-16 encoding BOM. A further
             # leading U+FEFF belongs to the physical text and must survive;
@@ -698,6 +698,31 @@ def selftest_id3():
                     pass
                 else:
                     raise AssertionError("Opaque or malformed ID3v2 TXXX escaped verifier")
+    # P1: ID3v2 encoding 1 requires an explicit UTF-16 BOM. Silently
+    # guessing little-endian decoded a stripped-BOM rewrite as unchanged
+    # physical metadata and could falsely certify tag preservation.
+    for bom_version in (3, 4):
+        for frame_id, reader, payload in (
+            (b"TXXX", id3_txxx_values, "DJ USER KEY\\x00unchanged"),
+            (b"TIT2", id3_standard_text_values, "Synthetic Test"),
+        ):
+            def bom_tag(raw):
+                body = bytes((1,)) + raw
+                size = (len(body).to_bytes(4, "big") if bom_version == 3
+                        else ss(len(body)))
+                framed = frame_id + size + bytes(2) + body
+                return (b"ID3" + bytes((bom_version, 0, 0))
+                        + ss(len(framed)) + framed)
+            reader(bom_tag(payload.encode("utf-16")))
+            for missing_bom in (payload.encode("utf-16-le"),
+                                payload.encode("utf-16-be")):
+                try:
+                    reader(bom_tag(missing_bom))
+                except AssertionError:
+                    pass
+                else:
+                    raise AssertionError("Missing physical ID3 UTF-16 BOM escaped audit")
+    print("DISCOGGER_ID3_UTF16_BOM_INTEGRITY_VERIFIER=PASS")
     # UTF-16 values may carry their own second BOM after the description.
     dual = (b"\xff\xfe" + "DISCOGGER_QA_RUNNER".encode("utf-16-le") +
             b"\x00\x00\xff\xfe" + "RUNNER-VERIFIED".encode("utf-16-le"))
