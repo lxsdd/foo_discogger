@@ -1379,7 +1379,19 @@ print("PASS: atomic JSON cache publication and non-destructive parse failure.")
 # Full cache directory publication uses isolated staging, a completed marker,
 # two-phase rename, recovery, and negative portable/MSVC tests.
 txn = (root / "discogger_directory_cache.h").read_text(encoding="utf-8-sig")
-assert "recover_cache_unlocked(active_)" in txn
+assert "recover_cache_unlocked(active_, validate)" in txn
+# Recovery is only allowed to retire a valid rollback after a real JSON
+# decoder has checked all entity or paginated payloads, not mere nonempty files.
+assert "if (!validate || !cache_has_marker(backup, validate)) return false;" in txn
+assert "cache_has_marker(active, validate)" in txn
+assert "cache_payload_file(it->path() / \\"root.json\\", validate)" in txn
+assert "cache_payload_file(single, validate)" in txn
+assert "json_loadfd(fd, JSON_DECODE_ANY, &error)" in cache_atomic
+assert "cache_payload_is_valid_json" in cache_atomic
+assert "recover_cache_directory(fs::u8path(out_relative_path.c_str())," in cache_atomic
+assert core.count("ol::cache_payload_is_valid_json);") == 4
+assert "assert(!discogger_cache::recover_cache_directory(malformed));" in (
+    root / "tests/directory_cache_transaction_test.cpp").read_text(encoding="utf-8-sig")
 assert "fs::rename(active_, backup_, ec);" in txn
 assert "fs::rename(stage_, active_, ec);" in txn
 assert "fs::rename(backup_, active_, restore_ec);" in txn
