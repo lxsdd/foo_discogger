@@ -372,7 +372,7 @@ namespace Offline {
                 [root](const fs::path& temporary) {
                     // Exclusive creation, full serialization, disk flush,
                     // close, then atomic publication of the new JSON file.
-                    const int jf = _wopen(temporary.wstring().c_str(),
+                    int jf = _wopen(temporary.wstring().c_str(),
                         _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY,
                         _S_IREAD | _S_IWRITE);
                     if (jf == -1) return false;
