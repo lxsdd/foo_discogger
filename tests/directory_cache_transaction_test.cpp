@@ -88,6 +88,45 @@ int main() {
     assert(!discogger_cache::cache_has_marker(paged));
     fs::remove(paged / "page-2");
     assert(discogger_cache::cache_has_marker(paged));
+    // Native publishers pass the Jansson validator to the transaction.
+    // It must also gate the STAGED payload before the old cache is renamed:
+    // a valid taskreg plus a nonempty truncated JSON is not publishable.
+    const fs::path guarded = base / "validator-guarded-publish";
+    { discogger_cache::directory_cache_transaction tx(guarded, test_json_validator);
+      assert(tx.ready());
+      put(tx.staging_directory() / "root.json", "valid-initial");
+      assert(tx.publish("initial")); }
+    assert(read(guarded / "root.json") == "valid-initial");
+    { discogger_cache::directory_cache_transaction tx(guarded, test_json_validator);
+      assert(tx.ready());
+      put(tx.staging_directory() / "root.json", "{");
+      assert(!tx.publish("bad-entity")); }
+    assert(read(guarded / "root.json") == "valid-initial");
+    assert(!fs::exists(discogger_cache::cache_backup_path(guarded)));
+    { discogger_cache::directory_cache_transaction tx(guarded, test_json_validator);
+      assert(tx.ready());
+      put(tx.staging_directory() / "page-0/root.json", "valid-first");
+      put(tx.staging_directory() / "page-1/root.json", "malformed-json");
+      assert(!tx.publish("bad-page")); }
+    assert(read(guarded / "root.json") == "valid-initial");
+    assert(!fs::exists(discogger_cache::cache_backup_path(guarded)));
+    { discogger_cache::directory_cache_transaction tx(guarded, test_json_validator);
+      assert(tx.ready());
+      put(tx.staging_directory() / "page-0/root.json", "valid-first");
+      put(tx.staging_directory() / "page-1/root.json", "valid-second");
+      assert(tx.publish("valid-paged")); }
+    assert(!fs::exists(guarded / "root.json"));
+    assert(read(guarded / "page-0/root.json") == "valid-first");
+    assert(read(guarded / "page-1/root.json") == "valid-second");
+    assert(!fs::exists(discogger_cache::cache_backup_path(guarded)));
+    const fs::path new_invalid = base / "validator-empty-reject";
+    { discogger_cache::directory_cache_transaction tx(new_invalid, test_json_validator);
+      assert(tx.ready());
+      put(tx.staging_directory() / "root.json", "{");
+      assert(!tx.publish("invalid")); }
+    assert(!fs::exists(new_invalid));
+    // Default/no-validator transactions remain for legacy synthetic fixtures;
+    // all production publisher constructors are required to supply Jansson.
     const fs::path active = base / "releases";
     { discogger_cache::directory_cache_transaction tx(active);
       assert(tx.ready()); put(tx.staging_directory() / "page-0/root.json", "old");
