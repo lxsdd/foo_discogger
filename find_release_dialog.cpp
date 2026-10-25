@@ -2124,6 +2124,29 @@ static void runner_qa_native_cache_json_rollback() {
     if (!discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
         fs::exists(backup))
         throw std::runtime_error("Native valid JSON rollback cleanup failed.");
+    // The actual native cache publisher must use this same Jansson
+    // decoder on STAGED files, not only during interrupted-run recovery.
+    // Both branches operate solely on this unique disposable TEMP fixture.
+    {
+        discogger_cache::directory_cache_transaction tx(
+            active, ol::cache_payload_is_valid_json);
+        if (!tx.ready()) throw std::runtime_error("Native JSON stage guard could not start.");
+        write(tx.staging_directory() / "page-0" / "root.json", R"({"broken":)");
+        if (tx.publish("invalid"))
+            throw std::runtime_error("Native Jansson published malformed staged JSON.");
+    }
+    if (read(payload) != R"({"backup":true})" || fs::exists(backup))
+        throw std::runtime_error("Native malformed staged JSON changed valid active cache.");
+    {
+        discogger_cache::directory_cache_transaction tx(
+            active, ol::cache_payload_is_valid_json);
+        if (!tx.ready()) throw std::runtime_error("Native valid JSON stage could not start.");
+        write(tx.staging_directory() / "page-0" / "root.json", R"({"fresh":true})");
+        if (!tx.publish("fresh"))
+            throw std::runtime_error("Native Jansson rejected valid staged JSON.");
+    }
+    if (read(payload) != R"({"fresh":true})" || fs::exists(backup))
+        throw std::runtime_error("Native valid staged JSON publication did not preserve cache.");
     log_msg("DISCOGGER_NATIVE_JSON_ROLLBACK_QA=PASS");
 }
 #endif
