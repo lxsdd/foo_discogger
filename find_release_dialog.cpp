@@ -19,6 +19,7 @@
 #include "discogs_interface.h"
 #include "discogger_search_visibility.h"
 #include <unordered_set>
+#include <iterator>
 
 namespace ol = Offline;
 
@@ -2067,6 +2068,66 @@ void CFindReleaseDialog::UpdateArtistProfile(Artist_ptr artist) {
 }
 
 
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+// Actual Jansson + directory-recovery integration, exercised inside both
+// original Win32/x64 foobar hosts on disposable TEMP cache files only.
+static void runner_qa_native_cache_json_rollback() {
+    namespace fs = std::filesystem;
+    const fs::path active = fs::temp_directory_path() /
+        ("discogger-json-rollback-qa-" + std::to_string(GetCurrentProcessId()) +
+         "-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const fs::path backup = discogger_cache::cache_backup_path(active);
+    struct temp_cleanup {
+        fs::path active, backup;
+        ~temp_cleanup() {
+            std::error_code ec;
+            fs::remove_all(active, ec);
+            ec.clear();
+            fs::remove_all(backup, ec);
+        }
+    } cleanup{active, backup};
+    auto write = [](const fs::path& path, const char* data) {
+        fs::create_directories(path.parent_path());
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("Native JSON rollback QA fixture open failed.");
+        out << data;
+        out.close();
+        if (!out.good()) throw std::runtime_error("Native JSON rollback QA fixture write failed.");
+    };
+    auto read = [](const fs::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) throw std::runtime_error("Native JSON rollback QA fixture read failed.");
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    };
+    const fs::path payload = active / "page-0" / "root.json";
+    write(payload, "{\\"backup\\":true}");
+    write(active / "taskreg.txt", "");
+    if (!ol::cache_payload_is_valid_json(payload))
+        throw std::runtime_error("Native Jansson rejected valid JSON.");
+    fs::copy(active, backup, fs::copy_options::recursive);
+    write(payload, "{\\"broken\\":");
+    if (ol::cache_payload_is_valid_json(payload) ||
+        !discogger_cache::cache_has_marker(active) ||
+        discogger_cache::recover_cache_directory(active) ||
+        !fs::exists(backup) || read(payload) != "{\\"broken\\":")
+        throw std::runtime_error("Native malformed active JSON did not preserve rollback.");
+    if (!discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
+        read(payload) != "{\\"backup\\":true}" || fs::exists(backup))
+        throw std::runtime_error("Native Jansson did not restore valid rollback.");
+    fs::copy(active, backup, fs::copy_options::recursive);
+    write(backup / "page-0" / "root.json", "{\\"broken\\":");
+    if (discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
+        !fs::exists(backup) || read(payload) != "{\\"backup\\":true}")
+        throw std::runtime_error("Native malformed backup was promoted or discarded.");
+    write(backup / "page-0" / "root.json", "{\\"backup\\":true}");
+    if (!discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
+        fs::exists(backup))
+        throw std::runtime_error("Native valid JSON rollback cleanup failed.");
+    log_msg("DISCOGGER_NATIVE_JSON_ROLLBACK_QA=PASS");
+}
+#endif
+
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char* expected_release_id) {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
@@ -2105,6 +2166,7 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char
 std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
+    runner_qa_native_cache_json_rollback();
     const size_t previous_mode = m_query_mode;
     m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
 
