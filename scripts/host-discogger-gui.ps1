@@ -568,13 +568,15 @@ FILE "synthetic-side-b.wav" WAVE
     # authenticated search or metadata commits.
     $guiEvidence=Join-Path $dir 'qa-populated-gui.txt'
     if(Test-Path -LiteralPath $guiEvidence){throw 'Populated GUI evidence unexpectedly exists.'}
+    $guiFailure=Join-Path $dir 'qa-populated-gui-error.txt'
+    # Check for stale evidence BEFORE dispatch; the native QA may finish
+    # immediately, so checking after Start-Process races its error writer.
+    if(Test-Path -LiteralPath $guiFailure){throw 'Stale native GUI QA failure evidence unexpectedly exists.'}
     $popCmd=Start-Process -FilePath $exe -WorkingDirectory $hostDir -ArgumentList '/command:"Discogger QA populated GUI"' -PassThru
     if(-not $popCmd.WaitForExit(15000) -or $popCmd.ExitCode -ne 0){
         throw 'Could not dispatch synthetic populated native GUI QA.'
     }
     $populated=$false
-    $guiFailure=Join-Path $dir 'qa-populated-gui-error.txt'
-    if(Test-Path -LiteralPath $guiFailure){throw 'Stale native GUI QA failure evidence unexpectedly exists.'}
     for($i=0;$i -lt 50;$i++){
         Start-Sleep -Milliseconds 250
         if(Test-Path -LiteralPath $guiFailure -PathType Leaf){
