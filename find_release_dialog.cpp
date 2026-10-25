@@ -2101,26 +2101,26 @@ static void runner_qa_native_cache_json_rollback() {
         return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     };
     const fs::path payload = active / "page-0" / "root.json";
-    write(payload, "{\\"backup\\":true}");
+    write(payload, R"({"backup":true})");
     write(active / "taskreg.txt", "");
     if (!ol::cache_payload_is_valid_json(payload))
         throw std::runtime_error("Native Jansson rejected valid JSON.");
     fs::copy(active, backup, fs::copy_options::recursive);
-    write(payload, "{\\"broken\\":");
+    write(payload, R"({"broken":)");
     if (ol::cache_payload_is_valid_json(payload) ||
         !discogger_cache::cache_has_marker(active) ||
         discogger_cache::recover_cache_directory(active) ||
-        !fs::exists(backup) || read(payload) != "{\\"broken\\":")
+        !fs::exists(backup) || read(payload) != R"({"broken":)")
         throw std::runtime_error("Native malformed active JSON did not preserve rollback.");
     if (!discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
-        read(payload) != "{\\"backup\\":true}" || fs::exists(backup))
+        read(payload) != R"({"backup":true})" || fs::exists(backup))
         throw std::runtime_error("Native Jansson did not restore valid rollback.");
     fs::copy(active, backup, fs::copy_options::recursive);
-    write(backup / "page-0" / "root.json", "{\\"broken\\":");
+    write(backup / "page-0" / "root.json", R"({"broken":)");
     if (discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
-        !fs::exists(backup) || read(payload) != "{\\"backup\\":true}")
+        !fs::exists(backup) || read(payload) != R"({"backup":true})")
         throw std::runtime_error("Native malformed backup was promoted or discarded.");
-    write(backup / "page-0" / "root.json", "{\\"backup\\":true}");
+    write(backup / "page-0" / "root.json", R"({"backup":true})");
     if (!discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
         fs::exists(backup))
         throw std::runtime_error("Native valid JSON rollback cleanup failed.");
