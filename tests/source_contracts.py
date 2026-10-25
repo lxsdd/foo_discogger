@@ -2281,90 +2281,17 @@ for marker in (
     assert f'"{marker}="' in qa_native_source
     assert f"'{marker}'" in native_gui_script
 assert "DISCOGGER_AUTHENTICATED_API_COHORT_FOLLOWUP_" in native_gui_script
-# Regression for protected run 40216612147: the original PowerShell parser
-# accepted only [A-Z_], silently discarding the new PAGE2 telemetry names,
-# then threw "Malformed native live-search stage evidence." Numeric names
-# must be accepted while preserving strict, whitelisted unsigned counters.
-assert "if($line -match '^([A-Z0-9_]+)=(\\d+)
-print("PASS: authenticated API cohort page-two/specificity diagnostics are bounded and separately reported.")
-
-print("PASS: all five mandatory Discogs releases have native GUI search gates.")
-
-
-# Release-tree navigation must fail closed if a Win32 TVM_GETITEM returns false.
-# Otherwise zero-initialized TVITEM.lParam could be decoded as release row 0
-# after cache replacement, selecting/tagging the wrong Discogs release.
-release_tree = (root / "find_release_tree.cpp").read_text(encoding="utf-8-sig")
-selected_reader = release_tree.split(
-    "size_t CFindReleaseTree::test_getselected(", 1)[1].split(
-    "size_t CFindReleaseTree::test_getatcursor(", 1)[0]
-cursor_reader = release_tree.split(
-    "size_t CFindReleaseTree::test_getatcursor(", 1)[1].split(
-    "void CFindReleaseTree::hit_test_release_proceed(", 1)[0]
-navigation = release_tree.split(
-    "void CFindReleaseTree::hit_test_release_proceed(", 1)[1].split(
-    "// default action for release tree items", 1)[0]
-enter_key = release_tree.split(
-    "void CFindReleaseTree::vkreturn_test_master_expand_release(", 1)[1].split(
-    "// double click on release proceeds to match tracks", 1)[0]
-initial_expand = release_tree.split("void CFindReleaseTree::OnInitExpand(", 1)[1]
-
-def checked_treeview_item(body):
-    guard = "if (!TreeView_GetItem(m_hwndTreeView, &item) || item.lParam == -1)"
-    return (guard in body and
-            body.index(guard) < body.index("out = item;") and
-            "return ~size_t{0};" in body and
-            "return static_cast<size_t>(item.lParam);" in body)
-
-for tree_reader in (selected_reader, cursor_reader):
-    assert checked_treeview_item(tree_reader)
-    # Negative regression: an accidentally bypassed TVM_GETITEM failure guard
-    # must not be accepted merely because the selection-return code remains.
-    assert not checked_treeview_item(tree_reader.replace(
-        "!TreeView_GetItem(m_hwndTreeView, &item)", "false", 1))
-assert "if (!::ScreenToClient(m_hwndTreeView, &hit_info.pt))" in cursor_reader
-assert "const size_t lparam = test_getatcursor(cursor, item, true);" in navigation
-assert "if (lparam == ~size_t{0})" in navigation
-assert "::GetCursorPos(&cursor)" in navigation
-assert "if (!TreeView_GetItem(m_hwndTreeView, &tvi)) return;" in enter_key
-assert "tvi.stateMask = TVIS_EXPANDED;" in enter_key
-assert "if (TreeView_GetItem(m_hwndTreeView, &tvitem) && tvitem.lParam == lparam)" in initial_expand
-assert "tvitem.mask = TVIF_PARAM;" in initial_expand
-print("PASS: release TreeView failed/stale item retrieval cannot dispatch row zero or navigate invalid selection.")
-
-
-# Owner-PC copied-media verification is a read-only tool, tested with synthetic
-# temporary files on the Windows baseline runner (not the owner's PC).
-private_audit = (root / "scripts/private-readonly-acceptance.ps1").read_text(encoding="utf-8-sig")
-private_test = (root / "tests/private-readonly-acceptance-test.ps1").read_text(encoding="utf-8-sig")
-validation = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
-assert "Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256" in private_audit
-assert "mtime_utc_ticks" in private_audit
-assert "REFUSED: fixture must be a direct child" in private_audit
-assert "REFUSED: fixture contains a junction or symbolic link." in private_audit
-assert "Get-OrdinaryFiles $node.FullName" in private_audit
-assert "REFUSED: baseline manifest already exists" in private_audit
-# No check-then-truncate race: CreateNew fails atomically when a
-# competing process creates a manifest or link at the target path.
-assert "[IO.FileMode]::CreateNew" in private_audit
-assert "[IO.FileShare]::None" in private_audit
-assert "$stream.Flush($true)" in private_audit
-assert "WriteAllText($manifest" not in private_audit
-assert "REFUSED: baseline manifest must be an ordinary file, not a link." in private_audit
-assert "WriteAllBytes" not in private_audit
-assert "Remove-Item" not in private_audit
-assert "Expect-Rejected" in private_test
-assert "Rejected baseline attempt changed the original manifest." in private_test
-assert "timestamp-only mutation" in private_test
-assert "corrupt baseline must fail closed" in private_test
-assert "run: ./tests/private-readonly-acceptance-test.ps1" in validation
-print("PASS: owner copied-fixture read-only audit is SHA/mtime checked, fail-closed and Windows CI exercised.")
- -and $Matches[1] -in $expected)" in native_gui_script
-for qa_line in ("API_COHORT_PAGE2_ATTEMPT_MASK=2", "API_COHORT_PAGE2_KNOWN_MASK=2",
+# A previous protected run failed because the PowerShell parser matched
+# [A-Z_]+, excluding PAGE2 keys. Ensure numeric marker names are accepted,
+# and only exact whitelisted nonnegative values can enter the QA counters.
+assert "if($line -match '^([A-Z0-9_]+)=(\\d+)$' -and $Matches[1] -in $expected)" in native_gui_script
+for qa_line in ("API_COHORT_PAGE2_ATTEMPT_MASK=2",
+                "API_COHORT_PAGE2_KNOWN_MASK=2",
                 "API_COHORT_KNOWN_MASK=16381"):
-    match = re.fullmatch(r"([A-Z0-9_]+)=(\\d+)", qa_line)
-    assert match and match.group(1) in native_gui_script and int(match.group(2)) >= 0
-assert not re.fullmatch(r"([A-Z0-9_]+)=(\\d+)", "API_COHORT_PAGE2_KNOWN_MASK=-1")
+    parsed = re.fullmatch(r"([A-Z0-9_]+)=(\d+)", qa_line)
+    assert parsed and parsed.group(1) in native_gui_script and int(parsed.group(2)) >= 0
+assert re.fullmatch(r"([A-Z0-9_]+)=(\d+)", "API_COHORT_PAGE2_KNOWN_MASK=-1") is None
+
 assert native_gui_script.count("DISCOGGER_AUTHENTICATED_API_COHORT_${Architecture}=") == 1
 print("PASS: authenticated API cohort page-two/specificity diagnostics are bounded and separately reported.")
 
