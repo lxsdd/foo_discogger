@@ -2424,3 +2424,28 @@ assert "timestamp-only mutation" in private_test
 assert "corrupt baseline must fail closed" in private_test
 assert "run: ./tests/private-readonly-acceptance-test.ps1" in validation
 print("PASS: owner copied-fixture read-only audit is SHA/mtime checked, fail-closed and Windows CI exercised.")
+
+# The runner-only GUI/media DLL must never be confused with a privately
+# acceptable clean component. The actual MSVC rebuild and both original
+# foobar host loads are independent runtime gates in validation.yml.
+clean_build = (root / "scripts/build-component-dll.ps1").read_text(encoding="utf-8-sig")
+validation = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+for required in (
+    "[switch] $CleanNonQa",
+    "if ($CleanNonQa -and $env:CL -match 'DISCOGGER_RUNNER_MEDIA_QA')",
+    "if ($CleanNonQa) { '/t:Rebuild' } else { '/t:Build' }",
+    "if ($hash -eq $previousQaHash)",
+    "'DISCOGGER_QA_RUNNER'",
+    "'DISCOGGER_QA_MEDIA_DIR'",
+    "'DISCOGGER_NATIVE_JSON_ROLLBACK_QA'",
+    'CLEAN_NONQA_DLL_$platform=PASS',
+):
+    assert required in clean_build, required
+qa_gui = validation.index("name: HARD GATE - Discogger first-run SQLite configuration and x64 native GUI")
+clean_rebuild = validation.index("name: HARD GATE - clean non-QA Win32 x64 DLL rebuild")
+clean_win32 = validation.index("name: HARD GATE - clean non-QA Win32 original foobar host load")
+clean_x64 = validation.index("name: HARD GATE - clean non-QA x64 original foobar host load")
+assert qa_gui < clean_rebuild < clean_win32 < clean_x64
+assert "./scripts/build-component-dll.ps1 -CleanNonQa" in validation
+assert "upload-artifact" not in validation
+print("PASS: clean non-QA host acceptance follows real synthetic GUI QA, rebuilds both architectures and forbids runner-only markers/artifacts.")
