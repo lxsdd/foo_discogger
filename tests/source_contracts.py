@@ -2135,3 +2135,45 @@ assert "Unrecognized public release QA selector." in qa_selector
 print("PASS: all 21 native GUI release selectors are whitelisted; arbitrary IDs rejected.")
 
 print("PASS: all five mandatory Discogs releases have native GUI search gates.")
+
+
+# Release-tree navigation must fail closed if a Win32 TVM_GETITEM returns false.
+# Otherwise zero-initialized TVITEM.lParam could be decoded as release row 0
+# after cache replacement, selecting/tagging the wrong Discogs release.
+release_tree = (root / "find_release_tree.cpp").read_text(encoding="utf-8-sig")
+selected_reader = release_tree.split(
+    "size_t CFindReleaseTree::test_getselected(", 1)[1].split(
+    "size_t CFindReleaseTree::test_getatcursor(", 1)[0]
+cursor_reader = release_tree.split(
+    "size_t CFindReleaseTree::test_getatcursor(", 1)[1].split(
+    "void CFindReleaseTree::hit_test_release_proceed(", 1)[0]
+navigation = release_tree.split(
+    "void CFindReleaseTree::hit_test_release_proceed(", 1)[1].split(
+    "// default action for release tree items", 1)[0]
+enter_key = release_tree.split(
+    "void CFindReleaseTree::vkreturn_test_master_expand_release(", 1)[1].split(
+    "// double click on release proceeds to match tracks", 1)[0]
+initial_expand = release_tree.split("void CFindReleaseTree::OnInitExpand(", 1)[1]
+
+def checked_treeview_item(body):
+    guard = "if (!TreeView_GetItem(m_hwndTreeView, &item) || item.lParam == -1)"
+    return (guard in body and
+            body.index(guard) < body.index("out = item;") and
+            "return ~size_t{0};" in body and
+            "return static_cast<size_t>(item.lParam);" in body)
+
+for tree_reader in (selected_reader, cursor_reader):
+    assert checked_treeview_item(tree_reader)
+    # Negative regression: an accidentally bypassed TVM_GETITEM failure guard
+    # must not be accepted merely because the selection-return code remains.
+    assert not checked_treeview_item(tree_reader.replace(
+        "!TreeView_GetItem(m_hwndTreeView, &item)", "false", 1))
+assert "if (!::ScreenToClient(m_hwndTreeView, &hit_info.pt))" in cursor_reader
+assert "const size_t lparam = test_getatcursor(cursor, item, true);" in navigation
+assert "if (lparam == ~size_t{0})" in navigation
+assert "::GetCursorPos(&cursor)" in navigation
+assert "if (!TreeView_GetItem(m_hwndTreeView, &tvi)) return;" in enter_key
+assert "tvi.stateMask = TVIS_EXPANDED;" in enter_key
+assert "if (TreeView_GetItem(m_hwndTreeView, &tvitem) && tvitem.lParam == lparam)" in initial_expand
+assert "tvitem.mask = TVIF_PARAM;" in initial_expand
+print("PASS: release TreeView failed/stale item retrieval cannot dispatch row zero or navigate invalid selection.")
