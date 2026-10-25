@@ -195,6 +195,23 @@ jobs:
       - name: HARD GATE - Discogger first-run SQLite configuration and x64 native GUI
         shell: pwsh
         run: ./scripts/host-discogger-gui.ps1 -Architecture x64 -ComponentDll "$env:RUNNER_TEMP/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll"
+      # The preceding DLLs contain runner-only synthetic QA commands.
+      # After every native GUI/media gate, force a full no-QA rebuild from
+      # the same checked-out source and recheck PE, hashes and QA marker
+      # absence. Keep both DLLs exclusively in ephemeral runner temp.
+      - name: HARD GATE - clean non-QA Win32 x64 DLL rebuild (no artifacts)
+        shell: pwsh
+        run: ./scripts/build-component-dll.ps1 -CleanNonQa
+      - name: HARD GATE - clean non-QA Win32 original foobar host load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: Win32
+          component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll
+      - name: HARD GATE - clean non-QA x64 original foobar host load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: x64
+          component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll
 
   # Explicit manual dispatch only; no secrets for public PR/push builds.
   authorized-discogs-live:
