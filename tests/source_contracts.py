@@ -403,6 +403,9 @@ assert 'if (!candidate.q.empty() || !candidate.title.empty() ||' in plan
 assert 'candidate.release_title_filter.empty()) return {};' in plan
 assert "if (!using_track_title) {" in plan
 assert 'plan.push_back({"featured primary artist and release title (review required)",' in plan
+assert plan.index('plan.push_back({"featured primary artist and release title (review required)",') < plan.index('plan.push_back({"collaboration partner and title",')
+# A guest/title query can return an unrelated release and stop the fallback.
+# Therefore the stricter, authenticated primary-artist query comes FIRST.
 assert "if (!fake_artist->master_releases.get_count() && !fake_artist->releases.get_count())" in search
 assert 'presentation_query["artist="].first.clear();' in search
 print("PASS: safe, bounded featured-primary Discogs release-only fallback is gated on empty search.")
