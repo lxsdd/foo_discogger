@@ -103,6 +103,10 @@ for required in (
     "Native late exact search results were not automatically added to the release tree.",
     "Native late alternative results were not automatically added to the release tree.",
     "Native late alternatives disabled an existing exact-only filter.",
+    "Native null-only exact result incorrectly hid valid alternatives.",
+    "Native null-only search retained stale visible results.",
+    "on_search_artist_done(null_exact, alternatives, false);",
+    "on_search_artist_done(null_exact, exact, false);",
 ):
     assert required in native_stream
 print("PASS: null/duplicate artist worker deltas and late GUI tree/checkbox regressions are wired.")
@@ -1356,7 +1360,14 @@ assert "const bool b_chk_exact_matches = decision.exact_only;" in frag
 assert "CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);" in frag
 assert "alternative releases require review" in frag
 assert "m_alist.fill_artist_list(b_chk_exact_matches" in frag
-assert "const size_t total_exact = p_artist_exact_matches.get_count() +" in frag
+assert "const size_t incoming_exact = valid_count(p_artist_exact_matches);" in frag
+assert "const size_t incoming_other = valid_count(p_artist_other_matches);" in frag
+assert "const size_t total_exact = incoming_exact +" in frag
+assert "const size_t total_other = incoming_other +" in frag
+assert "const bool incoming_results = incoming_exact || incoming_other;" in frag
+assert "const bool incoming_results = p_artist_exact_matches.get_count()" not in frag
+assert "return count_valid_artists(m_artist_exact_matches);" in artist_header
+assert "return count_valid_artists(m_artist_other_matches);" in artist_header
 assert "append ? m_alist.Get_Exact_Artist_Count() : 0" in frag
 assert "append ? m_alist.Get_Other_Artist_Count() : 0" in frag
 assert "exact_only_requested, total_exact, total_other" in frag
