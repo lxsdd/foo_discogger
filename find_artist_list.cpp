@@ -23,6 +23,88 @@ void queue_artist_redraw(HWND window) {
             ::InvalidateRect(window, nullptr, TRUE);
     });
 }
+
+// Two asynchronous provider phases can describe the SAME artist ID with
+// disjoint release/master IDs. Build a search-only projection rather than
+// mutating the first (possibly canonical cached) Artist or losing late IDs.
+// Identical/repeated payload is a strict no-op: preserve the original pointer.
+Artist_ptr union_search_artist_payload(const Artist_ptr& retained,
+                                       const Artist_ptr& delta) {
+    if (!retained || !delta || !retained->id.equals(delta->id))
+        return retained;
+
+    std::unordered_set<std::string> known_releases, known_masters;
+    for (const auto& release : retained->releases)
+        if (release && release->id.get_length())
+            known_releases.emplace(release->id.get_ptr());
+    for (const auto& master : retained->master_releases)
+        if (master && master->id.get_length())
+            known_masters.emplace(master->id.get_ptr());
+
+    bool adds_new = false;
+    for (const auto& release : delta->releases)
+        if (release && release->id.get_length() &&
+            known_releases.emplace(release->id.get_ptr()).second)
+            adds_new = true;
+    for (const auto& master : delta->master_releases)
+        if (master && master->id.get_length() &&
+            known_masters.emplace(master->id.get_ptr()).second)
+            adds_new = true;
+    if (!adds_new) return retained;
+
+    Artist_ptr merged = std::make_shared<Artist>(retained->id.get_ptr());
+    merged->name = retained->name.get_length() ? retained->name : delta->name;
+    merged->profile = retained->profile;
+    merged->realname = retained->realname;
+    merged->images = retained->images;
+    merged->urls = retained->urls;
+    merged->aliases = retained->aliases;
+    merged->ingroups = retained->ingroups;
+    merged->anvs = retained->anvs;
+    merged->members = retained->members;
+    merged->loaded_preview = true;
+    // This union is a partial search projection, never a fully fetched
+    // artist cache. Default_Action must show it without pretending a full
+    // catalog has been loaded or silently committing any tags.
+    merged->loaded_releases = false;
+    merged->search_role_list_pos = retained->search_role_list_pos;
+
+    std::unordered_set<std::string> emitted_releases, emitted_masters;
+    auto add_release = [&](const Release_ptr& release) {
+        if (release && release->id.get_length() &&
+            emitted_releases.emplace(release->id.get_ptr()).second) {
+            merged->releases.append_single(release);
+            merged->search_order_master.append_single(false);
+        }
+    };
+    auto add_master = [&](const MasterRelease_ptr& master) {
+        if (master && master->id.get_length() &&
+            emitted_masters.emplace(master->id.get_ptr()).second) {
+            merged->master_releases.append_single(master);
+            merged->search_order_master.append_single(true);
+        }
+    };
+    for (const auto& artist : {retained, delta}) {
+        size_t master_index = 0, release_index = 0;
+        for (const bool is_master : artist->search_order_master) {
+            if (is_master) {
+                if (master_index < artist->master_releases.get_count())
+                    add_master(artist->master_releases[master_index]);
+                ++master_index;
+            } else {
+                if (release_index < artist->releases.get_count())
+                    add_release(artist->releases[release_index]);
+                ++release_index;
+            }
+        }
+        // Missing order flags must not hide valid provider releases.
+        while (master_index < artist->master_releases.get_count())
+            add_master(artist->master_releases[master_index++]);
+        while (release_index < artist->releases.get_count())
+            add_release(artist->releases[release_index++]);
+    }
+    return merged;
+}
 } // namespace
 
 CArtistList::CArtistList(IListControlOwnerDataSource* ilo, id_tracer* idtracer_p)
@@ -274,14 +356,20 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
         // or a failed asynchronous lookup may contribute a null pointer.
         // Keep exact matches first, preserve the first valid identity and
         // never expose null/duplicate owner-data rows to native callbacks.
-        std::unordered_set<std::string> visible_ids;
+        std::unordered_map<std::string, size_t> visible_positions;
         pfc::array_t<Artist_ptr> unique_artists;
         for (const auto& candidate : m_find_release_artists) {
             if (!candidate) continue;
-            if (candidate->id.get_length() &&
-                !visible_ids.emplace(candidate->id.get_ptr()).second)
-                continue;
-            unique_artists.append_single(candidate);
+            if (!candidate->id.get_length()) continue;
+            const auto inserted = visible_positions.emplace(
+                candidate->id.get_ptr(), unique_artists.get_count());
+            if (inserted.second) {
+                unique_artists.append_single(candidate);
+            } else {
+                const size_t index = inserted.first->second;
+                unique_artists[index] =
+                    union_search_artist_payload(unique_artists[index], candidate);
+            }
         }
         m_find_release_artists = unique_artists;
     }
