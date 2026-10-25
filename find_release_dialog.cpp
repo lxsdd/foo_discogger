@@ -2200,6 +2200,37 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         !appended_rows[4]->search_role_list_pos)
         throw std::runtime_error("Native repeated append duplicated alternatives or lost artist roles.");
 
+    // Exact-only is a separate visible projection: newly appended artist
+    // objects previously retained their default role zero, and later row
+    // selection could be confused with another search-result generation.
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(two_artists, exact, false);
+    auto exact_rows = m_alist.Get_Artists();
+    if (exact_rows.get_count() != 2 ||
+        !exact_rows[0]->id.equals("101") || !exact_rows[1]->id.equals("102") ||
+        !exact_rows[0]->search_role_list_pos || !exact_rows[1]->search_role_list_pos)
+        throw std::runtime_error("Native exact-only artist list initial projection failed.");
+    const size_t exact_role_one = exact_rows[0]->search_role_list_pos;
+    const size_t exact_role_two = exact_rows[1]->search_role_list_pos;
+    Artist_ptr exact_late_artist = std::make_shared<Artist>("108");
+    exact_late_artist->name = "Late exact-only artist";
+    pfc::array_t<Artist_ptr> exact_late;
+    exact_late.append_single(exact_late_artist);
+    on_search_artist_done(exact_late, exact, true);
+    on_search_artist_done(exact, pfc::array_t<Artist_ptr>(), true);
+    exact_rows = m_alist.Get_Artists();
+    if (exact_rows.get_count() != 3 ||
+        !exact_rows[0]->id.equals("101") ||
+        !exact_rows[1]->id.equals("102") ||
+        !exact_rows[2]->id.equals("108") ||
+        exact_rows[0]->search_role_list_pos != exact_role_one ||
+        exact_rows[1]->search_role_list_pos != exact_role_two ||
+        !exact_rows[2]->search_role_list_pos ||
+        exact_rows[2]->search_role_list_pos == exact_role_one ||
+        exact_rows[2]->search_role_list_pos == exact_role_two)
+        throw std::runtime_error("Native exact-only append lost or duplicated artist selection roles.");
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);
+
     // Same ID 0 preview sentinel, a new query result: must replace stale tree.
     Artist_ptr refreshed = std::make_shared<Artist>("103");
     Release_ptr new_release = std::make_shared<Release>("32559");
