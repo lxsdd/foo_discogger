@@ -573,8 +573,15 @@ FILE "synthetic-side-b.wav" WAVE
         throw 'Could not dispatch synthetic populated native GUI QA.'
     }
     $populated=$false
+    $guiFailure=Join-Path $dir 'qa-populated-gui-error.txt'
+    if(Test-Path -LiteralPath $guiFailure){throw 'Stale native GUI QA failure evidence unexpectedly exists.'}
     for($i=0;$i -lt 50;$i++){
         Start-Sleep -Milliseconds 250
+        if(Test-Path -LiteralPath $guiFailure -PathType Leaf){
+            $nativeError=(Get-Content -LiteralPath $guiFailure -Raw).Trim()
+            if(-not $nativeError){$nativeError='unknown native GUI failure'}
+            throw ('Native populated foobar GUI assertion failed: '+$nativeError)
+        }
         if(Test-Path -LiteralPath $guiEvidence -PathType Leaf){
             $evidence=Get-Content -LiteralPath $guiEvidence -Raw
             if($evidence.Contains('ARTISTS=1') -and $evidence.Contains('RELEASES=5')){
