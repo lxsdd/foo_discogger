@@ -1379,7 +1379,7 @@ print("PASS: atomic JSON cache publication and non-destructive parse failure.")
 # Full cache directory publication uses isolated staging, a completed marker,
 # two-phase rename, recovery, and negative portable/MSVC tests.
 txn = (root / "discogger_directory_cache.h").read_text(encoding="utf-8-sig")
-assert "recover_cache_unlocked(active_, validate)" in txn
+assert "recover_cache_unlocked(active_, validator_)" in txn
 # Recovery is only allowed to retire a valid rollback after a real JSON
 # decoder has checked all entity or paginated payloads, not mere nonempty files.
 assert "if (!validate || !cache_has_marker(backup, validate)) return false;" in txn
@@ -1394,7 +1394,9 @@ assert "assert(!discogger_cache::recover_cache_directory(malformed));" in (
 assert "fs::rename(active_, backup_, ec);" in txn
 assert "fs::rename(stage_, active_, ec);" in txn
 assert "fs::rename(backup_, active_, restore_ec);" in txn
-assert "cache_has_marker(stage_)" in txn
+assert "cache_has_marker(stage_, validator_)" in txn
+assert "cache_json_validator validator_;" in txn
+assert "validator_(std::move(validate))" in txn
 assert "std::unique_lock<std::mutex> lock_" in txn
 assert "directory_cache_transaction_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 # Original Win32/x64 host QA must execute Jansson itself on disposable JSON
@@ -1404,6 +1406,11 @@ assert "runner_qa_native_cache_json_rollback();" in native_dlg
 assert "DISCOGGER_NATIVE_JSON_ROLLBACK_QA=PASS" in native_dlg
 assert 'write(payload, R"({"broken":)");' in native_dlg
 assert "recover_cache_directory(active, ol::cache_payload_is_valid_json)" in native_dlg
+assert "Native Jansson published malformed staged JSON." in native_dlg
+assert "Native Jansson rejected valid staged JSON." in native_dlg
+assert "Native malformed staged JSON changed valid active cache." in native_dlg
+assert "qa-populated-gui-error.txt" in (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+assert "Native populated foobar GUI assertion failed:" in (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
 
 core = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 assert core.count("ol::cache_payload_is_valid_json);") == 4
