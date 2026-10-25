@@ -264,7 +264,24 @@ void run_populated_search_gui_qa() {
         throw std::runtime_error("Synthetic GUI evidence must remain under runner temp.");
     if (!g_discogs || !g_discogs->find_release_dialog)
         throw std::runtime_error("Native Discogger Find Releases is not open.");
-    const auto counts = g_discogs->find_release_dialog->runner_qa_populated_search_rows();
+    // Failures inside the original foobar GUI command are caught by the
+    // component's command dispatcher. Export only this runner-local diagnostic
+    // so the host CI reports the actual failed native assertion instead of
+    // timing out on a missing success marker.
+    std::pair<size_t, size_t> counts;
+    try {
+        counts = g_discogs->find_release_dialog->runner_qa_populated_search_rows();
+    } catch (const std::exception& e) {
+        const auto diagnostic = folder / "qa-populated-gui-error.txt";
+        std::ofstream out(diagnostic, std::ios::binary | std::ios::trunc);
+        if (out) { out << e.what() << '\n'; out.flush(); }
+        throw;
+    } catch (...) {
+        const auto diagnostic = folder / "qa-populated-gui-error.txt";
+        std::ofstream out(diagnostic, std::ios::binary | std::ios::trunc);
+        if (out) { out << "unknown native GUI QA exception\n"; out.flush(); }
+        throw;
+    }
     if (counts.first != 1 || counts.second != 5)
         throw std::runtime_error("Native GUI did not populate one artist and five releases.");
     const auto evidence = folder / "qa-populated-gui.txt";
