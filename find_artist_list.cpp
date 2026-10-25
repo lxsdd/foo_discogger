@@ -7,6 +7,7 @@
 #include "find_artist_list.h"
 #include "discogger_artist_activation.h"
 #include <limits>
+#include <unordered_map>
 
 const size_t TRACER_IMG_NDX = 3;
 const size_t LOADED_RELEASES_IMG_NDX = 6;
@@ -246,21 +247,30 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
 	case 2:
 		break;
 	case 3:
-		if (!append) {
+		{
+			// These two arrays already hold *all* previously received pages.
+			// Re-project exact + alternative rows rather than appending the
+			// cumulative alternative array a second time on each worker callback.
+			// In particular, m_find_release_artists.count() is NOT the number of
+			// exact matches when alternatives were already visible.
+			std::unordered_map<std::string, size_t> prior_roles;
+			if (append) {
+				for (const auto& old_artist : m_find_release_artists) {
+					if (old_artist)
+						prior_roles.emplace(old_artist->id.get_ptr(), old_artist->search_role_list_pos);
+				}
+			}
 			m_find_release_artists = m_artist_exact_matches;
-		}
-		else {
-			int base = m_find_release_artists.get_count();
-			int cadd = m_artist_exact_matches.get_count() - base;
-			m_find_release_artists.resize(base + cadd);
-			int c = 0;
-			for (auto w = base; w < base + cadd; w++) {
-				//copy last cadd elements
-				m_find_release_artists[w] = m_artist_exact_matches[w];
-				m_find_release_artists[w]->search_role_list_pos = get_next_role_pos();
+			m_find_release_artists.append(m_artist_other_matches);
+			if (append) {
+				for (auto& new_artist : m_find_release_artists) {
+					if (!new_artist) continue;
+					const auto previous = prior_roles.find(new_artist->id.get_ptr());
+					new_artist->search_role_list_pos = previous != prior_roles.end()
+						? previous->second : get_next_role_pos();
+				}
 			}
 		}
-		m_find_release_artists.append(m_artist_other_matches);
 		break;
 	}
 
