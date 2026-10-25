@@ -168,53 +168,13 @@ namespace Offline {
 		PFC_ASSERT((getFrom != GetFrom::Release && getFrom != GetFrom::Versions) || (!STR_EQUAL(id, secid) && secid.get_length()));
 
 		pfc::string8 n8_path = get_offline_path(id, getFrom, secid, true);
-		fs::path os_path = fs::u8path(n8_path.c_str());
+		const fs::path os_path = fs::u8path(n8_path.c_str());
 
-		bool debug_path_exists = false;
-		bool req_check = false;
-
-		size_t req_files;
-		size_t req_dirs;
-
-		if (getFrom == GetFrom::ArtistReleases || getFrom == GetFrom::Versions) {
-			req_files = 1;
-			req_dirs = 1;
-		}
-		else {
-			req_files = 2;
-			req_dirs = 0;
-		}
-
-		try
-		{
-			if (fs::exists(os_path) && fs::is_directory(os_path))
-			{
-				fs::recursive_directory_iterator dirpos{ os_path };
-
-				for (std::filesystem::directory_entry walk_dir : dirpos) {
-
-					if (walk_dir.is_regular_file()) {
-						req_files--;
-					}
-					else if (walk_dir.is_directory()) {
-						req_dirs--;
-					}
-
-					req_check = req_files < 1 && req_dirs < 1;
-
-					if (req_check) break;
-				}
-			}
-		}
-		catch (const fs::filesystem_error& err)
-		{
-			return false;
-		}
-		catch (const std::exception& ex)
-		{
-			return false;
-		}
-		return req_check;
+		const bool paged = getFrom == GetFrom::ArtistReleases || getFrom == GetFrom::Versions;
+		// A shape preflight only: is_data_avail() still requires the completed
+		// marker, freshness and contiguous page/payload validation separately.
+		return discogger_cache::cache_has_minimum_entries(
+			os_path, paged ? 1u : 2u, paged ? 1u : 0u);
 	}
 
 
