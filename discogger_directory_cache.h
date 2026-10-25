@@ -23,12 +23,14 @@ inline fs::path cache_backup_path(const fs::path& active) {
     fs::path p = active; p += ".rollback"; return p;
 }
 // A completed marker does not prove that the JSON payload survived.
-inline bool cache_payload_file(const fs::path& path) {
+using cache_json_validator = std::function<bool(const fs::path&)>;
+inline bool cache_payload_file(const fs::path& path,
+                               const cache_json_validator& validate = {}) {
     std::error_code ec;
     if (fs::is_symlink(path, ec) || ec) return false;
     if (!fs::is_regular_file(path, ec) || ec) return false;
     const auto size = fs::file_size(path, ec);
-    return !ec && size != 0;
+    return !ec && size != 0 && (!validate || validate(path));
 }
 // Minimum counts are independent: extra files must not underflow the
 // remaining file count while we still await a directory (or vice versa).
@@ -60,7 +62,8 @@ inline bool cache_has_minimum_entries(const fs::path& root,
     }
     return !ec && remaining.satisfied();
 }
-inline bool cache_has_marker(const fs::path& root) {
+inline bool cache_has_marker(const fs::path& root,
+                             const cache_json_validator& validate = {}) {
     std::error_code ec;
     if (!fs::is_directory(root, ec) || ec ||
         fs::is_symlink(root, ec) || ec) return false;
@@ -92,18 +95,19 @@ inline bool cache_has_marker(const fs::path& root) {
             if (ec || has_single) return false;
             std::size_t index = 0;
             if (!parse_cache_page_folder(name, index) ||
-                !cache_payload_file(it->path() / "root.json")) return false;
+                !cache_payload_file(it->path() / "root.json", validate)) return false;
             indexes.push_back(index);
         } else {
             if (ec || name.rfind("page-", 0) == 0) return false;
         }
     }
     if (ec) return false;
-    if (has_single) return cache_payload_file(single);
+    if (has_single) return cache_payload_file(single, validate);
     std::sort(indexes.begin(), indexes.end());
     return complete_cache_page_sequence(indexes);
 }
-inline bool recover_cache_unlocked(const fs::path& active) {
+inline bool recover_cache_unlocked(const fs::path& active,
+                                   const cache_json_validator& validate = {}) {
     const fs::path backup = cache_backup_path(active);
     std::error_code ec;
     // On POSIX, is_symlink(missing, ec) can report ENOENT. First
@@ -118,8 +122,11 @@ inline bool recover_cache_unlocked(const fs::path& active) {
     // A corrupt rollback is not a safe replacement for a damaged active
     // cache. Preserve both directories for diagnosis/retry instead of
     // deleting the active cache and promoting incomplete backup data.
-    if (!cache_has_marker(backup)) return false;
-    if (active_exists && cache_has_marker(active)) {
+    // Shape/marker checks alone cannot distinguish malformed JSON from a
+    // valid cache. Without a real parser, retain both instead of deleting
+    // the last rollback or replacing the active directory speculatively.
+    if (!validate || !cache_has_marker(backup, validate)) return false;
+    if (active_exists && cache_has_marker(active, validate)) {
         fs::remove_all(backup, ec);
         return !ec;
     }
@@ -130,17 +137,19 @@ inline bool recover_cache_unlocked(const fs::path& active) {
     fs::rename(backup, active, ec);
     return !ec;
 }
-inline bool recover_cache_directory(const fs::path& active) {
+inline bool recover_cache_directory(const fs::path& active,
+                                    const cache_json_validator& validate = {}) {
     std::lock_guard<std::mutex> lock(directory_cache_mutex());
-    return recover_cache_unlocked(active);
+    return recover_cache_unlocked(active, validate);
 }
 class directory_cache_transaction {
 public:
-    explicit directory_cache_transaction(fs::path destination)
+    explicit directory_cache_transaction(fs::path destination,
+                                         cache_json_validator validate = {})
         : active_(std::move(destination)), backup_(cache_backup_path(active_)),
           lock_(directory_cache_mutex()) {
         std::error_code ec;
-        if (!recover_cache_unlocked(active_)) return;
+        if (!recover_cache_unlocked(active_, validate)) return;
         fs::create_directories(active_.parent_path(), ec);
         if (ec || !fs::is_directory(active_.parent_path(), ec) || ec) return;
         static std::atomic<unsigned long long> counter{0};
