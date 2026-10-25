@@ -1360,8 +1360,19 @@ assert "const bool b_chk_exact_matches = decision.exact_only;" in frag
 assert "CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);" in frag
 assert "alternative releases require review" in frag
 assert "m_alist.fill_artist_list(b_chk_exact_matches" in frag
-assert "const size_t incoming_exact = valid_count(p_artist_exact_matches);" in frag
-assert "const size_t incoming_other = valid_count(p_artist_other_matches);" in frag
+assert "const size_t incoming_exact = valid_count(valid_exact);" in frag
+assert "const size_t incoming_other = valid_count(valid_other);" in frag
+# Invalid allocated artist IDs must be discarded before exact-only ranking,
+# cumulative append and native list/tree presentation. The runner exercises
+# empty-ID exact fallback plus an empty-ID late append against real Win32 UI.
+assert "const auto valid_rows =" in frag
+assert "if (artist && artist->id.get_length())" in frag
+assert "const auto valid_exact = valid_rows(p_artist_exact_matches);" in frag
+assert "const auto valid_other = valid_rows(p_artist_other_matches);" in frag
+assert frag.count("m_alist.set_artists(b_chk_exact_matches, append, nullptr, valid_exact, valid_other);") == 2
+assert 'empty_id_exact.append_single(std::make_shared<Artist>(""));' in searchdlg
+assert "Native empty-ID exact artist hid valid alternatives." in searchdlg
+assert "Native empty-ID append polluted rows or preview." in searchdlg
 assert "const size_t total_exact = incoming_exact +" in frag
 assert "const size_t total_other = incoming_other +" in frag
 assert "const bool incoming_results = incoming_exact || incoming_other;" in frag
