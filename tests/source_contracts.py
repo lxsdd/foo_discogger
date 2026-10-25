@@ -1317,7 +1317,7 @@ print("PASS: safe cache-marker TTL, independent artist hours and configuration m
 offline_cache_source = (root / "ol_cache.h").read_text(encoding="utf-8-sig")
 iface_source = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
 cache_read = offline_cache_source[offline_cache_source.index("json_t* Read_JSON("):offline_cache_source.index("// serves offline_cache_save")]
-assert "json_t* root = nullptr;" in cache_read
+assert "json_t* root = load_cache_json(os_ol, &json_error);" in cache_read
 assert "json_t* root = json_array();" not in cache_read
 assert "return root ? root : json_array();" in cache_read
 offline_entity = iface_source[iface_source.index("void DiscogsInterface::get_entity_offline_cache("):iface_source.index("pfc::string8 DiscogsInterface::get_username(")]
@@ -1392,6 +1392,9 @@ assert "json_loadb(bytes.data(), bytes.size(), JSON_DECODE_ANY, error)" in cache
 assert "max_cache_json_bytes = 128ull * 1024ull * 1024ull" in cache_atomic
 assert "json_t* root = load_cache_json(os_ol, &json_error);" in cache_atomic
 assert "json_loadfd(" not in cache_atomic
+assert "json_dumpfd(" not in cache_atomic
+assert "json_dump_callback(root," in cache_atomic
+assert "const int written = _write(fd, data, chunk);" in cache_atomic
 assert "cache_payload_is_valid_json" in cache_atomic
 assert "recover_cache_directory(fs::u8path(out_relative_path.c_str())," in cache_atomic
 assert "assert(!discogger_cache::recover_cache_directory(malformed));" in (
