@@ -2250,62 +2250,56 @@ size_t CFindReleaseTree::get_autofill_release_id(mounted_param myparam, size_t s
 }
 
 size_t CFindReleaseTree::test_getselected(TVITEM& out) {
-
-	if (HTREEITEM hsel = TreeView_GetSelection(m_hwndTreeView)) {
-
-		out.mask = TVIF_PARAM;
-		out.hItem = hsel;
-
-		TreeView_GetItem(m_hwndTreeView, &out);
-		size_t lparam = out.lParam;
-
-		return lparam;
-	}
-	return ~0;
+    if (HTREEITEM selected = TreeView_GetSelection(m_hwndTreeView)) {
+        TVITEM item = {};
+        item.mask = TVIF_PARAM;
+        item.hItem = selected;
+        // A failed TVM_GETITEM must never be interpreted as node zero.
+        if (!TreeView_GetItem(m_hwndTreeView, &item) || item.lParam == -1)
+            return ~size_t{0};
+        out = item;
+        return static_cast<size_t>(item.lParam);
+    }
+    return ~size_t{0};
 }
 
 size_t CFindReleaseTree::test_getatcursor(CPoint screen_pos, TVITEM& out, bool require_item_body) {
+    TVHITTESTINFO hit_info = {};
+    hit_info.pt = screen_pos;
+    if (!::ScreenToClient(m_hwndTreeView, &hit_info.pt))
+        return ~size_t{0};
 
-	TVHITTESTINFO tvhitinfo = { 0 };
-	tvhitinfo.pt = screen_pos;
-	::ScreenToClient(m_hwndTreeView, &tvhitinfo.pt);
+    const HTREEITEM hit = TreeView_HitTest(m_hwndTreeView, &hit_info);
+    if (!hit || (require_item_body && !(hit_info.flags & TVHT_ONITEM)))
+        return ~size_t{0};
 
-	HTREEITEM hit = TreeView_HitTest(m_hwndTreeView, &tvhitinfo);
-
-	if (hit && (!require_item_body || (tvhitinfo.flags & TVHT_ONITEM))) {
-		out.mask = TVIF_PARAM;
-		out.hItem = tvhitinfo.hItem;
-
-		TreeView_GetItem(m_hwndTreeView, &out);
-
-		if (out.lParam != ~0) {
-
-			return out.lParam;
-		}
-	}
-	return ~0;
+    TVITEM item = {};
+    item.mask = TVIF_PARAM;
+    item.hItem = hit;
+    // Stale rows can disappear during a redraw; never use the zero-initialized
+    // LPARAM as an apparently valid release when TVM_GETITEM fails.
+    if (!TreeView_GetItem(m_hwndTreeView, &item) || item.lParam == -1)
+        return ~size_t{0};
+    out = item;
+    return static_cast<size_t>(item.lParam);
 }
 
 
 void CFindReleaseTree::hit_test_release_proceed() {
+    TVITEM item = {};
+    POINT cursor = {};
+    if (!::GetCursorPos(&cursor))
+        return;
+    const size_t lparam = test_getatcursor(cursor, item, true);
+    if (lparam == ~size_t{0})
+        return;
 
-	TVITEM tvi = { 0 };
-	int lparam;
-	POINT p;
-	GetCursorPos(&p);
-
-	if ((lparam = test_getatcursor(p, tvi, true)) != ~0) {
-
-		mounted_param myparam(lparam);
-
-		if (!myparam.is_master()) {
-
-			pfc::string8 release_id = get_param_id(myparam);
-            // A stale tree node is not a valid release to open.
-            if (release_id.get_length())
-                m_dlg->trigger_release(release_id);
-		}
-	}
+    mounted_param release_node(static_cast<LPARAM>(lparam));
+    if (!release_node.is_master()) {
+        const pfc::string8 release_id = get_param_id(release_node);
+        if (release_id.get_length())
+            m_dlg->trigger_release(release_id);
+    }
 }
 
 // default action for release tree items
@@ -2329,10 +2323,12 @@ void CFindReleaseTree::vkreturn_test_master_expand_release() {
 		else {
 
 			HTREEITEM hsel = TreeView_GetSelection(m_hwndTreeView);
+			if (!hsel) return;
 			TVITEM tvi = {};
 			tvi.hItem = hsel;
 			tvi.mask = TVIF_STATE;
-			TreeView_GetItem(m_hwndTreeView, &tvi);
+			tvi.stateMask = TVIS_EXPANDED;
+			if (!TreeView_GetItem(m_hwndTreeView, &tvi)) return;
 			if ((tvi.state & TVIS_EXPANDED) == TVIS_EXPANDED) {
 				TreeView_Expand(m_hwndTreeView, hsel, TVE_COLLAPSE);
 			}
@@ -2620,11 +2616,9 @@ void CFindReleaseTree::OnInitExpand(int lparam) {
 	HTREEITEM w = TreeView_GetFirstVisible(m_hwndTreeView);
 	while (w) {
 		TVITEM tvitem = { 0 };
-		tvitem.mask = TVIF_PARAM | TVIS_EXPANDED;
+		tvitem.mask = TVIF_PARAM;
 		tvitem.hItem = w;
-		TreeView_GetItem(m_hwndTreeView, &tvitem);
-
-		if (tvitem.lParam == lparam) {
+		if (TreeView_GetItem(m_hwndTreeView, &tvitem) && tvitem.lParam == lparam) {
 			TreeView_Expand(m_hwndTreeView, tvitem.hItem, TVM_EXPAND);
 			break;
 		}
