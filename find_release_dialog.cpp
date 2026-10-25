@@ -2115,7 +2115,8 @@ static void runner_qa_native_cache_json_rollback() {
     }
     json_decref(literal);
     ol::ol_cache real_reader;
-    const std::string payload_utf8 = payload.u8string();
+    const auto payload_u8 = payload.u8string();
+    const std::string payload_utf8(payload_u8.begin(), payload_u8.end());
     json_t* from_disk = real_reader.Read_JSON(payload_utf8.c_str());
     const bool disk_valid = from_disk && json_is_object(from_disk);
     if (from_disk) json_decref(from_disk);
@@ -2128,7 +2129,8 @@ static void runner_qa_native_cache_json_rollback() {
         throw std::runtime_error("Native Jansson QA could not create object.");
     }
     const fs::path serialized = active / "serialized-qa.json";
-    const std::string serialized_utf8 = serialized.u8string();
+    const auto serialized_u8 = serialized.u8string();
+    const std::string serialized_utf8(serialized_u8.begin(), serialized_u8.end());
     const bool dump_ok = real_reader.Dump_JSON(serialized_utf8.c_str(), generated);
     json_decref(generated);
     if (!dump_ok || !ol::cache_payload_is_valid_json(serialized))
