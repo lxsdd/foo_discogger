@@ -20,6 +20,60 @@ int main() {
     const fs::path base = fs::temp_directory_path() / "discogger-txn-regression";
     fs::remove_all(base, ec);
     fs::create_directories(base);
+    // Independent minimum counters must saturate regardless of enumeration
+    // order. The historical unsigned countdown wrapped after extra files.
+    {
+        discogger_cache::cache_entry_requirements c{1, 1};
+        c.observe_file(); c.observe_file();
+        assert(!c.satisfied());
+        c.observe_directory();
+        assert(c.satisfied());
+        c.observe_file(); c.observe_directory();
+        assert(c.satisfied());
+    }
+    {
+        discogger_cache::cache_entry_requirements c{1, 1};
+        c.observe_directory(); c.observe_directory();
+        assert(!c.satisfied());
+        c.observe_file();
+        assert(c.satisfied());
+    }
+    {
+        discogger_cache::cache_entry_requirements c{2, 0};
+        c.observe_directory(); c.observe_file();
+        assert(!c.satisfied());
+        c.observe_directory(); c.observe_file();
+        assert(c.satisfied());
+    }
+    const fs::path inventory = base / "minimum-entry-inventory";
+    const fs::path entity = inventory / "entity";
+    put(entity / "root.json", "payload");
+    put(entity / "taskreg.txt", "stamp");
+    assert(discogger_cache::cache_has_minimum_entries(entity, 2, 0));
+    assert(!discogger_cache::cache_has_minimum_entries(entity, 3, 0));
+    assert(!discogger_cache::cache_has_minimum_entries(entity, 2, 1));
+    assert(!discogger_cache::cache_has_minimum_entries(entity / "root.json", 1, 0));
+    assert(!discogger_cache::cache_has_minimum_entries(inventory / "missing", 1, 0));
+    assert(discogger_cache::cache_has_marker(entity));
+    fs::create_directory(entity / "unexpected");
+    assert(discogger_cache::cache_has_minimum_entries(entity, 2, 0));
+    // Shape acceptance never overrides the strict completed-marker gate.
+    assert(!discogger_cache::cache_has_marker(entity));
+    const fs::path paged = inventory / "paged";
+    put(paged / "taskreg.txt", "stamp");
+    put(paged / "auxiliary.txt", "extra");
+    put(paged / "page-0/root.json", "first");
+    assert(discogger_cache::cache_has_minimum_entries(paged, 1, 1));
+    assert(discogger_cache::cache_has_minimum_entries(paged, 2, 1));
+    assert(discogger_cache::cache_has_minimum_entries(paged, 3, 1));
+    assert(!discogger_cache::cache_has_minimum_entries(paged, 4, 1));
+    assert(!discogger_cache::cache_has_minimum_entries(paged, 1, 2));
+    assert(discogger_cache::cache_has_marker(paged));
+    fs::create_directory(paged / "page-2");
+    assert(discogger_cache::cache_has_minimum_entries(paged, 1, 1));
+    assert(!discogger_cache::cache_has_marker(paged));
+    fs::remove(paged / "page-2");
+    assert(discogger_cache::cache_has_marker(paged));
     const fs::path active = base / "releases";
     { discogger_cache::directory_cache_transaction tx(active);
       assert(tx.ready()); put(tx.staging_directory() / "page-0/root.json", "old");
