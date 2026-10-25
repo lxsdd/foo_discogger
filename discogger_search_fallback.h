@@ -46,6 +46,26 @@ inline std::string trailing_collaborator(std::string_view artist) {
     if (position == std::string_view::npos) return {};
     return trim_copy(artist.substr(position + offset));
 }
+// A featuring credit may add a guest to a release's display artist while
+// Discogs indexes the release under the primary artist. Only explicit
+// "feat/ft/featuring" joins qualify; an ampersand within a band's name or
+// an "x" collaboration alone is NOT evidence of a canonical main artist.
+// Preserve the user's complete artist credit for tags and track matching.
+inline std::string primary_artist_before_featuring(std::string_view artist) {
+    const std::string lowered = ascii_lower(artist);
+    constexpr std::string_view joins[] = {
+        " feat. ", " feat ", " featuring ", " ft. ", " ft "
+    };
+    std::size_t first = std::string_view::npos;
+    for (const auto join : joins) {
+        const auto pos = lowered.find(join);
+        if (pos != std::string::npos &&
+            (first == std::string_view::npos || pos < first))
+            first = pos;
+    }
+    return first == std::string_view::npos
+        ? std::string() : trim_copy(artist.substr(0, first));
+}
 // Only strip a *recognized, terminal* version descriptor. Preserve the
 // user's exact title and version for all later track matching and tagging.
 inline std::string without_terminal_mix_suffix(std::string_view title) {
@@ -67,6 +87,10 @@ struct fallback_candidate {
     std::string label;
     std::string q;
     std::string title;
+    // Optional, stricter Discogs release-only path. Never combine with q or
+    // the broad title filter: values always come from separate UTF-8 fields.
+    std::string artist_filter;
+    std::string release_title_filter;
 };
 
 // Build URL parameters from *separate values*, never by parsing a string
@@ -91,7 +115,15 @@ inline std::string percent_encode_search_value(std::string_view value) {
     return encoded;
 }
 inline std::string encode_fallback_query(const fallback_candidate& candidate) {
-    if (candidate.q.empty()) return {};
+    if (!candidate.artist_filter.empty()) {
+        if (!candidate.q.empty() || !candidate.title.empty() ||
+            candidate.release_title_filter.empty()) return {};
+        return "artist=" + percent_encode_search_value(candidate.artist_filter) +
+            "&release_title=" +
+            percent_encode_search_value(candidate.release_title_filter) +
+            "&type=release";
+    }
+    if (candidate.q.empty() || !candidate.release_title_filter.empty()) return {};
     std::string quoted_q;
     quoted_q.reserve(candidate.q.size() + 2);
     quoted_q.push_back('"');
@@ -104,8 +136,10 @@ inline std::string encode_fallback_query(const fallback_candidate& candidate) {
     }
     return params;
 }
-// At most two extra database/search requests, only after an empty initial
-// query. No unqualified short/empty title or broad artist-only search.
+// At most three bounded fallback *queries*, only after an empty original
+// search: a guest-artist hint, an optional explicitly featured MAIN artist
+// plus release title, and broad title discovery. All remain review-only.
+// No unqualified short/empty title or broad artist-only search.
 inline std::vector<fallback_candidate> build_fallback_plan(
     std::string_view artist, std::string_view title, std::string_view track) {
     std::vector<fallback_candidate> plan;
@@ -123,6 +157,17 @@ inline std::vector<fallback_candidate> build_fallback_plan(
     const std::string partner = trailing_collaborator(initial_artist);
     if (!using_track_title && !partner.empty() && partner != initial_artist)
         plan.push_back({"collaboration partner and title", partner, key});
+    if (!using_track_title) {
+        const std::string primary = primary_artist_before_featuring(initial_artist);
+        if (primary.size() >= 2 && primary != initial_artist) {
+            // Authenticated Discogs evidence: broad "Sun & Moon" did not
+            // contain release 2783977 on pages 1-2, but an artist +
+            // release_title + type=release query found it on page 1.
+            // Do not broaden title=track; no automatic identity acceptance.
+            plan.push_back({"featured primary artist and release title (review required)",
+                "", "", primary, key});
+        }
+    }
     // Deliberately broaden to a review-only Discogs 'q', keeping the exact
     // structured query untouched. A track title must not masquerade as the
     // release title; only the broad text index is queried in that case.
