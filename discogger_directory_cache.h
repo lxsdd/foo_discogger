@@ -147,9 +147,9 @@ public:
     explicit directory_cache_transaction(fs::path destination,
                                          cache_json_validator validate = {})
         : active_(std::move(destination)), backup_(cache_backup_path(active_)),
-          lock_(directory_cache_mutex()) {
+          validator_(std::move(validate)), lock_(directory_cache_mutex()) {
         std::error_code ec;
-        if (!recover_cache_unlocked(active_, validate)) return;
+        if (!recover_cache_unlocked(active_, validator_)) return;
         fs::create_directories(active_.parent_path(), ec);
         if (ec || !fs::is_directory(active_.parent_path(), ec) || ec) return;
         static std::atomic<unsigned long long> counter{0};
@@ -182,7 +182,10 @@ public:
                 out.close();
                 return ok && out.good();
             });
-        if (!marker_ok || !cache_has_marker(stage_)) return false;
+        // Validate serialized JSON before moving the existing active cache.
+        // A marker and nonempty truncated payload must never discard the
+        // last good active directory during a nominally successful publish.
+        if (!marker_ok || !cache_has_marker(stage_, validator_)) return false;
         std::error_code ec;
         const bool prior = fs::exists(active_, ec);
         if (ec) return false;
@@ -215,6 +218,7 @@ public:
     }
 private:
     fs::path active_, backup_, stage_;
+    cache_json_validator validator_;
     std::unique_lock<std::mutex> lock_;
     bool ready_ = false, committed_ = false;
 };
