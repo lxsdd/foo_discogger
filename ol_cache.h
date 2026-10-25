@@ -178,6 +178,19 @@ namespace Offline {
 	}
 
 
+    // The same Jansson decoder used by Read_JSON is required before a
+    // rollback can be discarded or promoted. A nonempty file is not proof
+    // of a valid JSON payload (including paginated artist-release caches).
+    static bool cache_payload_is_valid_json(const fs::path& path) {
+        const int fd = _wopen(path.wstring().c_str(), _O_RDONLY | _O_BINARY);
+        if (fd == -1) return false;
+        json_error_t error = {};
+        json_t* parsed = json_loadfd(fd, JSON_DECODE_ANY, &error);
+        const bool closed = _close(fd) == 0;
+        if (parsed) json_decref(parsed);
+        return closed && parsed != nullptr;
+    }
+
     // Directory cache transactions supersede destructive stamp_download.
 
     // Check the completed marker's timestamp without reading unbounded content.
@@ -230,7 +243,8 @@ namespace Offline {
 		//..
 
 		out_relative_path = get_offline_path(id, gfFrom, secid, native);
-        if (!discogger_cache::recover_cache_directory(fs::u8path(out_relative_path.c_str())))
+        if (!discogger_cache::recover_cache_directory(fs::u8path(out_relative_path.c_str()),
+                cache_payload_is_valid_json))
             return false;
 		bool bres = check_offline_entity_folder(id, gfFrom, secid);
 		bres &= check_download(out_relative_path, expired, gfFrom);
