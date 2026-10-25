@@ -89,8 +89,8 @@ struct fallback_candidate {
     std::string title;
     // Optional, stricter Discogs release-only path. Never combine with q or
     // the broad title filter: values always come from separate UTF-8 fields.
-    std::string artist_filter;
-    std::string release_title_filter;
+    std::string artist_filter{};
+    std::string release_title_filter{};
 };
 
 // Build URL parameters from *separate values*, never by parsing a string
