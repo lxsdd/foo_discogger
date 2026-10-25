@@ -2124,9 +2124,9 @@ qa_corpus_source = (root / "tests/live-discogs-search-corpus-qa.h").read_text(en
 qa_selector = qa_native_source.split("void run_live_search_probe_qa() {", 1)[1].split(
     "const auto counts = g_discogs->find_release_dialog->runner_qa_live_search_probe(", 1
 )[0]
-matrix_ids = re.findall(r"Id='(\\d+)'", native_matrix_body)
-cohort_ids = set(re.findall(r"\\{(\\d+),", qa_corpus_source))
-gui_only_ids = set(re.findall(r'expected_release_id == "(\\d+)"', qa_selector))
+matrix_ids = re.findall(r"Id='(\d+)'", native_matrix_body)
+cohort_ids = set(re.findall(r"\{(\d+),", qa_corpus_source))
+gui_only_ids = set(re.findall(r'expected_release_id == "(\d+)"', qa_selector))
 assert len(matrix_ids) == 21
 assert gui_only_ids == {"38012673", "35534398"}
 assert set(matrix_ids).issubset(cohort_ids | gui_only_ids)
