@@ -1384,12 +1384,11 @@ assert "recover_cache_unlocked(active_, validate)" in txn
 # decoder has checked all entity or paginated payloads, not mere nonempty files.
 assert "if (!validate || !cache_has_marker(backup, validate)) return false;" in txn
 assert "cache_has_marker(active, validate)" in txn
-assert "cache_payload_file(it->path() / \\"root.json\\", validate)" in txn
+assert 'cache_payload_file(it->path() / "root.json", validate)' in txn
 assert "cache_payload_file(single, validate)" in txn
 assert "json_loadfd(fd, JSON_DECODE_ANY, &error)" in cache_atomic
 assert "cache_payload_is_valid_json" in cache_atomic
 assert "recover_cache_directory(fs::u8path(out_relative_path.c_str())," in cache_atomic
-assert core.count("ol::cache_payload_is_valid_json);") == 4
 assert "assert(!discogger_cache::recover_cache_directory(malformed));" in (
     root / "tests/directory_cache_transaction_test.cpp").read_text(encoding="utf-8-sig")
 assert "fs::rename(active_, backup_, ec);" in txn
@@ -1399,6 +1398,7 @@ assert "cache_has_marker(stage_)" in txn
 assert "std::unique_lock<std::mutex> lock_" in txn
 assert "directory_cache_transaction_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 core = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+assert core.count("ol::cache_payload_is_valid_json);") == 4
 assert core.count("discogger_cache::directory_cache_transaction tx(") == 4
 assert core.count("ol::staged_cache_json_path(tx") == 4
 assert "ol::stamp_download(" not in core
