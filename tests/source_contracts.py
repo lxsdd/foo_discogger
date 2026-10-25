@@ -2286,9 +2286,18 @@ assert "REFUSED: fixture must be a direct child" in private_audit
 assert "REFUSED: fixture contains a junction or symbolic link." in private_audit
 assert "Get-OrdinaryFiles $node.FullName" in private_audit
 assert "REFUSED: baseline manifest already exists" in private_audit
-assert "WriteAllText($manifest" in private_audit
+# No check-then-truncate race: CreateNew fails atomically when a
+# competing process creates a manifest or link at the target path.
+assert "[IO.FileMode]::CreateNew" in private_audit
+assert "[IO.FileShare]::None" in private_audit
+assert "$stream.Flush($true)" in private_audit
+assert "WriteAllText($manifest" not in private_audit
+assert "REFUSED: baseline manifest must be an ordinary file, not a link." in private_audit
 assert "WriteAllBytes" not in private_audit
 assert "Remove-Item" not in private_audit
 assert "Expect-Rejected" in private_test
+assert "Rejected baseline attempt changed the original manifest." in private_test
+assert "timestamp-only mutation" in private_test
+assert "corrupt baseline must fail closed" in private_test
 assert "run: ./tests/private-readonly-acceptance-test.ps1" in validation
 print("PASS: owner copied-fixture read-only audit is SHA/mtime checked, fail-closed and Windows CI exercised.")
