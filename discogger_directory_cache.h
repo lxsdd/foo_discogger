@@ -5,6 +5,7 @@
 #include <vector>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -78,6 +79,14 @@ inline bool cache_has_marker(const fs::path& root) {
     for (fs::directory_iterator it(root, ec), last; !ec && it != last;
          it.increment(ec)) {
         const std::string name = it->path().filename().string();
+        // A writer's in-progress marker invalidates completion even when
+        // taskreg.txt and all JSON pages are present. The offline reader
+        // already rejects it; recovery must not delete a valid rollback.
+        // Fold ASCII case to agree with case-insensitive Windows paths.
+        if (name.size() == 7 && std::equal(name.begin(), name.end(),
+            "loading", [](unsigned char a, char b) {
+                return std::tolower(a) == b;
+            })) return false;
         if (it->is_symlink(ec) || ec) return false;
         if (it->is_directory(ec)) {
             if (ec || has_single) return false;
