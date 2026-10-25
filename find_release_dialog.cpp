@@ -2178,6 +2178,75 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     if (m_alist.Get_Artists().get_count() != 2 || m_dctree.Get_Size() != 3)
         throw std::runtime_error("Multi-artist auto-preview did not deduplicate and display three releases/masters.");
 
+    // Two provider phases can return artist 101 with DISJOINT payloads.
+    // Both the automatic multi-artist tree and the manually chosen artist
+    // must retain the union without changing the original cached objects.
+    const size_t same_id_original_role =
+        m_alist.Get_Artists()[0]->search_role_list_pos;
+    Artist_ptr same_id_delta = std::make_shared<Artist>("101");
+    same_id_delta->name = "Same artist, later provider page";
+    Release_ptr same_id_release = std::make_shared<Release>("410001");
+    same_id_release->title = "Late same-ID release";
+    same_id_release->loaded_preview = true;
+    same_id_delta->releases.append_single(same_id_release);
+    same_id_delta->search_order_master.append_single(false);
+    MasterRelease_ptr same_id_master = std::make_shared<MasterRelease>("410002");
+    same_id_master->title = "Late same-ID master";
+    same_id_master->loaded_preview = true;
+    same_id_delta->master_releases.append_single(same_id_master);
+    same_id_delta->search_order_master.append_single(true);
+    pfc::array_t<Artist_ptr> same_id_delta_rows;
+    same_id_delta_rows.append_single(same_id_delta);
+    on_search_artist_done(same_id_delta_rows, exact, true);
+    auto merged_same_id_rows = m_alist.Get_Artists();
+    if (merged_same_id_rows.get_count() != 2 || m_dctree.Get_Size() != 5 ||
+        merged_same_id_rows[0]->releases.get_count() != 2 ||
+        merged_same_id_rows[0]->master_releases.get_count() != 2 ||
+        merged_same_id_rows[0]->search_role_list_pos != same_id_original_role ||
+        merged_same_id_rows[0]->loaded_releases ||
+        first->releases.get_count() != 1 || first->master_releases.get_count() != 1 ||
+        same_id_delta->releases.get_count() != 1 ||
+        same_id_delta->master_releases.get_count() != 1)
+        throw std::runtime_error("Native same-ID disjoint release/master union lost payload, role or cache isolation.");
+
+    // Negative: repeat identical phase and same-ID duplicate with only old
+    // IDs. Neither may add a tree node, change row identity, or grow arrays.
+    on_search_artist_done(same_id_delta_rows, exact, true);
+    Artist_ptr same_id_repeat = std::make_shared<Artist>("101");
+    same_id_repeat->releases.append_single(first_release);
+    same_id_repeat->search_order_master.append_single(false);
+    same_id_repeat->master_releases.append_single(first_master);
+    same_id_repeat->search_order_master.append_single(true);
+    pfc::array_t<Artist_ptr> same_id_repeat_rows;
+    same_id_repeat_rows.append_single(same_id_repeat);
+    on_search_artist_done(same_id_repeat_rows, exact, true);
+    merged_same_id_rows = m_alist.Get_Artists();
+    if (merged_same_id_rows.get_count() != 2 || m_dctree.Get_Size() != 5 ||
+        merged_same_id_rows[0]->releases.get_count() != 2 ||
+        merged_same_id_rows[0]->master_releases.get_count() != 2 ||
+        merged_same_id_rows[0]->search_role_list_pos != same_id_original_role)
+        throw std::runtime_error("Native repeated same-ID payload duplicated rows or releases.");
+
+    // Default_Action uses ShowArtistSearchResults on the selected partial
+    // artist. Exercise its actual projection, not just the combined tree.
+    ShowArtistSearchResults(merged_same_id_rows[0]);
+    if (m_dctree.Get_Size() != 4)
+        throw std::runtime_error("Native manually selected same-ID artist lost a late release or master.");
+
+    // Exact-only remains a distinct visible projection, including a late
+    // same-ID exact update, without introducing alternative-only artists.
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(two_artists, exact, false);
+    on_search_artist_done(same_id_delta_rows, exact, true);
+    if (m_alist.Get_Artists().get_count() != 2 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_CHECKED ||
+        m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native exact-only same-ID union lost visibility or release tree.");
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);
+    on_search_artist_done(two_artists, exact, false);
+    if (m_dctree.Get_Size() != 3)
+        throw std::runtime_error("Native new search did not reset previous same-ID union.");
+
     // Native regression: asynchronous updates append cumulative exact/other
     // buckets. Old code counted the visible alternatives as exact rows, lost
     // the newly appended exact artist, then appended old alternatives twice.
