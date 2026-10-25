@@ -318,16 +318,22 @@ void run_live_search_probe_qa() {
     const auto counts = g_discogs->find_release_dialog->runner_qa_live_search_probe(expected_release_id.c_str());
     // Independent read-only requests distinguish OAuth/transport failures from
     // actual Discogger UI and result-model failures. Never record API bodies.
+    // The initial Estiva baseline already authenticates and probes the full
+    // public API cohort. Matrix probes must inspect only the native GUI state:
+    // repeating a synchronous OAuth request on the foobar UI thread for every
+    // case can stall evidence publication under network throttling.
     unsigned identity_ok = 0;
-    try {
-        abort_callback_dummy abort;
-        pfc::string8 body;
-        discogs_interface->fetcher->fetch_html(
-            "https://api.discogs.com/oauth/identity", "", body, abort);
-        JSONParser parsed(body);
-        const json_t* username = json_object_get(parsed.root, "username");
-        identity_ok = json_is_string(username) && json_string_length(username) > 0 ? 1u : 0u;
-    } catch (...) {}
+    if (expected_release_id == "38012673") {
+        try {
+            abort_callback_dummy abort;
+            pfc::string8 body;
+            discogs_interface->fetcher->fetch_html(
+                "https://api.discogs.com/oauth/identity", "", body, abort);
+            JSONParser parsed(body);
+            const json_t* username = json_object_get(parsed.root, "username");
+            identity_ok = json_is_string(username) && json_string_length(username) > 0 ? 1u : 0u;
+        } catch (...) {}
+    }
     const auto probe_search = [](const char* params, long long expected_id) -> std::array<unsigned, 3> {
         std::array<unsigned, 3> result{0, 0, 0};
         try {
