@@ -2230,6 +2230,32 @@ assert "if (!allowed)" in qa_selector
 assert "Unrecognized public release QA selector." in qa_selector
 print("PASS: all 21 native GUI release selectors are whitelisted; arbitrary IDs rejected.")
 
+# Diagnosing a first-page miss must not falsely turn the immutable 14-case
+# original API cohort into a 14/14 assertion, nor weaken the native GUI gates.
+# Known historical 2026-10-25 bitmap 16381 excludes precisely corpus index 1:
+# Above & Beyond feat. Richard Bedford, Sun & Moon, Discogs release 2783977.
+corpus_release_ids = [int(v) for v in re.findall(r"\{(\d+),", qa_corpus_source)]
+assert len(corpus_release_ids) == 14
+assert [v for i, v in enumerate(corpus_release_ids) if not (16381 & (1 << i))] == [2783977]
+assert "const auto evidence = probe_search(entry.encoded_search_params, entry.expected_release_id);" in qa_native_source
+assert "cohort_known_mask |= (1u << i);" in qa_native_source
+assert "result[3] = static_cast<unsigned>(page_count);" in qa_native_source
+assert "evidence[3] >= 2 && cohort_page2_requests < 3" in qa_native_source
+assert "page_two.compare(page_two.size() - suffix.size()," in qa_native_source
+assert 'page_two.replace(page_two.size() - suffix.size(),' in qa_native_source
+assert 'if (entry.expected_release_id == 2783977)' in qa_native_source
+assert "artist=Above%20%26%20Beyond&release_title=Sun%20%26%20Moon&type=release&per_page=100&page=1" in qa_native_source
+for marker in (
+    "API_COHORT_PAGE2_ATTEMPT_MASK", "API_COHORT_PAGE2_OK_MASK",
+    "API_COHORT_PAGE2_KNOWN_MASK", "API_COHORT_SUNMOON_TARGETED_OK",
+    "API_COHORT_SUNMOON_TARGETED_KNOWN",
+):
+    assert f'"{marker}="' in qa_native_source
+    assert f"'{marker}'" in native_gui_script
+assert "DISCOGGER_AUTHENTICATED_API_COHORT_FOLLOWUP_" in native_gui_script
+assert native_gui_script.count("DISCOGGER_AUTHENTICATED_API_COHORT_${Architecture}=") == 1
+print("PASS: authenticated API cohort page-two/specificity diagnostics are bounded and separately reported.")
+
 print("PASS: all five mandatory Discogs releases have native GUI search gates.")
 
 
