@@ -1422,8 +1422,8 @@ assert "return release ? release->id : id;" in tree_id
 assert "MasterRelease_ptr dbugmasrel" not in tree_id
 assert tree_source.count("if (release_id.get_length())") >= 2
 assert "myparam.master_ndx >= m_find_release_artist->master_releases.get_count()" in tree_source
-assert "test_getatcursor(p, tvi, true)" in tree_source
-assert "(tvhitinfo.flags & TVHT_ONITEM)" in tree_source
+assert "test_getatcursor(cursor, item, true)" in tree_source
+assert "(hit_info.flags & TVHT_ONITEM)" in tree_source
 assert "bool require_item_body = false" in tree_header
 assert "release_tree_snapshot_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "release_tree_snapshot_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
