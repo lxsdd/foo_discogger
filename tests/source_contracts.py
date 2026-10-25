@@ -56,8 +56,11 @@ assert "m_find_release_artists.resize(base + cadd)" not in artist_projection
 assert "m_find_release_artists = m_artist_exact_matches;" in artist_projection
 assert "m_find_release_artists.append(m_artist_other_matches);" in artist_projection
 assert "std::unordered_map<std::string, size_t> prior_roles;" in artist_projection
-assert "prior_roles.emplace(old_artist->id.get_ptr(), old_artist->search_role_list_pos);" in artist_projection
-assert "new_artist->search_role_list_pos = previous != prior_roles.end()" in artist_projection
+assert "prior_roles.emplace(previous_artist->id.get_ptr()," in artist_projection
+assert "current_artist->search_role_list_pos =" in artist_projection
+assert "previous != prior_roles.end() && previous->second" in artist_projection
+assert "if (append && (op == 0 || op == 3))" in artist_projection
+assert "else if (op == 0 || op == 3)" in artist_projection
 native_qa = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 native_stream = native_qa.split("CFindReleaseDialog::runner_qa_populated_search_rows(", 1)[1].split(
     "void CFindReleaseDialog::ShowArtistSearchResults(", 1)[0]
@@ -68,6 +71,11 @@ for required in (
     'on_search_artist_done(exact, pfc::array_t<Artist_ptr>(), true);',
     'appended_rows.get_count() != 5',
     'appended_rows[3]->search_role_list_pos != original_other_role',
+    'on_search_artist_done(exact_late, exact, true);',
+    'exact_rows.get_count() != 3',
+    'exact_rows[2]->search_role_list_pos == exact_role_one',
+    'exact_rows[2]->search_role_list_pos == exact_role_two',
+    'CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);',
 ):
     assert required in native_stream
 print("PASS: cumulative exact/alternative artist append preserves roles and rejects old duplicate/lost-row algorithm.")
