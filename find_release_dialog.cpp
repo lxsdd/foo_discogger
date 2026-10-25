@@ -1292,9 +1292,17 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
     // Resolve exact-only visibility and the no-match message against the
     // cumulative buckets, otherwise a late alternative silently unchecks
     // an exact-only filter even while exact matches are still present.
-    const size_t total_exact = p_artist_exact_matches.get_count() +
+    const auto valid_count = [](const pfc::array_t<Artist_ptr>& artists) {
+        size_t count = 0;
+        for (const auto& artist : artists)
+            if (artist) ++count;
+        return count;
+    };
+    const size_t incoming_exact = valid_count(p_artist_exact_matches);
+    const size_t incoming_other = valid_count(p_artist_other_matches);
+    const size_t total_exact = incoming_exact +
         (append ? m_alist.Get_Exact_Artist_Count() : 0);
-    const size_t total_other = p_artist_other_matches.get_count() +
+    const size_t total_other = incoming_other +
         (append ? m_alist.Get_Other_Artist_Count() : 0);
     const auto decision = discogger_search::resolve_result_filter(
         exact_only_requested, total_exact, total_other);
@@ -1350,8 +1358,7 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
     // without a second artist click. Never replace a tree that the user
     // explicitly opened by selecting an artist while the worker was active.
     // Empty append notifications are no-ops for the preview.
-    const bool incoming_results = p_artist_exact_matches.get_count() ||
-        p_artist_other_matches.get_count();
+    const bool incoming_results = incoming_exact || incoming_other;
     const bool update_preview = (m_query_mode & SearchMode::AT) &&
         (!append || (incoming_results && !m_alist.Get_Selected_Id().get_length()));
     if (update_preview) {
@@ -2294,6 +2301,18 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     on_search_artist_done(exact, alternatives, false);
     if (m_dctree.Get_Size() != 5)
         throw std::runtime_error("Returning to a single search bucket did not refresh results.");
+
+    // A failed async exact lookup may return a null Artist_ptr. It must
+    // never suppress real alternatives or masquerade as a valid exact hit.
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(null_exact, alternatives, false);
+    if (m_alist.Get_Artists().get_count() != 1 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED ||
+        m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native null-only exact result incorrectly hid valid alternatives.");
+    on_search_artist_done(null_exact, exact, false);
+    if (m_alist.Get_Artists().get_count() != 0 || m_dctree.Get_Size() != 0)
+        throw std::runtime_error("Native null-only search retained stale visible results.");
     m_query_mode = previous_mode;
     return {1, initial_tree};
 }
