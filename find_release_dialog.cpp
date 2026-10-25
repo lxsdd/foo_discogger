@@ -2105,8 +2105,42 @@ static void runner_qa_native_cache_json_rollback() {
     write(active / "taskreg.txt", "");
     if (!ol::cache_payload_is_valid_json(payload))
         throw std::runtime_error("Native Jansson rejected valid JSON.");
+    // Test both Jansson's parser and the production reader in the actual
+    // foobar host, not just a synthetic callback or source-level contract.
+    json_error_t literal_error = {};
+    json_t* literal = json_loads(R"({"backup":true})", JSON_DECODE_ANY, &literal_error);
+    if (!literal || !json_is_object(literal)) {
+        if (literal) json_decref(literal);
+        throw std::runtime_error("Native Jansson rejected valid in-memory literal.");
+    }
+    json_decref(literal);
+    ol::ol_cache real_reader;
+    const std::string payload_utf8 = payload.u8string();
+    json_t* from_disk = real_reader.Read_JSON(payload_utf8.c_str());
+    const bool disk_valid = from_disk && json_is_object(from_disk);
+    if (from_disk) json_decref(from_disk);
+    if (!disk_valid)
+        throw std::runtime_error("Native offline cache reader rejected valid JSON.");
+    // Exercise the production atomic JSON serializer on disposable data.
+    json_t* generated = json_object();
+    if (!generated || json_object_set_new(generated, "generated", json_true()) != 0) {
+        if (generated) json_decref(generated);
+        throw std::runtime_error("Native Jansson QA could not create object.");
+    }
+    const fs::path serialized = active / "serialized-qa.json";
+    const std::string serialized_utf8 = serialized.u8string();
+    const bool dump_ok = real_reader.Dump_JSON(serialized_utf8.c_str(), generated);
+    json_decref(generated);
+    if (!dump_ok || !ol::cache_payload_is_valid_json(serialized))
+        throw std::runtime_error("Native atomic JSON serializer did not roundtrip.");
+
     fs::copy(active, backup, fs::copy_options::recursive);
     write(payload, R"({"broken":)");
+    json_t* corrupt_read = real_reader.Read_JSON(payload_utf8.c_str());
+    const bool corrupt_rejected = corrupt_read && json_is_array(corrupt_read);
+    if (corrupt_read) json_decref(corrupt_read);
+    if (!corrupt_rejected)
+        throw std::runtime_error("Native offline reader accepted truncated JSON.");
     if (ol::cache_payload_is_valid_json(payload) ||
         !discogger_cache::cache_has_marker(active) ||
         discogger_cache::recover_cache_directory(active) ||
