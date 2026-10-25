@@ -86,10 +86,38 @@ print("PASS: cumulative exact/alternative artist append preserves roles and reje
 artist_header = (root / "find_artist_list.h").read_text(encoding="utf-8-sig")
 assert "Get_Exact_Artist_Count() const" in artist_header
 assert "Get_Other_Artist_Count() const" in artist_header
-assert "std::unordered_set<std::string> visible_ids;" in artist_projection
+assert "std::unordered_map<std::string, size_t> visible_positions;" in artist_projection
 assert "if (!candidate) continue;" in artist_projection
-assert "!visible_ids.emplace(candidate->id.get_ptr()).second" in artist_projection
+assert "if (!candidate->id.get_length()) continue;" in artist_projection
+assert "union_search_artist_payload(unique_artists[index], candidate)" in artist_projection
 assert "m_find_release_artists = unique_artists;" in artist_projection
+# The original Artist/cache objects must not be extended in place by a
+# later provider page with the same ID; search-only overlays retain roles.
+artist_union = artist.split("Artist_ptr union_search_artist_payload(", 1)[1].split(
+    "} // namespace", 1
+)[0]
+for required in (
+    "if (!adds_new) return retained;",
+    "std::make_shared<Artist>(retained->id.get_ptr())",
+    "merged->loaded_releases = false;",
+    "merged->search_role_list_pos = retained->search_role_list_pos;",
+    "merged->releases.append_single(release);",
+    "merged->master_releases.append_single(master);",
+    "emitted_releases.emplace(release->id.get_ptr()).second",
+    "emitted_masters.emplace(master->id.get_ptr()).second",
+):
+    assert required in artist_union
+assert "retained->releases.append_single" not in artist_union
+assert "delta->releases.append_single" not in artist_union
+for required in (
+    "Native same-ID disjoint release/master union lost payload, role or cache isolation.",
+    "Native repeated same-ID payload duplicated rows or releases.",
+    "Native manually selected same-ID artist lost a late release or master.",
+    "Native exact-only same-ID union lost visibility or release tree.",
+    "Native new search did not reset previous same-ID union.",
+):
+    assert required in native_stream
+print("PASS: same-ID disjoint release/master union is non-mutating and covered by native positive/negative GUI regressions.")
 assert "get_size() > pos && m_find_release_artists[pos]" in artist
 assert "m_find_release_artists[walk] &&" in artist
 assert "m_find_release_artists[w] &&" in artist
