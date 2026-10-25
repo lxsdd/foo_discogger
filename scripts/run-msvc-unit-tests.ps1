@@ -22,6 +22,7 @@ New-Item -ItemType Directory -Force -Path $Work | Out-Null
 $Batch = Join-Path $Work 'compile-and-test.cmd'
 $Sources = @(
     'http_status_parser_test.cpp',
+    'html_numeric_entity_test.cpp',
     'crc32_test.cpp',
     'mapping_snapshot_test.cpp',
     'collaboration_fallback_test.cpp',

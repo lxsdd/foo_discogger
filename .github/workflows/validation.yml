@@ -29,6 +29,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Source contract regression checks
         run: python3 tests/source_contracts.py
+      - name: Validate 252 named HTML entities and malformed numeric guard
+        run: python3 tests/html_entities_test.py
+      - name: Compile and run portable Unicode numeric entity guard
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/html_numeric_entity_test.cpp -o /tmp/discogger-html-numeric && /tmp/discogger-html-numeric
       - name: Selftest physical ID3v2 TXXX UTF-8 and UTF-16 verifier
         run: python3 tests/verify-runner-physical-tags.py --selftest
       - name: Compile and run portable query-history CRC32 regression
