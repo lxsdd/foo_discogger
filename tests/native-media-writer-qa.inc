@@ -339,8 +339,10 @@ void run_live_search_probe_qa() {
             identity_ok = json_is_string(username) && json_string_length(username) > 0 ? 1u : 0u;
         } catch (...) {}
     }
-    const auto probe_search = [](const char* params, long long expected_id) -> std::array<unsigned, 3> {
-        std::array<unsigned, 3> result{0, 0, 0};
+    const auto probe_search = [](const char* params, long long expected_id) -> std::array<unsigned, 4> {
+        // [0]=valid results, [1]=total hits, [2]=target on this page,
+        // [3]=advertised pages. Keep OAuth bodies and queries out of logs.
+        std::array<unsigned, 4> result{0, 0, 0, 0};
         try {
             abort_callback_dummy abort;
             pfc::string8 body;
@@ -352,6 +354,13 @@ void run_live_search_probe_qa() {
             result[0] = 1;
             result[1] = static_cast<unsigned>(
                 parsed.get_object_int("pagination", "items"));
+            const json_t* pagination = json_object_get(parsed.root, "pagination");
+            const json_t* pages = json_object_get(pagination, "pages");
+            if (json_is_integer(pages)) {
+                const json_int_t page_count = json_integer_value(pages);
+                if (page_count > 0 && page_count <= 100000)
+                    result[3] = static_cast<unsigned>(page_count);
+            }
             for (size_t i = 0; i < json_array_size(rows); ++i) {
                 const json_t* record = json_array_get(rows, i);
                 const json_t* id = json_object_get(record, "id");
@@ -361,7 +370,7 @@ void run_live_search_probe_qa() {
         } catch (...) {}
         return result;
     };
-    std::array<unsigned, 3> api_exact{0, 0, 0}, api_broad{0, 0, 0};
+    std::array<unsigned, 4> api_exact{0, 0, 0, 0}, api_broad{0, 0, 0, 0};
     // These fixed API baselines belong to the Estiva reference, not to each
     // independently selected native GUI case (limit request load).
     if (expected_release_id == "38012673") {
@@ -377,6 +386,12 @@ void run_live_search_probe_qa() {
     // never again in the empty-result probe (avoids duplicate rate-limit load).
     unsigned cohort_ok = 0, cohort_nonempty = 0, cohort_known = 0;
     unsigned cohort_nonempty_mask = 0, cohort_known_mask = 0;
+    // QA-only bounded diagnostics for absent first-page IDs. These do not
+    // alter the original fourteen-request first-page evidence or the native
+    // GUI search path. At most three extra page-two requests per architecture.
+    unsigned cohort_page2_attempt_mask = 0, cohort_page2_ok_mask = 0;
+    unsigned cohort_page2_known_mask = 0, cohort_page2_requests = 0;
+    unsigned cohort_sunmoon_targeted_ok = 0, cohort_sunmoon_targeted_known = 0;
     const unsigned cohort_total = static_cast<unsigned>(discogger_live_corpus_qa::cases.size());
     if (counts[1] != 0 && expected_release_id == "38012673") {
         for (unsigned i = 0; i < cohort_total; ++i) {
@@ -390,6 +405,35 @@ void run_live_search_probe_qa() {
             if (evidence[2] != 0) {
                 ++cohort_known;
                 cohort_known_mask |= (1u << i);
+            } else if (evidence[0]) {
+                // Diagnose pagination and query specificity separately. A
+                // missing ID on page 1 is NOT proof it exists on page 2.
+                if (evidence[3] >= 2 && cohort_page2_requests < 3) {
+                    std::string page_two(entry.encoded_search_params);
+                    const std::string suffix = "&page=1";
+                    if (page_two.size() >= suffix.size() &&
+                        page_two.compare(page_two.size() - suffix.size(),
+                            suffix.size(), suffix) == 0) {
+                        page_two.replace(page_two.size() - suffix.size(),
+                            suffix.size(), "&page=2");
+                        ++cohort_page2_requests;
+                        cohort_page2_attempt_mask |= (1u << i);
+                        const auto page_two_result =
+                            probe_search(page_two.c_str(), entry.expected_release_id);
+                        if (page_two_result[0]) cohort_page2_ok_mask |= (1u << i);
+                        if (page_two_result[2]) cohort_page2_known_mask |= (1u << i);
+                    }
+                }
+                // The historically unstable broad "Sun & Moon" query has
+                // no artist filter. Compare it with a structured, release-only
+                // query; never upgrade that diagnostic to a successful match.
+                if (entry.expected_release_id == 2783977) {
+                    const auto targeted = probe_search(
+                        "artist=Above%20%26%20Beyond&release_title=Sun%20%26%20Moon&type=release&per_page=100&page=1",
+                        entry.expected_release_id);
+                    cohort_sunmoon_targeted_ok = targeted[0];
+                    cohort_sunmoon_targeted_known = targeted[2];
+                }
             }
         }
     }
@@ -440,7 +484,12 @@ void run_live_search_probe_qa() {
         << "API_COHORT_NONEMPTY=" << cohort_nonempty << '\n'
         << "API_COHORT_KNOWN=" << cohort_known << '\n'
         << "API_COHORT_MASK=" << cohort_nonempty_mask << '\n'
-        << "API_COHORT_KNOWN_MASK=" << cohort_known_mask << '\n';
+        << "API_COHORT_KNOWN_MASK=" << cohort_known_mask << '\n'
+        << "API_COHORT_PAGE2_ATTEMPT_MASK=" << cohort_page2_attempt_mask << '\n'
+        << "API_COHORT_PAGE2_OK_MASK=" << cohort_page2_ok_mask << '\n'
+        << "API_COHORT_PAGE2_KNOWN_MASK=" << cohort_page2_known_mask << '\n'
+        << "API_COHORT_SUNMOON_TARGETED_OK=" << cohort_sunmoon_targeted_ok << '\n'
+        << "API_COHORT_SUNMOON_TARGETED_KNOWN=" << cohort_sunmoon_targeted_known << '\n';
     out.flush();
     if (!out) throw std::runtime_error("Could not flush live GUI evidence.");
 }
