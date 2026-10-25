@@ -15,6 +15,12 @@ static std::string read(const fs::path& p) {
     std::ifstream in(p, std::ios::binary);
     return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
+// Portable callback exercises the parser-required recovery contract without
+// imposing a native Jansson dependency on the standalone filesystem tests.
+static bool test_json_validator(const fs::path& p) {
+    const auto value = read(p);
+    return !value.empty() && value != "{" && value != "malformed-json";
+}
 int main() {
     std::error_code ec;
     const fs::path base = fs::temp_directory_path() / "discogger-txn-regression";
@@ -88,13 +94,39 @@ int main() {
       assert(tx.publish("old-marker")); }
     assert(read(active / "page-0/root.json") == "old");
     assert(discogger_cache::cache_has_marker(active));
+    // A plausible completion marker must never erase a valid rollback
+    // when the active payload is malformed JSON. Without a parser, recovery
+    // is intentionally blocked and leaves both directories intact.
+    const fs::path malformed = base / "malformed-json-recovery";
+    fs::copy(active, malformed, fs::copy_options::recursive);
+    const fs::path malformed_backup = discogger_cache::cache_backup_path(malformed);
+    fs::copy(active, malformed_backup, fs::copy_options::recursive);
+    put(malformed / "page-0/root.json", "{");
+    assert(discogger_cache::cache_has_marker(malformed)); // shape only
+    assert(!discogger_cache::recover_cache_directory(malformed));
+    assert(read(malformed / "page-0/root.json") == "{");
+    assert(read(malformed_backup / "page-0/root.json") == "old");
+    assert(discogger_cache::recover_cache_directory(malformed, test_json_validator));
+    assert(read(malformed / "page-0/root.json") == "old");
+    assert(!fs::exists(malformed_backup));
+    // Invalid rollback: never promote or discard it, even with valid active.
+    fs::copy(malformed, malformed_backup, fs::copy_options::recursive);
+    put(malformed_backup / "page-0/root.json", "malformed-json");
+    assert(!discogger_cache::recover_cache_directory(malformed, test_json_validator));
+    assert(read(malformed / "page-0/root.json") == "old");
+    assert(fs::exists(malformed_backup));
+    fs::remove_all(malformed_backup);
+    // A parser-approved active payload may retire a parser-approved backup.
+    fs::copy(malformed, malformed_backup, fs::copy_options::recursive);
+    assert(discogger_cache::recover_cache_directory(malformed, test_json_validator));
+    assert(!fs::exists(malformed_backup));
     // Recovery must prefer a complete rollback over an active cache that
     // looks complete except for its unfinished writer marker.
     fs::copy(active, discogger_cache::cache_backup_path(active),
              fs::copy_options::recursive);
     put(active / "loading", "still-writing");
     assert(!discogger_cache::cache_has_marker(active));
-    assert(discogger_cache::recover_cache_directory(active));
+    assert(discogger_cache::recover_cache_directory(active, test_json_validator));
     assert(read(active / "page-0/root.json") == "old");
     assert(!fs::exists(active / "loading"));
     assert(!fs::exists(discogger_cache::cache_backup_path(active)));
@@ -106,11 +138,11 @@ int main() {
     fs::copy(active, loading_backup, fs::copy_options::recursive);
     put(loading_backup / "loading", "unfinished-rollback");
     fs::remove(loading_backup_active / "taskreg.txt");
-    assert(!discogger_cache::recover_cache_directory(loading_backup_active));
+    assert(!discogger_cache::recover_cache_directory(loading_backup_active, test_json_validator));
     assert(read(loading_backup_active / "page-0/root.json") == "old");
     assert(fs::exists(loading_backup / "loading"));
     fs::remove(loading_backup / "loading");
-    assert(discogger_cache::recover_cache_directory(loading_backup_active));
+    assert(discogger_cache::recover_cache_directory(loading_backup_active, test_json_validator));
     assert(read(loading_backup_active / "page-0/root.json") == "old");
     assert(!fs::exists(loading_backup));
     { discogger_cache::directory_cache_transaction tx(base / "marker-only");
@@ -133,7 +165,7 @@ int main() {
     put(incomplete / "taskreg.txt", "complete-stamp");
     put(incomplete / "page-0/root.json", "first");
     put(incomplete / "page-2/root.json", "third");
-    assert(discogger_cache::recover_cache_directory(incomplete));
+    assert(discogger_cache::recover_cache_directory(incomplete, test_json_validator));
     assert(!discogger_cache::cache_has_marker(incomplete));
     assert(read(incomplete / "page-0/root.json") == "first");
     put(incomplete / "page-1/root.json", "second");
@@ -147,7 +179,7 @@ int main() {
     assert(!discogger_cache::cache_has_marker(mixed));
     fs::copy(active, discogger_cache::cache_backup_path(mixed),
              fs::copy_options::recursive);
-    assert(discogger_cache::recover_cache_directory(mixed));
+    assert(discogger_cache::recover_cache_directory(mixed, test_json_validator));
     assert(read(mixed / "page-0/root.json") == "old");
     assert(!fs::exists(mixed / "root.json"));
     assert(!fs::exists(discogger_cache::cache_backup_path(mixed)));
@@ -160,7 +192,7 @@ int main() {
     assert(!discogger_cache::cache_has_marker(rogue));
     fs::copy(active, discogger_cache::cache_backup_path(rogue),
              fs::copy_options::recursive);
-    assert(discogger_cache::recover_cache_directory(rogue));
+    assert(discogger_cache::recover_cache_directory(rogue, test_json_validator));
     assert(read(rogue / "page-0/root.json") == "old");
     assert(!fs::exists(rogue / "unexpected"));
     { discogger_cache::directory_cache_transaction tx(base / "complete");
@@ -173,7 +205,7 @@ int main() {
              fs::copy_options::recursive);
     fs::remove(base / "complete/page-1/root.json");
     assert(!discogger_cache::cache_has_marker(base / "complete"));
-    assert(discogger_cache::recover_cache_directory(base / "complete"));
+    assert(discogger_cache::recover_cache_directory(base / "complete", test_json_validator));
     assert(read(base / "complete/page-1/root.json") == "one");
     assert(!fs::exists(discogger_cache::cache_backup_path(base / "complete")));
     // A damaged rollback must never replace or delete the current cache.
@@ -185,19 +217,19 @@ int main() {
     fs::copy(damaged, damaged_backup, fs::copy_options::recursive);
     fs::remove(damaged_backup / "page-0/root.json");
     fs::remove(damaged / "taskreg.txt");
-    assert(!discogger_cache::recover_cache_directory(damaged));
+    assert(!discogger_cache::recover_cache_directory(damaged, test_json_validator));
     assert(read(damaged / "page-0/root.json") == "original");
     assert(!fs::exists(damaged / "taskreg.txt"));
     assert(!fs::exists(damaged_backup / "page-0/root.json"));
     put(damaged_backup / "page-0/root.json", "restored");
-    assert(discogger_cache::recover_cache_directory(damaged));
+    assert(discogger_cache::recover_cache_directory(damaged, test_json_validator));
     assert(read(damaged / "page-0/root.json") == "restored");
     assert(read(damaged / "taskreg.txt") == "original-marker");
     assert(!fs::exists(damaged_backup));
     fs::copy(active, discogger_cache::cache_backup_path(active),
              fs::copy_options::recursive);
     fs::remove(active / "page-0/root.json");
-    assert(discogger_cache::recover_cache_directory(active));
+    assert(discogger_cache::recover_cache_directory(active, test_json_validator));
     assert(read(active / "page-0/root.json") == "old");
     assert(!fs::exists(discogger_cache::cache_backup_path(active)));
     { discogger_cache::directory_cache_transaction tx(active);
@@ -211,18 +243,18 @@ int main() {
     assert(read(active / "page-0/root.json") == "old");
     assert(!fs::exists(discogger_cache::cache_backup_path(active)));
     fs::rename(active, discogger_cache::cache_backup_path(active));
-    assert(discogger_cache::recover_cache_directory(active));
+    assert(discogger_cache::recover_cache_directory(active, test_json_validator));
     assert(read(active / "page-0/root.json") == "old");
     fs::copy(active, discogger_cache::cache_backup_path(active),
              fs::copy_options::recursive);
     put(active / "page-0/root.json", "new");
-    assert(discogger_cache::recover_cache_directory(active));
+    assert(discogger_cache::recover_cache_directory(active, test_json_validator));
     assert(read(active / "page-0/root.json") == "new");
     assert(!fs::exists(discogger_cache::cache_backup_path(active)));
     fs::copy(active, discogger_cache::cache_backup_path(active),
              fs::copy_options::recursive);
     fs::remove(active / "taskreg.txt");
-    assert(discogger_cache::recover_cache_directory(active));
+    assert(discogger_cache::recover_cache_directory(active, test_json_validator));
     assert(read(active / "page-0/root.json") == "new");
     assert(read(active / "taskreg.txt") == "old-marker");
     { discogger_cache::directory_cache_transaction tx(active);
