@@ -5,6 +5,9 @@
 
 #include <errno.h>
 #include <filesystem>
+#include <fstream>
+#include <string>
+#include <cstdint>
 #include "discogger_cache_expiry.h"
 #include "discogger_atomic_cache_file.h"
 #include "discogger_directory_cache.h"
@@ -178,17 +181,34 @@ namespace Offline {
 	}
 
 
-    // The same Jansson decoder used by Read_JSON is required before a
-    // rollback can be discarded or promoted. A nonempty file is not proof
-    // of a valid JSON payload (including paginated artist-release caches).
+    // Read with this module's C++ stream, then parse bytes with Jansson.
+    // Passing CRT file descriptors across native library boundaries can
+    // reject valid JSON if the component and Jansson use different CRTs.
+    // Bound untrusted cache files before allocation; fail closed on changes.
+    static json_t* load_cache_json(const fs::path& path, json_error_t* error = nullptr) {
+        std::error_code ec;
+        if (fs::is_symlink(path, ec) || ec ||
+            !fs::is_regular_file(path, ec) || ec) return nullptr;
+        const auto size = fs::file_size(path, ec);
+        constexpr std::uintmax_t max_cache_json_bytes = 128ull * 1024ull * 1024ull;
+        if (ec || size == 0 || size > max_cache_json_bytes) return nullptr;
+        std::ifstream input(path, std::ios::binary);
+        if (!input) return nullptr;
+        std::string bytes(static_cast<std::size_t>(size), '\0');
+        input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        if (input.gcount() != static_cast<std::streamsize>(bytes.size()) ||
+            input.bad()) return nullptr;
+        if (input.peek() != std::char_traits<char>::eof() || input.bad())
+            return nullptr;
+        return json_loadb(bytes.data(), bytes.size(), JSON_DECODE_ANY, error);
+    }
+
     static bool cache_payload_is_valid_json(const fs::path& path) {
-        const int fd = _wopen(path.wstring().c_str(), _O_RDONLY | _O_BINARY);
-        if (fd == -1) return false;
         json_error_t error = {};
-        json_t* parsed = json_loadfd(fd, JSON_DECODE_ANY, &error);
-        const bool closed = _close(fd) == 0;
-        if (parsed) json_decref(parsed);
-        return closed && parsed != nullptr;
+        json_t* parsed = load_cache_json(path, &error);
+        if (!parsed) return false;
+        json_decref(parsed);
+        return true;
     }
 
     // Directory cache transactions supersede destructive stamp_download.
@@ -329,47 +349,14 @@ namespace Offline {
 
 			fs::path os_ol = fs::u8path(path.c_str());
 
-			int srclen = -1;
-
-			if (fs::exists(os_ol)) {
-
-				srclen = fs::file_size(os_ol);
-
-			}
-
-			// Do not allocate a placeholder before a successful json_loadfd:
-            // overwriting that pointer leaked a Jansson reference on every hit.
-            json_t* root = nullptr;
-
-			if (srclen > 0) {
-
-				errno = 0;
-				json_error_t json_error = { 0 };
-
-				int jf = -1;
-				jf = _wopen(os_ol.wstring().c_str(), _O_RDONLY);
-
-				if (jf != -1) {
-					root = json_loadfd(jf, JSON_DECODE_ANY, &json_error);
-					_close(jf);
-				}
-
-				if (errno || strlen(json_error.text) || !root) {
-
-					pfc::string8 err_msg = "removing non-valid offline cache file: ";
-					err_msg << path;
-					if (strlen(json_error.text)) {
-						err_msg << json_error.text;
-					}
-					log_msg(err_msg);
-
-                    // One bad JSON page must not erase other cached pages.
-                    // The reader will reject it and fetch the entity online.
-                    if (root) {
-                        json_decref(root);
-                        root = nullptr;
-                    }
-                }
+			// Recovery and the ordinary reader must agree on valid JSON.
+            json_error_t json_error = {};
+            json_t* root = load_cache_json(os_ol, &json_error);
+            if (!root) {
+                pfc::string8 err_msg = "invalid or unreadable offline cache file: ";
+                err_msg << path;
+                if (strlen(json_error.text)) err_msg << json_error.text;
+                log_msg(err_msg);
             }
             // Keep the historical empty-array fallback for missing/bad cache data.
             // Callers that require an object must validate its type explicitly.
