@@ -80,6 +80,35 @@ for required in (
     assert required in native_stream
 print("PASS: cumulative exact/alternative artist append preserves roles and rejects old duplicate/lost-row algorithm.")
 
+# A partial callback may contain an already-known Discogs ID or a null
+# pointer. Native owner-data rows must remain non-null, unique by nonempty
+# ID, with the first (exact) match retaining precedence.
+artist_header = (root / "find_artist_list.h").read_text(encoding="utf-8-sig")
+assert "Get_Exact_Artist_Count() const" in artist_header
+assert "Get_Other_Artist_Count() const" in artist_header
+assert "std::unordered_set<std::string> visible_ids;" in artist_projection
+assert "if (!candidate) continue;" in artist_projection
+assert "!visible_ids.emplace(candidate->id.get_ptr()).second" in artist_projection
+assert "m_find_release_artists = unique_artists;" in artist_projection
+assert "get_size() > pos && m_find_release_artists[pos]" in artist
+assert "m_find_release_artists[walk] &&" in artist
+assert "m_find_release_artists[w] &&" in artist
+for required in (
+    "duplicate_exact.append_single(added_exact);",
+    "duplicate_other.append_single(other_artist);",
+    "null_exact.append_single(Artist_ptr());",
+    "on_search_artist_done(duplicate_exact, duplicate_other, true);",
+    "on_search_artist_done(null_exact, exact, true);",
+    "Native duplicate/null search updates created rows or changed roles.",
+    "Native late exact search results were not automatically added to the release tree.",
+    "Native late alternative results were not automatically added to the release tree.",
+    "Native late alternatives disabled an existing exact-only filter.",
+):
+    assert required in native_stream
+print("PASS: null/duplicate artist worker deltas and late GUI tree/checkbox regressions are wired.")
+
+
+
 
 
 # Do not retain dialog or artist-list objects in queued main-thread redraw work.
@@ -1327,6 +1356,15 @@ assert "const bool b_chk_exact_matches = decision.exact_only;" in frag
 assert "CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);" in frag
 assert "alternative releases require review" in frag
 assert "m_alist.fill_artist_list(b_chk_exact_matches" in frag
+assert "const size_t total_exact = p_artist_exact_matches.get_count() +" in frag
+assert "append ? m_alist.Get_Exact_Artist_Count() : 0" in frag
+assert "append ? m_alist.Get_Other_Artist_Count() : 0" in frag
+assert "exact_only_requested, total_exact, total_other" in frag
+assert "const bool no_matches = !(total_exact || total_other);" in frag
+assert "const bool incoming_results =" in frag
+assert "(!append || (incoming_results && !m_alist.Get_Selected_Id().get_length()))" in frag
+assert "if (update_preview)" in frag
+assert "const bool no_matches = !(p_artist_exact_matches.get_count()" not in frag
 assert "search_visibility_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "search_visibility_test.cpp" in wf_gate
 print("PASS: alternative search candidates remain visible with matched checkbox state.")
