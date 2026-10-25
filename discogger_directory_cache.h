@@ -29,6 +29,36 @@ inline bool cache_payload_file(const fs::path& path) {
     const auto size = fs::file_size(path, ec);
     return !ec && size != 0;
 }
+// Minimum counts are independent: extra files must not underflow the
+// remaining file count while we still await a directory (or vice versa).
+struct cache_entry_requirements {
+    std::size_t files;
+    std::size_t directories;
+    void observe_file() noexcept { if (files != 0) --files; }
+    void observe_directory() noexcept { if (directories != 0) --directories; }
+    bool satisfied() const noexcept { return files == 0 && directories == 0; }
+};
+
+// This is only the inexpensive shape preflight. The separate completed
+// marker / contiguous-page / JSON payload gate must still be checked.
+inline bool cache_has_minimum_entries(const fs::path& root,
+                                      std::size_t files,
+                                      std::size_t directories) {
+    std::error_code ec;
+    if (!fs::is_directory(root, ec) || ec ||
+        fs::is_symlink(root, ec) || ec) return false;
+    cache_entry_requirements remaining{files, directories};
+    if (remaining.satisfied()) return true;
+    for (fs::recursive_directory_iterator it(root, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        if (it->is_symlink(ec) || ec) return false;
+        if (it->is_regular_file(ec)) remaining.observe_file();
+        else if (it->is_directory(ec)) remaining.observe_directory();
+        if (ec) return false;
+        if (remaining.satisfied()) return true;
+    }
+    return !ec && remaining.satisfied();
+}
 inline bool cache_has_marker(const fs::path& root) {
     std::error_code ec;
     if (!fs::is_directory(root, ec) || ec ||
