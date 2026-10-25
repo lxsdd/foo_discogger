@@ -1397,6 +1397,14 @@ assert "fs::rename(backup_, active_, restore_ec);" in txn
 assert "cache_has_marker(stage_)" in txn
 assert "std::unique_lock<std::mutex> lock_" in txn
 assert "directory_cache_transaction_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+# Original Win32/x64 host QA must execute Jansson itself on disposable JSON
+# fixtures, not rely only on a portable synthetic validator callback.
+native_dlg = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "runner_qa_native_cache_json_rollback();" in native_dlg
+assert "DISCOGGER_NATIVE_JSON_ROLLBACK_QA=PASS" in native_dlg
+assert 'write(payload, "{\\\"broken\\\":");' in native_dlg
+assert "recover_cache_directory(active, ol::cache_payload_is_valid_json)" in native_dlg
+
 core = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 assert core.count("ol::cache_payload_is_valid_json);") == 4
 assert core.count("discogger_cache::directory_cache_transaction tx(") == 4
