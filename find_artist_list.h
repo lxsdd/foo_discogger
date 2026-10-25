@@ -18,6 +18,10 @@ public:
 	// serves dlg->expand_master_release, convey
 	const Artist_ptr Get_Artist() { return m_find_release_artist; }
 	pfc::array_t<Artist_ptr> Get_Artists() const { return m_find_release_artists; }
+	// The visible list may hide alternatives; async filter decisions must
+	// use cumulative source buckets, not only the latest worker delta.
+	size_t Get_Exact_Artist_Count() const { return m_artist_exact_matches.get_count(); }
+	size_t Get_Other_Artist_Count() const { return m_artist_other_matches.get_count(); }
 	const pfc::string8 Get_Selected_Id () { auto p = get_selected_artist(); return p ? p->id : pfc::string8(); }
 
 	// serves dlg
