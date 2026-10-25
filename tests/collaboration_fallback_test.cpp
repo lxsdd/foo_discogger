@@ -107,12 +107,13 @@ int main() {
     // both requests are still distinct and must never auto-confirm identity.
     auto same_partner_version = build_fallback_plan(
         "Producer x Sunrise", "Sunrise (Extended Mix)", "");
-    assert(same_partner_version.size() == 3);
+    // An "x" collaboration alone must not invent a canonical primary
+    // artist; the strict release-only query is reserved for featuring.
+    assert(same_partner_version.size() == 2);
     assert(same_partner_version[0].title == "Sunrise (Extended Mix)");
-    assert(same_partner_version[1].artist_filter == "Producer" &&
-           same_partner_version[1].release_title_filter == "Sunrise (Extended Mix)");
-    assert(same_partner_version[2].q == "Sunrise" &&
-           same_partner_version[2].title.empty());
+    assert(same_partner_version[1].q == "Sunrise" &&
+           same_partner_version[1].title.empty());
+    assert(same_partner_version[1].artist_filter.empty());
     // Short/generic release titles must not suppress a useful track search.
     // In particular, the Discogs title= filter refers to the RELEASE title,
     // not to the supplied track title. Such fallbacks must remain review-only.
