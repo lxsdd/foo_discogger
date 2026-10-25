@@ -2147,6 +2147,59 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     if (m_alist.Get_Artists().get_count() != 2 || m_dctree.Get_Size() != 3)
         throw std::runtime_error("Multi-artist auto-preview did not deduplicate and display three releases/masters.");
 
+    // Native regression: asynchronous updates append cumulative exact/other
+    // buckets. Old code counted the visible alternatives as exact rows, lost
+    // the newly appended exact artist, then appended old alternatives twice.
+    Artist_ptr other_artist = std::make_shared<Artist>("105");
+    other_artist->name = "Initial alternative";
+    pfc::array_t<Artist_ptr> initial_others;
+    initial_others.append_single(other_artist);
+    on_search_artist_done(two_artists, initial_others, false);
+    const auto first_rows = m_alist.Get_Artists();
+    if (first_rows.get_count() != 3 || !first_rows[0] || !first_rows[1] ||
+        !first_rows[2] || !first_rows[0]->id.equals("101") ||
+        !first_rows[1]->id.equals("102") || !first_rows[2]->id.equals("105"))
+        throw std::runtime_error("Native initial exact/other artist rows were incorrectly ordered.");
+    const size_t original_first_role = first_rows[0]->search_role_list_pos;
+    const size_t original_second_role = first_rows[1]->search_role_list_pos;
+    const size_t original_other_role = first_rows[2]->search_role_list_pos;
+    if (!original_first_role || !original_second_role || !original_other_role)
+        throw std::runtime_error("Native initial artist rows have invalid search roles.");
+
+    Artist_ptr added_exact = std::make_shared<Artist>("106");
+    added_exact->name = "Late exact artist";
+    pfc::array_t<Artist_ptr> late_exact;
+    late_exact.append_single(added_exact);
+    on_search_artist_done(late_exact, exact, true);
+    auto appended_rows = m_alist.Get_Artists();
+    if (appended_rows.get_count() != 4 ||
+        !appended_rows[0]->id.equals("101") ||
+        !appended_rows[1]->id.equals("102") ||
+        !appended_rows[2]->id.equals("106") ||
+        !appended_rows[3]->id.equals("105") ||
+        appended_rows[0]->search_role_list_pos != original_first_role ||
+        appended_rows[1]->search_role_list_pos != original_second_role ||
+        appended_rows[3]->search_role_list_pos != original_other_role ||
+        !appended_rows[2]->search_role_list_pos)
+        throw std::runtime_error("Native append lost a new exact artist or changed an existing role.");
+
+    Artist_ptr added_other = std::make_shared<Artist>("107");
+    added_other->name = "Late alternative";
+    pfc::array_t<Artist_ptr> late_other;
+    late_other.append_single(added_other);
+    on_search_artist_done(exact, late_other, true);
+    on_search_artist_done(exact, pfc::array_t<Artist_ptr>(), true);
+    appended_rows = m_alist.Get_Artists();
+    if (appended_rows.get_count() != 5 ||
+        !appended_rows[0]->id.equals("101") ||
+        !appended_rows[1]->id.equals("102") ||
+        !appended_rows[2]->id.equals("106") ||
+        !appended_rows[3]->id.equals("105") ||
+        !appended_rows[4]->id.equals("107") ||
+        appended_rows[3]->search_role_list_pos != original_other_role ||
+        !appended_rows[4]->search_role_list_pos)
+        throw std::runtime_error("Native repeated append duplicated alternatives or lost artist roles.");
+
     // Same ID 0 preview sentinel, a new query result: must replace stale tree.
     Artist_ptr refreshed = std::make_shared<Artist>("103");
     Release_ptr new_release = std::make_shared<Release>("32559");
