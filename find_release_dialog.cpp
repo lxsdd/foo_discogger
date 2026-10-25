@@ -1288,17 +1288,23 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 
     const bool exact_only_requested =
         IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) == BST_CHECKED;
+    // Append callbacks carry only a delta, not the entire result set.
+    // Resolve exact-only visibility and the no-match message against the
+    // cumulative buckets, otherwise a late alternative silently unchecks
+    // an exact-only filter even while exact matches are still present.
+    const size_t total_exact = p_artist_exact_matches.get_count() +
+        (append ? m_alist.Get_Exact_Artist_Count() : 0);
+    const size_t total_other = p_artist_other_matches.get_count() +
+        (append ? m_alist.Get_Other_Artist_Count() : 0);
     const auto decision = discogger_search::resolve_result_filter(
-        exact_only_requested, p_artist_exact_matches.get_count(),
-        p_artist_other_matches.get_count());
+        exact_only_requested, total_exact, total_other);
     const bool b_chk_exact_matches = decision.exact_only;
     if (decision.show_alternatives && exact_only_requested) {
         // The effective list filter must match the visible checkbox.
         CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);
     }
 
-    const bool no_matches = !(p_artist_exact_matches.get_count() ||
-        p_artist_other_matches.get_count());
+    const bool no_matches = !(total_exact || total_other);
     pfc::string8 msg = search_query_run_message(
         m_qdm_search_query, m_query_mode, out_va_cap, no_matches);
     if (decision.show_alternatives)
@@ -1332,22 +1338,6 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 	if (!append) {
 		m_alist.fill_artist_list(b_chk_exact_matches, m_tracer.has_amr(), updrelsrc/*updRelSrc::ArtistSearch*/);
 
-        // Publish advanced search results immediately even when the response
-        // spans several artists. The artist list remains available for review;
-        // this read-only preview neither selects a tagging target nor writes tags.
-        if (m_query_mode & SearchMode::AT) {
-            const auto& artists = m_alist.Get_Artists();
-            if (artists.get_count() == 1) {
-                Artist_ptr only = artists[0];
-                if (only && (only->releases.get_count() || only->master_releases.get_count()))
-                    ShowArtistSearchResults(only);
-            } else if (artists.get_count() > 1) {
-                Artist_ptr preview = combined_advanced_search_preview(artists);
-                if (preview->releases.get_count() || preview->master_releases.get_count())
-                    ShowArtistSearchResults(preview);
-            }
-        }
-
 		if (!m_alist.Get_Artists().get_count()) {
 			cupdRelSrc cupdsrc(updRelSrc::Undef);
 			//..
@@ -1355,6 +1345,27 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 			//..
 		}
 	}
+
+    // Late advanced-search pages must also appear in the release tree
+    // without a second artist click. Never replace a tree that the user
+    // explicitly opened by selecting an artist while the worker was active.
+    // Empty append notifications are no-ops for the preview.
+    const bool incoming_results = p_artist_exact_matches.get_count() ||
+        p_artist_other_matches.get_count();
+    const bool update_preview = (m_query_mode & SearchMode::AT) &&
+        (!append || (incoming_results && !m_alist.Get_Selected_Id().get_length()));
+    if (update_preview) {
+        const auto artists = m_alist.Get_Artists();
+        if (artists.get_count() == 1) {
+            const Artist_ptr& only = artists[0];
+            if (only && (only->releases.get_count() || only->master_releases.get_count()))
+                ShowArtistSearchResults(only);
+        } else if (artists.get_count() > 1) {
+            Artist_ptr preview = combined_advanced_search_preview(artists);
+            if (preview->releases.get_count() || preview->master_releases.get_count())
+                ShowArtistSearchResults(preview);
+        }
+    }
 
 	std::lock_guard<std::mutex> guard(g_discogs->tree_locked_mutex);
 	m_dctree.EnableDispInfo(true);
@@ -2168,6 +2179,11 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
 
     Artist_ptr added_exact = std::make_shared<Artist>("106");
     added_exact->name = "Late exact artist";
+    Release_ptr late_exact_release = std::make_shared<Release>("32559");
+    late_exact_release->title = "Joga (late exact)";
+    late_exact_release->loaded_preview = true;
+    added_exact->releases.append_single(late_exact_release);
+    added_exact->search_order_master.append_single(false);
     pfc::array_t<Artist_ptr> late_exact;
     late_exact.append_single(added_exact);
     on_search_artist_done(late_exact, exact, true);
@@ -2182,9 +2198,16 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         appended_rows[3]->search_role_list_pos != original_other_role ||
         !appended_rows[2]->search_role_list_pos)
         throw std::runtime_error("Native append lost a new exact artist or changed an existing role.");
+    if (m_dctree.Get_Size() != 4)
+        throw std::runtime_error("Native late exact search results were not automatically added to the release tree.");
 
     Artist_ptr added_other = std::make_shared<Artist>("107");
     added_other->name = "Late alternative";
+    Release_ptr late_other_release = std::make_shared<Release>("78731");
+    late_other_release->title = "Late alternative release";
+    late_other_release->loaded_preview = true;
+    added_other->releases.append_single(late_other_release);
+    added_other->search_order_master.append_single(false);
     pfc::array_t<Artist_ptr> late_other;
     late_other.append_single(added_other);
     on_search_artist_done(exact, late_other, true);
@@ -2199,6 +2222,22 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         appended_rows[3]->search_role_list_pos != original_other_role ||
         !appended_rows[4]->search_role_list_pos)
         throw std::runtime_error("Native repeated append duplicated alternatives or lost artist roles.");
+    if (m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native late alternative results were not automatically added to the release tree.");
+
+    // Same IDs may be returned by two phases, and failed async lookups may
+    // contribute nulls. Neither may create a new visible row or change roles.
+    pfc::array_t<Artist_ptr> duplicate_exact, duplicate_other, null_exact;
+    duplicate_exact.append_single(added_exact);
+    duplicate_other.append_single(other_artist);
+    null_exact.append_single(Artist_ptr());
+    on_search_artist_done(duplicate_exact, duplicate_other, true);
+    on_search_artist_done(null_exact, exact, true);
+    appended_rows = m_alist.Get_Artists();
+    if (appended_rows.get_count() != 5 || m_dctree.Get_Size() != 5 ||
+        appended_rows[0]->search_role_list_pos != original_first_role ||
+        appended_rows[3]->search_role_list_pos != original_other_role)
+        throw std::runtime_error("Native duplicate/null search updates created rows or changed roles.");
 
     // Exact-only is a separate visible projection: newly appended artist
     // objects previously retained their default role zero, and later row
@@ -2210,6 +2249,13 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         !exact_rows[0]->id.equals("101") || !exact_rows[1]->id.equals("102") ||
         !exact_rows[0]->search_role_list_pos || !exact_rows[1]->search_role_list_pos)
         throw std::runtime_error("Native exact-only artist list initial projection failed.");
+    // An append containing alternatives but no *new* exact matches must
+    // not disable an exact-only filter while earlier exact matches exist.
+    on_search_artist_done(exact, late_other, true);
+    exact_rows = m_alist.Get_Artists();
+    if (exact_rows.get_count() != 2 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_CHECKED)
+        throw std::runtime_error("Native late alternatives disabled an existing exact-only filter.");
     const size_t exact_role_one = exact_rows[0]->search_role_list_pos;
     const size_t exact_role_two = exact_rows[1]->search_role_list_pos;
     Artist_ptr exact_late_artist = std::make_shared<Artist>("108");
