@@ -3036,7 +3036,8 @@ void Discogs::Artist::load(threaded_process_status &p_status, abort_callback &p_
 		loaded = true;
         if (btransient && offline_can_write) {
             discogger_cache::directory_cache_transaction tx(
-                std::filesystem::u8path(n8_rel_path.c_str()));
+                std::filesystem::u8path(n8_rel_path.c_str()),
+                ol::cache_payload_is_valid_json);
             if (tx.ready() && discogs_interface->offline_cache_save(
                     ol::staged_cache_json_path(tx), jp.root))
                 tx.publish("");
@@ -3206,7 +3207,8 @@ void Discogs::Release::load(threaded_process_status &p_status, abort_callback &p
             }
             n8_rel_path = ol::get_offline_path(offlineArtistId, ol::GetFrom::Release, id, true);
             discogger_cache::directory_cache_transaction tx(
-                std::filesystem::u8path(n8_rel_path.c_str()));
+                std::filesystem::u8path(n8_rel_path.c_str()),
+                ol::cache_payload_is_valid_json);
             if (tx.ready() && discogs_interface->offline_cache_save(
                     ol::staged_cache_json_path(tx), jp.root))
                 tx.publish(cache_stamp.c_str());
@@ -3373,7 +3375,8 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
         bool cache_ready = !btransient;
         if (btransient && offline_can_write) {
             discogger_cache::directory_cache_transaction tx(
-                std::filesystem::u8path(n8_rel_path.c_str()));
+                std::filesystem::u8path(n8_rel_path.c_str()),
+                ol::cache_payload_is_valid_json);
             if (tx.ready()) {
                 bool saved = true;
                 for (size_t page = 0; page < count; ++page) {
@@ -3482,7 +3485,8 @@ void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, ab
         }
         if (btransient && offline_can_write) {
             discogger_cache::directory_cache_transaction tx(
-                std::filesystem::u8path(n8_rel_path.c_str()));
+                std::filesystem::u8path(n8_rel_path.c_str()),
+                ol::cache_payload_is_valid_json);
             if (tx.ready()) {
                 bool saved = true;
                 for (size_t page = 0; page < cPages; ++page) {
