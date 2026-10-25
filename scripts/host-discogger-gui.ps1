@@ -1074,7 +1074,10 @@ FILE "synthetic-side-b.wav" WAVE
             'QUERY_LIMIT','API_IDENTITY','API_EXACT_OK','API_EXACT_ITEMS',
             'API_EXACT_KNOWN','API_BROAD_OK','API_BROAD_ITEMS','API_BROAD_KNOWN',
             'API_COHORT_TOTAL','API_COHORT_OK','API_COHORT_NONEMPTY','API_COHORT_KNOWN',
-            'API_COHORT_MASK','API_COHORT_KNOWN_MASK')
+            'API_COHORT_MASK','API_COHORT_KNOWN_MASK',
+            'API_COHORT_PAGE2_ATTEMPT_MASK','API_COHORT_PAGE2_OK_MASK',
+            'API_COHORT_PAGE2_KNOWN_MASK','API_COHORT_SUNMOON_TARGETED_OK',
+            'API_COHORT_SUNMOON_TARGETED_KNOWN')
         $counts=@{}
         foreach($line in ($proof -split '\r?\n')){
             if($line -match '^([A-Z_]+)=(\d+)$' -and $Matches[1] -in $expected){
@@ -1088,6 +1091,8 @@ FILE "synthetic-side-b.wav" WAVE
         Write-Host "DISCOGGER_AUTHENTICATED_GUI_PARSE_${Architecture}=input:$($counts['INPUT_NONEMPTY']) fields:$($counts['PARSED_FIELDS']) minimal:$($counts['QUERY_MINIMAL']) query:$($counts['QUERY_DETECTED']) alt:$($counts['ALT_MODE']) retry:$($counts['REPEAT_QUERY']) exit:$($counts['EARLY_EXIT'])"
         Write-Host "DISCOGGER_AUTHENTICATED_API_PROBE_${Architecture}=identity:$($counts['API_IDENTITY']) exact_ok:$($counts['API_EXACT_OK']) exact_items:$($counts['API_EXACT_ITEMS']) exact_known:$($counts['API_EXACT_KNOWN']) broad_ok:$($counts['API_BROAD_OK']) broad_items:$($counts['API_BROAD_ITEMS']) broad_known:$($counts['API_BROAD_KNOWN'])"
         Write-Host "DISCOGGER_AUTHENTICATED_API_COHORT_${Architecture}=total:$($counts['API_COHORT_TOTAL']) completed:$($counts['API_COHORT_OK']) nonempty:$($counts['API_COHORT_NONEMPTY']) expected_on_page:$($counts['API_COHORT_KNOWN']) nonempty_mask:$($counts['API_COHORT_MASK']) known_mask:$($counts['API_COHORT_KNOWN_MASK'])"
+        # Diagnose only, never reclassify original page-one API evidence.
+        Write-Host "DISCOGGER_AUTHENTICATED_API_COHORT_FOLLOWUP_${Architecture}=page2_attempt_mask:$($counts['API_COHORT_PAGE2_ATTEMPT_MASK']) page2_ok_mask:$($counts['API_COHORT_PAGE2_OK_MASK']) page2_known_mask:$($counts['API_COHORT_PAGE2_KNOWN_MASK']) sunmoon_targeted_ok:$($counts['API_COHORT_SUNMOON_TARGETED_OK']) sunmoon_targeted_known:$($counts['API_COHORT_SUNMOON_TARGETED_KNOWN'])"
         if($counts['API_COHORT_TOTAL'] -ne 14 -or $counts['API_COHORT_OK'] -ne 14){
             throw 'Authenticated independent Discogs query corpus was incomplete.'
         }
