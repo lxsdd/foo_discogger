@@ -17,6 +17,12 @@ int main() {
     assert(trailing_collaborator("Quivver") == "");
     assert(trailing_collaborator("Artist VS. Guest") == "Guest");
     assert(trailing_collaborator("Artist x   ") == "");
+    assert(primary_artist_before_featuring("Above & Beyond feat. Richard Bedford") == "Above & Beyond");
+    assert(primary_artist_before_featuring("Above & Beyond FEAT Richard Bedford") == "Above & Beyond");
+    assert(primary_artist_before_featuring("Artist ft. Guest") == "Artist");
+    assert(primary_artist_before_featuring("Artist featuring Singer") == "Artist");
+    assert(primary_artist_before_featuring("Producer x Guest").empty());
+    assert(primary_artist_before_featuring("Kyau & Albert").empty());
     assert(without_terminal_mix_suffix("1000 Years (DJ Version)") == "1000 Years");
     assert(without_terminal_mix_suffix("Only You (Extended Mix)") == "Only You");
     assert(without_terminal_mix_suffix("1000 Years (Live)") == "1000 Years (Live)");
@@ -34,7 +40,7 @@ int main() {
     };
     for (const auto& example : fixture) {
         const auto plan = build_fallback_plan(example.artist, example.title, "");
-        assert(!plan.empty() && plan.size() <= 2);
+        assert(!plan.empty() && plan.size() <= 3);
         assert(plan.back().q == example.title && plan.back().title.empty());
         assert(std::string(example.id).size() >= 8);
     }
@@ -50,6 +56,15 @@ int main() {
            "q=%22Don%27t%20%2B%20Stop%20%231%22&title=A%2FB%3F%20C%25D");
     assert(percent_encode_search_value("Ä") == "%C3%84");
     assert(encode_fallback_query({"empty", "", "Do Not Search"}).empty());
+    assert(encode_fallback_query({"featured", "", "", "Above & Beyond", "Sun & Moon"}) ==
+           "artist=Above%20%26%20Beyond&release_title=Sun%20%26%20Moon&type=release");
+    assert(encode_fallback_query({"bad-mixed", "Guest", "", "Above & Beyond", "Sun & Moon"}).empty());
+    assert(encode_fallback_query({"bad-empty-title", "", "", "Above & Beyond", ""}).empty());
+    assert(encode_fallback_query({"bad-mixed-title", "", "Sun & Moon", "Above & Beyond", "Sun & Moon"}).empty());
+    assert(encode_fallback_query({"bad-release-title", "Sun & Moon", "", "", "Injected"}).empty());
+    assert(encode_fallback_query({"filtered-input", "", "",
+           "Producer & release_title=Attacker", "C & type=master"}) ==
+           "artist=Producer%20%26%20release_title%3DAttacker&release_title=C%20%26%20type%3Dmaster&type=release");
     assert(encode_fallback_query({"q-only", "Via Balearia", ""}) ==
            "q=%22Via%20Balearia%22");
     auto collab = build_fallback_plan("Kyau & Albert X Maywave", "1000 Years", "1000 Years (DJ Version)");
@@ -72,28 +87,48 @@ int main() {
     // second only searches the broad text index.
     auto same_partner_title = build_fallback_plan(
         "Producer feat. Sunrise", "Sunrise", "");
-    assert(same_partner_title.size() == 2);
+    assert(same_partner_title.size() == 3);
     assert(same_partner_title[0].label == "collaboration partner and title");
     assert(same_partner_title[0].q == "Sunrise" &&
            same_partner_title[0].title == "Sunrise");
-    assert(same_partner_title[1].label == "title-only discovery (review required)");
-    assert(same_partner_title[1].q == "Sunrise" &&
-           same_partner_title[1].title.empty());
+    assert(same_partner_title[1].artist_filter == "Producer" &&
+           same_partner_title[1].release_title_filter == "Sunrise" &&
+           same_partner_title[1].q.empty());
+    assert(same_partner_title[2].label == "title-only discovery (review required)");
+    assert(same_partner_title[2].q == "Sunrise" &&
+           same_partner_title[2].title.empty());
     assert(encode_fallback_query(same_partner_title[0]) ==
            "q=%22Sunrise%22&title=Sunrise");
     assert(encode_fallback_query(same_partner_title[1]) ==
+           "artist=Producer&release_title=Sunrise&type=release");
+    assert(encode_fallback_query(same_partner_title[2]) ==
            "q=%22Sunrise%22");
     // Version suffix normalization can produce the same partner/title token:
     // both requests are still distinct and must never auto-confirm identity.
     auto same_partner_version = build_fallback_plan(
         "Producer x Sunrise", "Sunrise (Extended Mix)", "");
-    assert(same_partner_version.size() == 2);
+    assert(same_partner_version.size() == 3);
     assert(same_partner_version[0].title == "Sunrise (Extended Mix)");
-    assert(same_partner_version[1].q == "Sunrise" &&
-           same_partner_version[1].title.empty());
+    assert(same_partner_version[1].artist_filter == "Producer" &&
+           same_partner_version[1].release_title_filter == "Sunrise (Extended Mix)");
+    assert(same_partner_version[2].q == "Sunrise" &&
+           same_partner_version[2].title.empty());
     // Short/generic release titles must not suppress a useful track search.
     // In particular, the Discogs title= filter refers to the RELEASE title,
     // not to the supplied track title. Such fallbacks must remain review-only.
+    // Authenticated 2026-10-25 API result: bare "Sun & Moon" did not
+    // contain release 2783977 on pages 1 or 2; primary artist plus
+    // release_title and type=release found it immediately on page 1.
+    const auto sun_moon = build_fallback_plan(
+        "Above & Beyond feat. Richard Bedford", "Sun & Moon", "Sun & Moon (Club Mix)");
+    assert(sun_moon.size() == 3);
+    assert(sun_moon[0].q == "Richard Bedford" && sun_moon[0].title == "Sun & Moon");
+    assert(sun_moon[1].artist_filter == "Above & Beyond" &&
+           sun_moon[1].release_title_filter == "Sun & Moon");
+    assert(encode_fallback_query(sun_moon[1]) ==
+           "artist=Above%20%26%20Beyond&release_title=Sun%20%26%20Moon&type=release");
+    assert(sun_moon[2].q == "Sun & Moon" && sun_moon[2].title.empty());
+    // Do not confuse a TRACK name with a release title for this filter.
     auto short_release = build_fallback_plan(
         "Kyau & Albert x Maywave", "EP", "1000 Years (DJ Version)");
     assert(short_release.size() == 1);
