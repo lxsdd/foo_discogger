@@ -2177,3 +2177,22 @@ assert "tvi.stateMask = TVIS_EXPANDED;" in enter_key
 assert "if (TreeView_GetItem(m_hwndTreeView, &tvitem) && tvitem.lParam == lparam)" in initial_expand
 assert "tvitem.mask = TVIF_PARAM;" in initial_expand
 print("PASS: release TreeView failed/stale item retrieval cannot dispatch row zero or navigate invalid selection.")
+
+
+# Owner-PC copied-media verification is a read-only tool, tested with synthetic
+# temporary files on the Windows baseline runner (not the owner's PC).
+private_audit = (root / "scripts/private-readonly-acceptance.ps1").read_text(encoding="utf-8-sig")
+private_test = (root / "tests/private-readonly-acceptance-test.ps1").read_text(encoding="utf-8-sig")
+validation = (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256" in private_audit
+assert "mtime_utc_ticks" in private_audit
+assert "REFUSED: fixture must be a direct child" in private_audit
+assert "REFUSED: fixture contains a junction or symbolic link." in private_audit
+assert "Get-OrdinaryFiles $node.FullName" in private_audit
+assert "REFUSED: baseline manifest already exists" in private_audit
+assert "WriteAllText($manifest" in private_audit
+assert "WriteAllBytes" not in private_audit
+assert "Remove-Item" not in private_audit
+assert "Expect-Rejected" in private_test
+assert "run: ./tests/private-readonly-acceptance-test.ps1" in validation
+print("PASS: owner copied-fixture read-only audit is SHA/mtime checked, fail-closed and Windows CI exercised.")
