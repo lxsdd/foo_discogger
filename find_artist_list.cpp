@@ -234,51 +234,50 @@ void CArtistList::switch_exact_matches(bool exact_matches, bool append) {
 
 void CArtistList::switch_find_releases(size_t op, bool append) {
 
-	switch (op) {
-	case 0:
-		m_find_release_artists = m_artist_exact_matches;
-		break;
-	case 1:
-		if (m_find_release_artist) {
-			m_artist_exact_matches.add_item(m_find_release_artist);
-		}
-		m_find_release_artists = m_artist_exact_matches;
-		break;
-	case 2:
-		break;
-	case 3:
-		{
-			// These two arrays already hold *all* previously received pages.
-			// Re-project exact + alternative rows rather than appending the
-			// cumulative alternative array a second time on each worker callback.
-			// In particular, m_find_release_artists.count() is NOT the number of
-			// exact matches when alternatives were already visible.
-			std::unordered_map<std::string, size_t> prior_roles;
-			if (append) {
-				for (const auto& old_artist : m_find_release_artists) {
-					if (old_artist)
-						prior_roles.emplace(old_artist->id.get_ptr(), old_artist->search_role_list_pos);
-				}
-			}
-			m_find_release_artists = m_artist_exact_matches;
-			m_find_release_artists.append(m_artist_other_matches);
-			if (append) {
-				for (auto& new_artist : m_find_release_artists) {
-					if (!new_artist) continue;
-					const auto previous = prior_roles.find(new_artist->id.get_ptr());
-					new_artist->search_role_list_pos = previous != prior_roles.end()
-						? previous->second : get_next_role_pos();
-				}
-			}
-		}
-		break;
-	}
+    // A late worker update carries the cumulative exact/alternative buckets.
+    // Preserve per-artist row identities across either visible projection,
+    // including the exact-only checkbox, and allocate new roles only for
+    // identities not previously shown.
+    std::unordered_map<std::string, size_t> prior_roles;
+    if (append && (op == 0 || op == 3)) {
+        for (const auto& previous_artist : m_find_release_artists) {
+            if (previous_artist)
+                prior_roles.emplace(previous_artist->id.get_ptr(),
+                                    previous_artist->search_role_list_pos);
+        }
+    }
 
-	//reset ndx artist id (ref. artist search role)
+    switch (op) {
+    case 0:
+        m_find_release_artists = m_artist_exact_matches;
+        break;
+    case 1:
+        if (m_find_release_artist)
+            m_artist_exact_matches.add_item(m_find_release_artist);
+        m_find_release_artists = m_artist_exact_matches;
+        break;
+    case 2:
+        break;
+    case 3:
+        // Both source arrays are cumulative, whereas the current visible
+        // list may include other artists. The old base/cadd arithmetic
+        // discarded late exact matches and repeatedly duplicated others.
+        m_find_release_artists = m_artist_exact_matches;
+        m_find_release_artists.append(m_artist_other_matches);
+        break;
+    }
 
-	for (size_t i = 0; !append && i < m_find_release_artists.get_count(); i++) {
-		m_find_release_artists[i]->search_role_list_pos = get_next_role_pos();
-	}
+    for (auto& current_artist : m_find_release_artists) {
+        if (!current_artist) continue;
+        if (!append) {
+            current_artist->search_role_list_pos = get_next_role_pos();
+        } else if (op == 0 || op == 3) {
+            const auto previous = prior_roles.find(current_artist->id.get_ptr());
+            current_artist->search_role_list_pos =
+                previous != prior_roles.end() && previous->second
+                    ? previous->second : get_next_role_pos();
+        }
+    }
 
 	queue_artist_redraw(m_hWnd);
 
