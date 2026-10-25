@@ -22,7 +22,13 @@ try {
     [IO.File]::WriteAllBytes($art, [byte[]]@(255,216,255,217))
     & $script -Mode Baseline -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha
     & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha
+    # A second baseline must not overwrite the first manifest, even when
+    # the caller mistakenly reuses its path.
+    $manifestHash = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash
     Expect-Rejected { & $script -Mode Baseline -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha }
+    if ((Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash -cne $manifestHash) {
+        throw 'Rejected baseline attempt changed the original manifest.'
+    }
     Expect-Rejected { & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha ('a' * 40) }
     $mtime = (Get-Item -LiteralPath $audio).LastWriteTimeUtc
     [IO.File]::WriteAllBytes($audio, [byte[]]@(0,1,2,3,4,6))
@@ -36,8 +42,31 @@ try {
     Expect-Rejected { & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha }
     Remove-Item -LiteralPath $extra -Force
     & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha
+    # A removed file and a timestamp-only mutation are independent failure
+    # modes; neither may be accepted just because remaining hashes match.
+    $artBytes = [IO.File]::ReadAllBytes($art)
+    $artMtime = (Get-Item -LiteralPath $art).LastWriteTimeUtc
+    Remove-Item -LiteralPath $art -Force
+    Expect-Rejected { & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha }
+    [IO.File]::WriteAllBytes($art, $artBytes)
+    (Get-Item -LiteralPath $art).LastWriteTimeUtc = $artMtime
+    & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha
+    $cueMtime = (Get-Item -LiteralPath $cue).LastWriteTimeUtc
+    (Get-Item -LiteralPath $cue).LastWriteTimeUtc = $cueMtime.AddSeconds(2)
+    Expect-Rejected { & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha }
+    (Get-Item -LiteralPath $cue).LastWriteTimeUtc = $cueMtime
+    & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha
+    # A corrupt baseline must fail closed rather than be treated as an empty
+    # list or silently replaced by a new baseline.
+    $manifestBytes = [IO.File]::ReadAllBytes($manifest)
+    try {
+        [IO.File]::WriteAllText($manifest, '{"schema":1,"source_sha":"invalid"}')
+        Expect-Rejected { & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha }
+    }
+    finally { [IO.File]::WriteAllBytes($manifest, $manifestBytes) }
+    & $script -Mode Verify -FixtureRoot $fixture -ManifestPath $manifest -SourceSha $sha
     Expect-Rejected { & $script -Mode Verify -FixtureRoot $env:ProgramFiles -ManifestPath $manifest -SourceSha $sha }
-    Write-Host 'PASS: private copied-fixture baseline/no-op, SHA/mtime changes, new files, source mismatch, overwrite and non-TEMP rejection.'
+    Write-Host 'PASS: private copied-fixture baseline/no-op, hash/mtime-only, missing/new files, corrupt manifest, source mismatch, no-overwrite and non-TEMP rejection.'
 }
 finally {
     if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture -Recurse -Force }
