@@ -83,24 +83,24 @@ int main() {
     assert(duo.size() == 2 && duo[0].q == "Albert");
 
     // Identical partner and title values do not make these requests
-    // interchangeable: the first constrains Discogs release title and the
-    // second only searches the broad text index.
+    // interchangeable: prefer the proven featured-primary release-only
+    // search, then guest/title, then the broad review-only text index.
     auto same_partner_title = build_fallback_plan(
         "Producer feat. Sunrise", "Sunrise", "");
     assert(same_partner_title.size() == 3);
-    assert(same_partner_title[0].label == "collaboration partner and title");
-    assert(same_partner_title[0].q == "Sunrise" &&
-           same_partner_title[0].title == "Sunrise");
-    assert(same_partner_title[1].artist_filter == "Producer" &&
-           same_partner_title[1].release_title_filter == "Sunrise" &&
-           same_partner_title[1].q.empty());
+    assert(same_partner_title[0].artist_filter == "Producer" &&
+           same_partner_title[0].release_title_filter == "Sunrise" &&
+           same_partner_title[0].q.empty());
+    assert(same_partner_title[1].label == "collaboration partner and title");
+    assert(same_partner_title[1].q == "Sunrise" &&
+           same_partner_title[1].title == "Sunrise");
     assert(same_partner_title[2].label == "title-only discovery (review required)");
     assert(same_partner_title[2].q == "Sunrise" &&
            same_partner_title[2].title.empty());
     assert(encode_fallback_query(same_partner_title[0]) ==
-           "q=%22Sunrise%22&title=Sunrise");
-    assert(encode_fallback_query(same_partner_title[1]) ==
            "artist=Producer&release_title=Sunrise&type=release");
+    assert(encode_fallback_query(same_partner_title[1]) ==
+           "q=%22Sunrise%22&title=Sunrise");
     assert(encode_fallback_query(same_partner_title[2]) ==
            "q=%22Sunrise%22");
     // Version suffix normalization can produce the same partner/title token:
@@ -123,11 +123,11 @@ int main() {
     const auto sun_moon = build_fallback_plan(
         "Above & Beyond feat. Richard Bedford", "Sun & Moon", "Sun & Moon (Club Mix)");
     assert(sun_moon.size() == 3);
-    assert(sun_moon[0].q == "Richard Bedford" && sun_moon[0].title == "Sun & Moon");
-    assert(sun_moon[1].artist_filter == "Above & Beyond" &&
-           sun_moon[1].release_title_filter == "Sun & Moon");
-    assert(encode_fallback_query(sun_moon[1]) ==
+    assert(sun_moon[0].artist_filter == "Above & Beyond" &&
+           sun_moon[0].release_title_filter == "Sun & Moon");
+    assert(encode_fallback_query(sun_moon[0]) ==
            "artist=Above%20%26%20Beyond&release_title=Sun%20%26%20Moon&type=release");
+    assert(sun_moon[1].q == "Richard Bedford" && sun_moon[1].title == "Sun & Moon");
     assert(sun_moon[2].q == "Sun & Moon" && sun_moon[2].title.empty());
     // Do not confuse a TRACK name with a release title for this filter.
     auto short_release = build_fallback_plan(
