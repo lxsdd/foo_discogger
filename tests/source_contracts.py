@@ -46,6 +46,34 @@ assert artist_context.index("discogger_ui::valid_artist_context_target(") < arti
 assert "valid_artist_context_target(std::size_t menu_row" in (root / "discogger_artist_activation.h").read_text(encoding="utf-8-sig")
 print("PASS: null artist rows and stale modal context selection reject actions.")
 
+# Streaming artist worker callbacks deliver cumulative lists. Appending the
+# complete alternative bucket twice duplicatively displayed old rows and
+# using the already combined visible count lost new exact rows.
+artist_projection = artist.split("void CArtistList::switch_find_releases(", 1)[1].split(
+    "void CArtistList::set_image_list(", 1)[0]
+assert "m_artist_exact_matches.get_count() - base" not in artist_projection
+assert "m_find_release_artists.resize(base + cadd)" not in artist_projection
+assert "m_find_release_artists = m_artist_exact_matches;" in artist_projection
+assert "m_find_release_artists.append(m_artist_other_matches);" in artist_projection
+assert "std::unordered_map<std::string, size_t> prior_roles;" in artist_projection
+assert "prior_roles.emplace(old_artist->id.get_ptr(), old_artist->search_role_list_pos);" in artist_projection
+assert "new_artist->search_role_list_pos = previous != prior_roles.end()" in artist_projection
+native_qa = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+native_stream = native_qa.split("CFindReleaseDialog::runner_qa_populated_search_rows(", 1)[1].split(
+    "void CFindReleaseDialog::ShowArtistSearchResults(", 1)[0]
+for required in (
+    'on_search_artist_done(two_artists, initial_others, false);',
+    'on_search_artist_done(late_exact, exact, true);',
+    'on_search_artist_done(exact, late_other, true);',
+    'on_search_artist_done(exact, pfc::array_t<Artist_ptr>(), true);',
+    'appended_rows.get_count() != 5',
+    'appended_rows[3]->search_role_list_pos != original_other_role',
+):
+    assert required in native_stream
+print("PASS: cumulative exact/alternative artist append preserves roles and rejects old duplicate/lost-row algorithm.")
+
+
+
 # Do not retain dialog or artist-list objects in queued main-thread redraw work.
 assert "fb2k::inMainThread([this" not in artist
 assert "fb2k::inMainThread([dlg" not in artist
