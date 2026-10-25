@@ -390,6 +390,22 @@ assert "without_terminal_mix_suffix" in plan
 assert "build_fallback_plan(" in plan
 assert "if (key.size() < 3) return plan;" in plan
 assert "title-only discovery (review required)" in plan
+# Real authenticated Discogs probe for release 2783977 established a strict
+# artist+release_title+type query where broad "Sun & Moon" pages 1-2 failed.
+# Only explicit featuring credits produce this extra review-only fallback,
+# and independent UTF-8 values must be percent-encoded as fields.
+assert "primary_artist_before_featuring(" in plan
+assert 'const std::string primary = primary_artist_before_featuring(initial_artist);' in plan
+assert '"&release_title="' in plan and '"&type=release"' in plan
+assert "percent_encode_search_value(candidate.artist_filter)" in plan
+assert "percent_encode_search_value(candidate.release_title_filter)" in plan
+assert 'if (!candidate.q.empty() || !candidate.title.empty() ||' in plan
+assert 'candidate.release_title_filter.empty()) return {};' in plan
+assert "if (!using_track_title) {" in plan
+assert 'plan.push_back({"featured primary artist and release title (review required)",' in plan
+assert "if (!fake_artist->master_releases.get_count() && !fake_artist->releases.get_count())" in search
+assert 'presentation_query["artist="].first.clear();' in search
+print("PASS: safe, bounded featured-primary Discogs release-only fallback is gated on empty search.")
 print("PASS: artist refresh, HTTP rate-limit routing and collaboration fallback are wired.")
 print("NOTE: full component compilation and live Discogs/foobar testing are separate gates.")
 
