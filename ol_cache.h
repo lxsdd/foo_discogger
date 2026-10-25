@@ -376,7 +376,22 @@ namespace Offline {
                         _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY,
                         _S_IREAD | _S_IWRITE);
                     if (jf == -1) return false;
-                    const bool serialized = json_dumpfd(root, jf, 0) == 0;
+                    // Jansson's fd writer may use a different Windows CRT
+                    // than the one that opened jf. Keep all descriptor I/O
+                    // in the component CRT; Jansson only emits byte chunks.
+                    const bool serialized = json_dump_callback(root,
+                        [](const char* data, size_t length, void* context) -> int {
+                            const int fd = *static_cast<int*>(context);
+                            while (length) {
+                                const unsigned int chunk = static_cast<unsigned int>(
+                                    length > 1024u * 1024u ? 1024u * 1024u : length);
+                                const int written = _write(fd, data, chunk);
+                                if (written <= 0) return -1;
+                                data += written;
+                                length -= static_cast<size_t>(written);
+                            }
+                            return 0;
+                        }, &jf, 0) == 0;
                     const bool synced = serialized && _commit(jf) == 0;
                     const bool closed = _close(jf) == 0;
                     return serialized && synced && closed;
