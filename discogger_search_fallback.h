@@ -155,19 +155,21 @@ inline std::vector<fallback_candidate> build_fallback_plan(
     const std::string key = using_track_title ? requested_track : requested_title;
     if (key.size() < 3) return plan;
     const std::string partner = trailing_collaborator(initial_artist);
-    if (!using_track_title && !partner.empty() && partner != initial_artist)
-        plan.push_back({"collaboration partner and title", partner, key});
     if (!using_track_title) {
         const std::string primary = primary_artist_before_featuring(initial_artist);
         if (primary.size() >= 2 && primary != initial_artist) {
             // Authenticated Discogs evidence: broad "Sun & Moon" did not
             // contain release 2783977 on pages 1-2, but an artist +
             // release_title + type=release query found it on page 1.
+            // Put this *first* for featuring credits: the existing guest
+            // lookup stops after ANY nonempty result, even a wrong release.
             // Do not broaden title=track; no automatic identity acceptance.
             plan.push_back({"featured primary artist and release title (review required)",
                 "", "", primary, key});
         }
     }
+    if (!using_track_title && !partner.empty() && partner != initial_artist)
+        plan.push_back({"collaboration partner and title", partner, key});
     // Deliberately broaden to a review-only Discogs 'q', keeping the exact
     // structured query untouched. A track title must not masquerade as the
     // release title; only the broad text index is queried in that case.
