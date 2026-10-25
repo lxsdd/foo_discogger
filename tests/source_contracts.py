@@ -1386,7 +1386,12 @@ assert "if (!validate || !cache_has_marker(backup, validate)) return false;" in 
 assert "cache_has_marker(active, validate)" in txn
 assert 'cache_payload_file(it->path() / "root.json", validate)' in txn
 assert "cache_payload_file(single, validate)" in txn
-assert "json_loadfd(fd, JSON_DECODE_ANY, &error)" in cache_atomic
+# The native CRT descriptor must not cross the Jansson static-library boundary.
+# Recovery validation and ordinary cache reads share bounded JSON byte parsing.
+assert "json_loadb(bytes.data(), bytes.size(), JSON_DECODE_ANY, error)" in cache_atomic
+assert "max_cache_json_bytes = 128ull * 1024ull * 1024ull" in cache_atomic
+assert "json_t* root = load_cache_json(os_ol, &json_error);" in cache_atomic
+assert "json_loadfd(" not in cache_atomic
 assert "cache_payload_is_valid_json" in cache_atomic
 assert "recover_cache_directory(fs::u8path(out_relative_path.c_str())," in cache_atomic
 assert "assert(!discogger_cache::recover_cache_directory(malformed));" in (
@@ -1408,6 +1413,10 @@ assert 'write(payload, R"({"broken":)");' in native_dlg
 assert "recover_cache_directory(active, ol::cache_payload_is_valid_json)" in native_dlg
 assert "Native Jansson published malformed staged JSON." in native_dlg
 assert "Native Jansson rejected valid staged JSON." in native_dlg
+assert "Native offline cache reader rejected valid JSON." in native_dlg
+assert "Native offline reader accepted truncated JSON." in native_dlg
+assert "Native atomic JSON serializer did not roundtrip." in native_dlg
+assert "real_reader.Dump_JSON(serialized_utf8.c_str(), generated)" in native_dlg
 assert "Native malformed staged JSON changed valid active cache." in native_dlg
 assert "qa-populated-gui-error.txt" in (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
 assert "Native populated foobar GUI assertion failed:" in (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
