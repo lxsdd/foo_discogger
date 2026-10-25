@@ -83,12 +83,27 @@ if ($Mode -eq 'Baseline') {
         files = $rows
     }
     $json = ConvertTo-Json -InputObject $snapshot -Depth 6
-    [IO.File]::WriteAllText($manifest, $json, [Text.UTF8Encoding]::new($false))
+    # CreateNew is an atomic no-overwrite operation. The prior
+    # Test-Path guard alone had a TOCTOU gap: another process could create
+    # a file or symlink between the check and WriteAllText's truncating open.
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json)
+    $stream = [IO.File]::Open($manifest, [IO.FileMode]::CreateNew,
+                             [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    }
+    finally { $stream.Dispose() }
     Write-Host ('DISCOGGER_PRIVATE_FIXTURE_BASELINE=PASS files=' + $rows.Count)
     return
 }
 if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
     throw 'Missing original baseline manifest.'
+}
+$manifestInfo = Get-Item -LiteralPath $manifest -Force -ErrorAction Stop
+if ($manifestInfo.PSIsContainer -or
+    ($manifestInfo.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'REFUSED: baseline manifest must be an ordinary file, not a link.'
 }
 $original = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($original.schema -ne 1 -or $original.source_sha -cne $source -or
