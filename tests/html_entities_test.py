@@ -7,7 +7,7 @@ import re
 source = (Path(__file__).resolve().parents[1] / "entities.cpp").read_text(encoding="utf-8")
 entry = re.compile(r'^\s*\{"([A-Za-z0-9]+;)", "((?:\\.|[^"\\])*)"\},?\s*$', re.M)
 matches = entry.findall(source)
-assert len(matches) == 252, f"Expected 252 complete mappings, got {len(matches)}"
+assert len(matches) == 253, f"Expected 253 complete mappings, got {len(matches)}"
 names = [name for name, _ in matches]
 assert names == sorted(set(names)), "bsearch requires sorted, unique keys"
 
@@ -40,4 +40,4 @@ assert '#include "discogger_html_numeric.h"' in source
 assert "valid_numeric_digits(digits, end, hex)" in source
 assert "valid_numeric_scalar(cp)" in source
 assert "cp > UNICODE_MAX" not in source
-print("PASS: 252 named entities have canonical UTF-8 bytes; malformed numeric references rejected.")
+print("PASS: 253 named entities have canonical UTF-8 bytes; malformed numeric references rejected.")
