@@ -305,7 +305,12 @@ void run_live_search_probe_qa() {
         std::string extra;
         if (std::getline(input, extra))
             throw std::runtime_error("Multi-line public release QA selector.");
-        bool allowed = false;
+        // The 14 independent API-cohort cases do not include the initial
+        // Estiva baseline or the fifth mandatory Quivver GUI-only release.
+        // Permit these two fixed public release identities without expanding
+        // API probing or admitting arbitrary selector input.
+        bool allowed = expected_release_id == "38012673" ||
+                       expected_release_id == "35534398";
         for (const auto& entry : discogger_live_corpus_qa::cases) {
             if (expected_release_id == std::to_string(entry.expected_release_id)) {
                 allowed = true;
