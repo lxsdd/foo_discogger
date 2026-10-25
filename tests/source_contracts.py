@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Static wiring/regression guards. They do not replace a foobar2000 runtime test."""
 from pathlib import Path
+import re
 
 root = Path(__file__).resolve().parents[1]
 
@@ -2114,4 +2115,23 @@ for release_id in ("37332711", "36397609", "36819730", "35534398"):
     assert "Id='" + release_id + "'" in native_matrix_body
 assert "Name='quivver-consciousness-ep';MinFields=3" in native_matrix_body
 assert "foreach($item in $nativeMatrix)" in native_gui_script
+# Every entry in the real 21-query Win32/x64 GUI matrix must pass the
+# runner-only public release selector before probing: an unlisted fifth release
+# previously threw before publishing telemetry, falsely resembling a timeout.
+# Keep the 14-request API cohort unchanged and reject arbitrary selector IDs.
+qa_native_source = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+qa_corpus_source = (root / "tests/live-discogs-search-corpus-qa.h").read_text(encoding="utf-8-sig")
+qa_selector = qa_native_source.split("void run_live_search_probe_qa() {", 1)[1].split(
+    "const auto counts = g_discogs->find_release_dialog->runner_qa_live_search_probe(", 1
+)[0]
+matrix_ids = re.findall(r"Id='(\\d+)'", native_matrix_body)
+cohort_ids = set(re.findall(r"\\{(\\d+),", qa_corpus_source))
+gui_only_ids = set(re.findall(r'expected_release_id == "(\\d+)"', qa_selector))
+assert len(matrix_ids) == 21
+assert gui_only_ids == {"38012673", "35534398"}
+assert set(matrix_ids).issubset(cohort_ids | gui_only_ids)
+assert "if (!allowed)" in qa_selector
+assert "Unrecognized public release QA selector." in qa_selector
+print("PASS: all 21 native GUI release selectors are whitelisted; arbitrary IDs rejected.")
+
 print("PASS: all five mandatory Discogs releases have native GUI search gates.")
