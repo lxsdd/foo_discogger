@@ -2103,3 +2103,15 @@ assert search_main.index("::IsWindow(m_owner_window)") < search_main.index("Upda
 assert "task->start(m_owner_window);" in search_main
 assert "new service_impl_t<on_search_artist_done_process_callback>" in search_main
 print("PASS: modeless online search completion refuses closed/replaced Win32 dialog.")
+
+# All five original missing-release identities require a real native GUI
+# path, not just API availability: Estiva has its first-search gate, while
+# Kyau/Maywave, both Matt Fax and Quivver live in the 21-case matrix.
+native_gui_script = (root / "scripts/host-discogger-gui.ps1").read_text(encoding="utf-8-sig")
+assert "expected release 38012673" in native_gui_script
+native_matrix_body = native_gui_script.split("$nativeMatrix=@(", 1)[1].split("\n        )", 1)[0]
+for release_id in ("37332711", "36397609", "36819730", "35534398"):
+    assert "Id='" + release_id + "'" in native_matrix_body
+assert "Name='quivver-consciousness-ep';MinFields=3" in native_matrix_body
+assert "foreach($item in $nativeMatrix)" in native_gui_script
+print("PASS: all five mandatory Discogs releases have native GUI search gates.")

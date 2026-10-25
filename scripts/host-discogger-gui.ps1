@@ -1138,6 +1138,8 @@ FILE "synthetic-side-b.wav" WAVE
             @{Id='37332711';Query='q= Maywave & title= 1000 Years';Name='kyau-maywave';MinFields=3},
             @{Id='36397609';Query='artist= Matt Fax & title= Only You';Name='matt-fax-only-you';MinFields=3},
             @{Id='36819730';Query='artist= Matt Fax & title= Till You Let Go';Name='matt-fax-till-you-let-go';MinFields=3},
+            # Fifth mandatory missing-release identity: native result must be visible without artist reselect.
+            @{Id='35534398';Query='artist= Quivver & title= Consciousness EP';Name='quivver-consciousness-ep';MinFields=3},
             @{Id='2844';Query='artist= Daft Punk & title= One More Time';Name='daft-punk';MinFields=3},
             @{Id='7809';Query='artist= The Chemical Brothers & title= Hey Boy Hey Girl';Name='chemical-brothers';MinFields=3},
             @{Id='32559';Query='artist= Björk & title= Jóga';Name='bjork-utf8';MinFields=3},
