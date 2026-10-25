@@ -8,6 +8,7 @@
 #include "discogger_artist_activation.h"
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 
 const size_t TRACER_IMG_NDX = 3;
 const size_t LOADED_RELEASES_IMG_NDX = 6;
@@ -162,7 +163,8 @@ void CArtistList::fill_artist_list(bool dlgexact, bool force_exact, updRelSrc up
 		size_t prev_role_pos = m_find_release_artist ? m_find_release_artist->search_role_list_pos : 0/*~0*/;
 		size_t prev_list_pos = 0;
 		for (size_t w = 0; w < m_find_release_artists.get_count(); w++) {
-			if (m_find_release_artists[w]->search_role_list_pos == prev_role_pos) {
+			if (m_find_release_artists[w] &&
+                m_find_release_artists[w]->search_role_list_pos == prev_role_pos) {
 				prev_list_pos = w + 1; //1 base
 				break;
 			}
@@ -180,7 +182,7 @@ void CArtistList::fill_artist_list(bool dlgexact, bool force_exact, updRelSrc up
 
 		// * CHANGE CURRENT ARTIST
 
-		if (pos != SIZE_MAX && Get_Artists().get_count() > pos) {
+		if (pos != SIZE_MAX && Get_Artists().get_count() > pos && Get_Artists()[pos]) {
 			m_find_release_artist = Get_Artists()[pos];
 			m_idtracer_p->artist_check(m_find_release_artist->id, 0);
 		}
@@ -267,6 +269,23 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
         break;
     }
 
+    if (op == 0 || op == 3) {
+        // Different search phases may return the same Discogs artist ID,
+        // or a failed asynchronous lookup may contribute a null pointer.
+        // Keep exact matches first, preserve the first valid identity and
+        // never expose null/duplicate owner-data rows to native callbacks.
+        std::unordered_set<std::string> visible_ids;
+        pfc::array_t<Artist_ptr> unique_artists;
+        for (const auto& candidate : m_find_release_artists) {
+            if (!candidate) continue;
+            if (candidate->id.get_length() &&
+                !visible_ids.emplace(candidate->id.get_ptr()).second)
+                continue;
+            unique_artists.append_single(candidate);
+        }
+        m_find_release_artists = unique_artists;
+    }
+
     for (auto& current_artist : m_find_release_artists) {
         if (!current_artist) continue;
         if (!append) {
@@ -348,7 +367,7 @@ bool CArtistList::OnDisplayCellString(int item, int subitem, pfc::string8& resul
 
 size_t CArtistList::get_artist_id(size_t pos) {
 
-	if (get_size() > pos)
+	if (get_size() > pos && m_find_release_artists[pos])
 		return atoi(m_find_release_artists[pos]->id);
 
 	if (m_find_release_artist)
@@ -393,7 +412,8 @@ size_t CArtistList::get_artist_role_pos(size_t szartist_id) {
 		Artist_ptr artist;
 		for (size_t walk = 0; walk < m_find_release_artists.get_count(); walk++) {
 
-			if (atoi(m_find_release_artists[walk]->id) == szartist_id) {
+			if (m_find_release_artists[walk] &&
+                atoi(m_find_release_artists[walk]->id) == szartist_id) {
 
 				return m_find_release_artists[walk]->search_role_list_pos;
 			}
