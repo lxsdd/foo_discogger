@@ -55,6 +55,10 @@ int main() {
     assert(!discogger_cache::cache_has_minimum_entries(entity / "root.json", 1, 0));
     assert(!discogger_cache::cache_has_minimum_entries(inventory / "missing", 1, 0));
     assert(discogger_cache::cache_has_marker(entity));
+    put(entity / "loading", "writer-in-progress");
+    assert(!discogger_cache::cache_has_marker(entity));
+    fs::remove(entity / "loading");
+    assert(discogger_cache::cache_has_marker(entity));
     fs::create_directory(entity / "unexpected");
     assert(discogger_cache::cache_has_minimum_entries(entity, 2, 0));
     // Shape acceptance never overrides the strict completed-marker gate.
@@ -69,6 +73,10 @@ int main() {
     assert(!discogger_cache::cache_has_minimum_entries(paged, 4, 1));
     assert(!discogger_cache::cache_has_minimum_entries(paged, 1, 2));
     assert(discogger_cache::cache_has_marker(paged));
+    put(paged / "LoAdInG", "in-progress-mixed-case");
+    assert(!discogger_cache::cache_has_marker(paged));
+    fs::remove(paged / "LoAdInG");
+    assert(discogger_cache::cache_has_marker(paged));
     fs::create_directory(paged / "page-2");
     assert(discogger_cache::cache_has_minimum_entries(paged, 1, 1));
     assert(!discogger_cache::cache_has_marker(paged));
@@ -80,6 +88,31 @@ int main() {
       assert(tx.publish("old-marker")); }
     assert(read(active / "page-0/root.json") == "old");
     assert(discogger_cache::cache_has_marker(active));
+    // Recovery must prefer a complete rollback over an active cache that
+    // looks complete except for its unfinished writer marker.
+    fs::copy(active, discogger_cache::cache_backup_path(active),
+             fs::copy_options::recursive);
+    put(active / "loading", "still-writing");
+    assert(!discogger_cache::cache_has_marker(active));
+    assert(discogger_cache::recover_cache_directory(active));
+    assert(read(active / "page-0/root.json") == "old");
+    assert(!fs::exists(active / "loading"));
+    assert(!fs::exists(discogger_cache::cache_backup_path(active)));
+    // A rollback that is itself still loading must never replace a damaged
+    // active cache, and neither directory may be deleted in that case.
+    const fs::path loading_backup_active = base / "loading-in-backup";
+    fs::copy(active, loading_backup_active, fs::copy_options::recursive);
+    const fs::path loading_backup = discogger_cache::cache_backup_path(loading_backup_active);
+    fs::copy(active, loading_backup, fs::copy_options::recursive);
+    put(loading_backup / "loading", "unfinished-rollback");
+    fs::remove(loading_backup_active / "taskreg.txt");
+    assert(!discogger_cache::recover_cache_directory(loading_backup_active));
+    assert(read(loading_backup_active / "page-0/root.json") == "old");
+    assert(fs::exists(loading_backup / "loading"));
+    fs::remove(loading_backup / "loading");
+    assert(discogger_cache::recover_cache_directory(loading_backup_active));
+    assert(read(loading_backup_active / "page-0/root.json") == "old");
+    assert(!fs::exists(loading_backup));
     { discogger_cache::directory_cache_transaction tx(base / "marker-only");
       assert(tx.ready()); assert(!tx.publish("")); }
     assert(!fs::exists(base / "marker-only"));
