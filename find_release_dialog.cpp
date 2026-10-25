@@ -1286,6 +1286,19 @@ pfc::string8 search_query_run_message(const QueryDefMap qdm_search_query, const 
 
 void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap) {
 
+    // Search providers may return an allocated artist with an empty ID.
+    // It is not a selectable Discogs identity: counting it as an exact hit
+    // hides real alternative results and exposes a bogus artist row. Filter
+    // only this incoming delta, preserving cumulative valid prior buckets.
+    const auto valid_rows = [](const pfc::array_t<Artist_ptr>& rows) {
+        pfc::array_t<Artist_ptr> result;
+        for (const auto& artist : rows)
+            if (artist && artist->id.get_length())
+                result.append_single(artist);
+        return result;
+    };
+    const auto valid_exact = valid_rows(p_artist_exact_matches);
+    const auto valid_other = valid_rows(p_artist_other_matches);
     const bool exact_only_requested =
         IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) == BST_CHECKED;
     // Append callbacks carry only a delta, not the entire result set.
@@ -1298,8 +1311,8 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
             if (artist) ++count;
         return count;
     };
-    const size_t incoming_exact = valid_count(p_artist_exact_matches);
-    const size_t incoming_other = valid_count(p_artist_other_matches);
+    const size_t incoming_exact = valid_count(valid_exact);
+    const size_t incoming_other = valid_count(valid_other);
     const size_t total_exact = incoming_exact +
         (append ? m_alist.Get_Exact_Artist_Count() : 0);
     const size_t total_other = incoming_other +
@@ -1332,10 +1345,10 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 	}
 
 	if (m_tracer.is_multi_artist()) {
-		m_alist.set_artists(b_chk_exact_matches, append, nullptr, p_artist_exact_matches, p_artist_other_matches);
+		m_alist.set_artists(b_chk_exact_matches, append, nullptr, valid_exact, valid_other);
 	}
 	else {
-		m_alist.set_artists(b_chk_exact_matches, append, nullptr, p_artist_exact_matches, p_artist_other_matches);
+		m_alist.set_artists(b_chk_exact_matches, append, nullptr, valid_exact, valid_other);
 	}
 
 	//may spawn on list item selection
@@ -2313,6 +2326,22 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     on_search_artist_done(null_exact, exact, false);
     if (m_alist.Get_Artists().get_count() != 0 || m_dctree.Get_Size() != 0)
         throw std::runtime_error("Native null-only search retained stale visible results.");
+
+    // An allocated-but-empty ID is as unusable as a null artist pointer.
+    // Exact-only must fall back to valid alternatives; late empty-ID
+    // notifications must neither add rows nor replace a correct preview.
+    pfc::array_t<Artist_ptr> empty_id_exact;
+    empty_id_exact.append_single(std::make_shared<Artist>(""));
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(empty_id_exact, alternatives, false);
+    if (m_alist.Get_Artists().get_count() != 1 ||
+        !m_alist.Get_Artists()[0]->id.equals("0") ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED ||
+        m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native empty-ID exact artist hid valid alternatives.");
+    on_search_artist_done(empty_id_exact, empty_id_exact, true);
+    if (m_alist.Get_Artists().get_count() != 1 || m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native empty-ID append polluted rows or preview.");
     m_query_mode = previous_mode;
     return {1, initial_tree};
 }
