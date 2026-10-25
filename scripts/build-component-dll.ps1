@@ -1,9 +1,13 @@
 param(
     [ValidateSet('Win32','x64')]
-    [string[]] $Platforms = @('Win32','x64')
+    [string[]] $Platforms = @('Win32','x64'),
+    [switch] $CleanNonQa
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($CleanNonQa -and $env:CL -match 'DISCOGGER_RUNNER_MEDIA_QA') {
+    throw 'Clean non-QA build refused: runner QA preprocessor macro is present.'
+}
 
 # HARD GATE: complete native foobar2000 component compilation + linking.
 # Runs only inside ephemeral GitHub-hosted Windows runner staging. NO uploads,
@@ -89,9 +93,22 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $manifest = [System.Collections.Generic.List[object]]::new()
 foreach ($platform in $Platforms) {
     try {
-        Write-Host "=== HARD NATIVE DLL BUILD AND LINK: $platform ==="
+        Write-Host "=== HARD NATIVE DLL BUILD AND LINK: $platform clean-nonqa=$CleanNonQa ==="
         $libDir = Join-Path $component "$platform/Release"
         New-Item -ItemType Directory -Path $libDir -Force | Out-Null
+        $previousQaHash = $null
+        if ($CleanNonQa) {
+            $previousDll = Join-Path $libDir 'foo_discogger.dll'
+            if (-not (Test-Path -LiteralPath $previousDll -PathType Leaf)) {
+                throw "Clean non-QA gate requires the prior host-tested QA DLL: $platform"
+            }
+            $previousQaHash = (Get-FileHash -LiteralPath $previousDll -Algorithm SHA256).Hash.ToLowerInvariant()
+            $previousText = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($previousDll))
+            if (-not $previousText.Contains('DISCOGGER_QA_RUNNER') -or
+                -not $previousText.Contains('DISCOGGER_QA_MEDIA_DIR')) {
+                throw "Prior QA DLL lacks expected runner-only markers: $platform"
+            }
+        }
         $janssonBuild = Join-Path $env:RUNNER_TEMP "discogger-jansson-build-$platform"
         if (-not (Test-Path -LiteralPath (Join-Path $janssonBuild 'include/jansson_config.h'))) {
             throw "Pinned architecture-specific Jansson config missing: $platform"
@@ -145,8 +162,9 @@ foreach ($platform in $Platforms) {
         $savedCompilerFlags = $env:CL
         try {
             $env:CL = '/I"' + $zlibBuild + '" ' + $savedCompilerFlags
+            $buildTarget = if ($CleanNonQa) { '/t:Rebuild' } else { '/t:Build' }
             Invoke-Required "Discogger native full build and LINK $platform" {
-                & $msbuild $project /t:Build /p:Configuration=Release "/p:Platform=$platform" "/p:SolutionDir=$component\" "/p:AdditionalIncludeDirectories=$($nativeIncludes.Replace(';','%3B'))" /m:1 /v:minimal /nologo
+                & $msbuild $project $buildTarget /p:Configuration=Release "/p:Platform=$platform" "/p:SolutionDir=$component\" "/p:AdditionalIncludeDirectories=$($nativeIncludes.Replace(';','%3B'))" /m:1 /v:minimal /nologo
             }
         }
         finally {
@@ -156,6 +174,19 @@ foreach ($platform in $Platforms) {
         [UInt16] $arch = if ($platform -eq 'Win32') { 0x14C } else { 0x8664 }
         Assert-DllMachine $dll $arch
         $hash = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($CleanNonQa) {
+            if ($hash -eq $previousQaHash) {
+                throw "Clean non-QA DLL is byte-identical to runner QA DLL: $platform"
+            }
+            $cleanText = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes($dll))
+            foreach ($marker in @('DISCOGGER_QA_RUNNER', 'DISCOGGER_QA_MEDIA_DIR',
+                                  'DISCOGGER_NATIVE_JSON_ROLLBACK_QA')) {
+                if ($cleanText.Contains($marker)) {
+                    throw "Runner-only marker remains in clean DLL: $platform ($marker)"
+                }
+            }
+            Write-Host "CLEAN_NONQA_DLL_$platform=PASS SHA256=$hash (runner-local, not published)"
+        }
         $manifest.Add([pscustomobject]@{ commit=$env:GITHUB_SHA; architecture=$platform; file='foo_discogger.dll'; sha256=$hash; bytes=(Get-Item -LiteralPath $dll).Length })
         Write-Host "NATIVE_DLL_$platform=PASS SHA256=$hash (build-only, not host-qualified, NOT published)"
     } catch {
@@ -171,4 +202,8 @@ if ($manifest.Count -gt 0) {
 }
 if ($failures.Count -gt 0) { throw ("Strict native component build gate failed: " + ($failures -join ' | ')) }
 if ($manifest.Count -ne $Platforms.Count) { throw 'Missing architecture in strict DLL build manifest.' }
-Write-Host 'PASS: full Discogger Win32 and x64 DLLs linked and PE architectures checked. No deployment/release and no host qualification.'
+if ($CleanNonQa) {
+    Write-Host 'PASS: isolated clean non-QA Win32/x64 rebuilds, distinct from QA DLLs; no deployment, upload or distribution.'
+} else {
+    Write-Host 'PASS: full Discogger Win32 and x64 DLLs linked and PE architectures checked. No deployment/release and no host qualification.'
+}
