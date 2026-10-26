@@ -1645,6 +1645,9 @@ void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
 
 	try {
 		service_ptr_t<process_release_callback> task = new service_impl_t<process_release_callback>(this, release_id, offline_artist_id, "", m_items);
+        // A new release selection supersedes any pending search or release
+        // completion, even when the original dialog HWND is still alive.
+        m_search_request_epoch.begin();
 		task->start(m_hWnd);
 	}
 	catch (locked_task_exception e)
