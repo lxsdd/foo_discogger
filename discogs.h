@@ -16,6 +16,7 @@ namespace Discogs { class missing_data_exception : public foo_discogs_exception 
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <vector>
 
 namespace Discogs
 {
@@ -1214,6 +1215,11 @@ namespace Discogs
 		parseArtistReleases(element, artist, query_mode, mva_masters, ignored);
 	}
 	extern void parseMasterVersions(json_t *element, MasterRelease *master_release, int query_mode, bool isolated_versions = false);
+    // Return a deep-isolated complete multi-page version snapshot. No visible
+    // MasterRelease or globally cached Release is mutated during parsing.
+    extern MasterRelease_ptr stageMasterVersionPages(
+        const MasterRelease& current, const std::vector<json_t*>& roots,
+        int query_mode, const std::function<void()>& check_abort);
 
 	extern ReleaseArtist_ptr parseReleaseArtist(json_t *element, bool preload = false);
 	extern void parseReleaseArtists(json_t *element, pfc::array_t<ReleaseArtist_ptr> &artists, bool preload = false);
