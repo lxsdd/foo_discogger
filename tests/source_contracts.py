@@ -2483,3 +2483,40 @@ assert "on_search_artist_done_if_current(m_search_ticket" in search_tasks_cpp
 for test_runner in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
     assert "search_request_epoch_test.cpp" in (root / test_runner).read_text(encoding="utf-8-sig")
 print("PASS: same-window asynchronous search identity across native artist, multi-artist, direct-ID, and presentation paths.")
+
+# Release-detail processing is another modeless UI request, not just an
+# artist-search result. The worker may fetch metadata but must never hide a
+# Win32 dialog or present a stale release after a new search/selection.
+release_route = search_dialog_cpp.split("void CFindReleaseDialog::trigger_release(", 1)[1].split(
+    "\nvoid CFindReleaseDialog::on_expand_master_release_done(", 1)[0]
+assert "m_search_request_epoch.begin();" in release_route
+assert release_route.index("m_search_request_epoch.begin();") < release_route.index("task->start(m_hWnd);")
+release_class = search_tasks_h.split("class process_release_callback", 1)[1].split(
+    "\nclass ", 1)[0]
+for required in ("m_owner_window", "m_search_ticket", "owner_is_current() const"):
+    assert required in release_class, required
+release_start = search_tasks_cpp.split("void process_release_callback::start(", 1)[1].split(
+    "\nbool process_release_callback::owner_is_current(", 1)[0]
+assert "m_owner_window = parent;" in release_start
+assert "m_search_ticket = m_dialog->current_search_request();" in release_start
+release_owner = search_tasks_cpp.split("bool process_release_callback::owner_is_current(", 1)[1].split(
+    "\nvoid process_release_callback::safe_run(", 1)[0]
+for required in ("core_api::is_main_thread()", "::IsWindow(m_owner_window)",
+                 "g_discogs->find_release_dialog == m_dialog",
+                 "m_dialog->m_hWnd == m_owner_window",
+                 "is_current_search_request(m_search_ticket)"):
+    assert required in release_owner, required
+release_worker = search_tasks_cpp.split("void process_release_callback::safe_run(", 1)[1].split(
+    "\nvoid process_release_callback::generate_track_mapping(", 1)[0]
+assert "m_dialog->hide()" not in release_worker
+assert "m_dialog->show()" not in release_worker
+release_success = search_tasks_cpp.split("void process_release_callback::on_success(", 1)[1].split(
+    "\nvoid process_release_callback::on_abort(", 1)[0]
+assert release_success.count("owner_is_current()") >= 2
+assert release_success.index("owner_is_current()") < release_success.index("m_dialog->hide()")
+assert release_success.index("m_dialog->hide()") < release_success.index("fb2k::newDialog<CTrackMatchingDialog>")
+for callback in ("on_abort", "on_error"):
+    block = search_tasks_cpp.split(f"void process_release_callback::{callback}(", 1)[1].split(
+        "\n}", 1)[0]
+    assert "if (owner_is_current()) m_dialog->show();" in block
+print("PASS: release detail UI-thread ownership, stale selection/abort denial and same-HWND supersession are wired.")
