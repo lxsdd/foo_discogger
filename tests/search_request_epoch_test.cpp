@@ -1,4 +1,9 @@
 #include "../discogger_search_request.h"
+#include "../discogger_master_versions.h"
+#include <memory>
+#include <string>
+#include <vector>
+#include <limits>
 #include <cassert>
 #include <cstdint>
 int main() {
@@ -68,5 +73,24 @@ int main() {
     const auto next_master_search = request.begin();
     assert(!request.matches(pending_master_search) && request.matches(next_master_search));
     assert(master_filter.matches(changed_master_filter));
+    // The provider page index (1) is unrelated to the matched partial
+    // version index (0); a missing/null release must never be dereferenced.
+    const std::vector<std::shared_ptr<std::string>> partial{
+        std::make_shared<std::string>("410087"), nullptr,
+        std::make_shared<std::string>("410099"),
+        std::make_shared<std::string>("410087")
+    };
+    const auto find_version = [&](const char* id) {
+        return discogger_master::find_partial_version_index(
+            partial.size(), [&](std::size_t index) {
+                return partial[index] && *partial[index] == id;
+            });
+    };
+    assert(find_version("410087") == 0);
+    assert(find_version("410099") == 2);
+    assert(find_version("not-found") == std::numeric_limits<std::size_t>::max());
+    assert(discogger_master::find_partial_version_index(
+        0, [](std::size_t) { return true; }) ==
+        std::numeric_limits<std::size_t>::max());
     return 0;
 }
