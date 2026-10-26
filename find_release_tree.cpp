@@ -1856,6 +1856,52 @@ void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& ma
 
 }
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+bool CFindReleaseTree::runner_qa_staged_master_publication() {
+    PFC_ASSERT(core_api::is_main_thread());
+    const auto rows = m_rt_cache.get_vec();
+    if (!rows || !m_find_release_artist) return false;
+    for (size_t index = 0; index < rows->size(); ++index) {
+        mounted_param row(rows->at(index).first->first);
+        if (!row.is_master() ||
+            row.master_ndx >= m_find_release_artist->master_releases.get_count())
+            continue;
+        const MasterRelease_ptr master = m_find_release_artist->master_releases[row.master_ndx];
+        if (!master || master->loaded_releases || master->sub_releases.get_count())
+            continue;
+        MasterRelease_ptr staged = std::make_shared<MasterRelease>(master->id.get_ptr());
+        Release_ptr version = std::make_shared<Release>("410099");
+        version->title = "Synthetic staged version";
+        version->loaded_preview = true;
+        staged->sub_releases.append_single(version);
+        staged->loaded_releases = true;
+        fake_threaded_process_status status;
+        abort_callback_dummy abort;
+        // Negative: a stage for another master must not mutate the visible one.
+        MasterRelease_ptr foreign = std::make_shared<MasterRelease>("999999");
+        foreign->sub_releases.append_single(version);
+        foreign->loaded_releases = true;
+        on_expand_master_release_done(master, static_cast<int>(index), status, abort, foreign);
+        if (master->loaded_releases || master->sub_releases.get_count()) return false;
+        // Negative: a stale/out-of-range row must not publish anything.
+        on_expand_master_release_done(master, static_cast<int>(rows->size()), status, abort, staged);
+        if (master->loaded_releases || master->sub_releases.get_count()) return false;
+        // Positive: the exact live master row receives the staged versions.
+        on_expand_master_release_done(master, static_cast<int>(index), status, abort, staged);
+        if (!master->loaded_releases || master->sub_releases.get_count() != 1 ||
+            master->sub_releases[0] != version) return false;
+        // Negative: an older concurrent completion cannot replace the result.
+        MasterRelease_ptr older = std::make_shared<MasterRelease>(master->id.get_ptr());
+        older->sub_releases.append_single(std::make_shared<Release>("410100"));
+        older->loaded_releases = true;
+        on_expand_master_release_done(master, static_cast<int>(index), status, abort, older);
+        return master->sub_releases.get_count() == 1 &&
+               master->sub_releases[0] == version;
+    }
+    return false;
+}
+#endif
+
 bool CFindReleaseTree::set_node_expanded(t_size master_id, int& state, bool build) {
 
 	vec_iterator_t master_row;
