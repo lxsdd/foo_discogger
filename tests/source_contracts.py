@@ -2196,6 +2196,9 @@ assert "static_cast<size_t>(list_index) >= original_rows->size()" in master_comp
 assert master_completion.index("original_rows->size()") < master_completion.index("m_rt_cache.expand_releases(")
 assert "staged_master->id != master_release->id" in master_completion
 assert "master_release->sub_releases = staged_master->sub_releases;" in master_completion
+assert "child->master_release = master_release;" in master_completion
+assert "child->master_id = master_release->id;" in master_completion
+assert master_completion.index("child->master_release = master_release;") < master_completion.index("master_release->sub_releases = staged_master->sub_releases;")
 assert "master_release->loaded_releases = true;" in master_completion
 assert master_completion.index("m_find_release_artist->master_releases[selected_row.master_ndx] != master_release") < master_completion.index("master_release->sub_releases = staged_master->sub_releases;")
 assert "runner_qa_staged_master_publication()" in tree_source
