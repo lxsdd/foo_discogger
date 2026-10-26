@@ -2845,15 +2845,25 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
                 // objects or read a live TreeView child's fields on the worker.
                 // The UI thread cloned partial children before dispatch.
                 if (isolated_versions) {
-                    if ((query_mode & SearchMode::AT) &&
-                        !master_release->loaded_releases && master_release->sub_releases.get_count()) {
+                    // An isolated snapshot may already contain a partial
+                    // child even in full (query_mode=0) pagination. Update
+                    // that clone by identity instead of silently leaving
+                    // its preview stale. In AT partial-mode, unknown child
+                    // IDs remain excluded; full mode may append new IDs.
+                    if (!master_release->loaded_releases &&
+                        master_release->sub_releases.get_count()) {
                         found_i = discogger_master::find_partial_version_index(
                             master_release->sub_releases.get_count(), [&](size_t candidate) {
                                 const auto& child = master_release->sub_releases[candidate];
                                 return child && child->id.equals(release_id);
                             });
-                        if (found_i == SIZE_MAX) continue;
-                        release = master_release->sub_releases[found_i];
+                        if (found_i != SIZE_MAX) {
+                            release = master_release->sub_releases[found_i];
+                        } else if (query_mode & SearchMode::AT) {
+                            continue;
+                        } else {
+                            release = std::make_shared<Release>(release_id.get_ptr());
+                        }
                     } else {
                         release = std::make_shared<Release>(release_id.get_ptr());
                     }
