@@ -10,6 +10,6 @@ inline std::size_t find_partial_version_index(std::size_t count, Predicate&& mat
     for (std::size_t index = 0; index < count; ++index) {
         if (matches(index)) return index;
     }
-    return std::numeric_limits<std::size_t>::max();
+    return (std::numeric_limits<std::size_t>::max)();
 }
 }
