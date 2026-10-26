@@ -42,3 +42,39 @@ its actual header definition was absent. Commit
 and a source contract requiring it. This historical failed run does not
 qualify the fix; use only a subsequent CI run at the exact current SHA
 for PASS claims.
+
+## Staged master-version page transaction (staging candidate, not product acceptance)
+
+The legacy `MasterRelease::load_releases` path parsed each page directly into
+the visible master and could mutate cached child-release previews before a
+later page failed. The staging candidate validates **all child IDs and page
+arrays** and parses into a deep-copied master snapshot with no canonical
+release-cache access; it commits the entire child list only after the final
+abort check. Partial advanced-search versions are matched by ID. A failed
+page-2 parse, invalid ID, missing array, or cancellation must preserve the
+previous visible master and original child pointers.
+
+`tests/master_page_transaction_test.cpp` covers positive completion,
+page-2 validation failure, between-page/final abort, and empty input on
+portable C++17 and MSVC x86/x64. The QA-only Jansson fixture
+`runner_qa_native_master_page_transaction` invokes the same production
+stage function in original Win32/x64 foobar hosts with real JSON objects,
+positive two-page commit and negative invalid-ID/abort cases.
+
+This work is intentionally staged **outside** Draft PR #10 while its
+`f3ac723a...` product SHA is pinned by an unmerged, not yet owner-approved
+infrastructure Draft PR #48. Staging CI is not protected OAuth qualification. No clean private
+owner-machine installation, post-I/O physical rollback, or redistribution
+permission is established by this change.
+
+### Duplicate version identities across or within pages
+
+The prior staged parser quietly ignored repeated release IDs. When the
+Discogs index changes between successive page requests, that behavior can
+conceal an omitted version and publish an incomplete tree. Validation now
+rejects repeated IDs across the entire page set (including within one page)
+before any visible child is replaced. Original foobar Win32/x64 native QA
+covers both duplicate patterns and a missing later-page array, as well as
+existing positive completion, invalid-ID and cancellation cases. The staging
+PR remains independent of the SHA-pinned OAuth diagnosis; its successful
+secret-free host tests do not establish authenticated provider success.

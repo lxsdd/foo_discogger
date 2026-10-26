@@ -14,6 +14,8 @@ on:
       - fix/discogger-worker-resilience-20261026
       # Temporary source-only validation for optional fallback recovery.
       - fix/discogger-optional-fallback-recovery-20261026
+      # Integrated source-only search recovery + atomic master pagination.
+      - qa/discogger-integrated-search-master-20261026
   pull_request:
     branches:
       - master
@@ -54,6 +56,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
       - name: Run collaboration search fallback tests
         run: /tmp/discogger-search-test
+      - name: Atomic master-version pages: positive, negative and cancellation
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/master_page_transaction_test.cpp -o /tmp/discogger-master-pages && /tmp/discogger-master-pages
       - name: Compile and run exact-filter fallback visibility tests
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_visibility_test.cpp -o /tmp/discogger-search-visibility && /tmp/discogger-search-visibility
       - name: Compile and run same-dialog stale search request regressions

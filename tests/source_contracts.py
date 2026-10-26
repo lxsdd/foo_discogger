@@ -225,6 +225,37 @@ assert "artist->loaded_releases = false;" not in artist
 assert "GetSubItemText(isel, 0, out);" in artist
 assert "if (pos >= current_artists.get_count() || !current_artists[pos]) return;" in dialog
 artist_load = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+master_load = artist_load[artist_load.index("void Discogs::MasterRelease::load_releases("):
+                          artist_load.index("void Discogs::parseIdentity(")]
+master_stage = artist_load[artist_load.index("MasterRelease_ptr Discogs::stageMasterVersionPages("):
+                           artist_load.index("void Discogs::parseArtist(")]
+assert "stageMasterVersionPages(" in master_load
+assert "parseMasterVersions(pages[page]->root, this" not in master_load
+assert "sub_releases = std::move(staged->sub_releases);" in master_load
+assert master_load.index("stageMasterVersionPages(") < master_load.index("p_abort.check();\n        sub_releases = std::move")
+assert "discogger_master::stage_master_pages<MasterRelease_ptr>(" in master_stage
+assert "std::make_shared<Release>(*child)" in master_stage
+assert "discogger_search::valid_release_id(child_id.c_str())" in master_stage
+assert "std::unordered_set<std::string> page_release_ids;" in master_stage
+assert "page_release_ids.emplace(child_id.c_str()).second" in master_stage
+assert "Duplicate master version ID across pages; retaining prior list." in master_stage
+assert "Native duplicate/incomplete master page leaked partial data." in dialog
+# JSONAttributeString currently accepts json_t*, not const json_t*.
+# Jansson's array getter returns json_t* even for a const container pointer;
+# preserve compatibility with the existing MSVC helper signature.
+assert "json_t* child = json_array_get(versions, i);" in master_stage
+assert "const json_t* child = json_array_get(versions, i);" not in master_stage
+assert 'JSONAttributeString(child, "id")' in master_stage
+# Full-version pages must update existing copied child by release ID;
+# AT partial matching still excludes IDs not in the original partial list.
+assert "if (found_i != SIZE_MAX)" in artist_load
+assert "else if (query_mode & SearchMode::AT)" in artist_load
+assert 'release = master_release->sub_releases[found_i];' in artist_load
+assert "Native partial master selection leaked a full-version child." in dialog
+assert "parseMasterVersions(roots[page], staged.get(), query_mode, true);" in master_stage
+assert "runner_qa_native_master_page_transaction();" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+for test_runner in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
+    assert "master_page_transaction_test.cpp" in (root / test_runner).read_text(encoding="utf-8-sig")
 artist_load = artist_load[artist_load.index("void Discogs::Artist::load_releases("):artist_load.index("void Discogs::MasterRelease::load_releases(")]
 assert "const bool explicit_refresh = release_refresh.take();" in artist_load
 # The canonical explicit online refresh must not use the search-result fast path.
