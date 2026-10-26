@@ -2592,6 +2592,43 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         is_current_filter_request(pending_master_filter) ||
         !is_current_filter_request(changed_master_filter))
         throw std::runtime_error("Native master filter supersession failed.");
+    // Native original-host test: a partial advanced-search master must be
+    // completed on a staged object and published only to the exact live row.
+    on_search_artist_done(two_artists, exact, false);
+    if (m_dctree.Get_Size() != 3 || !m_dctree.runner_qa_staged_master_publication())
+        throw std::runtime_error("Native staged master publish/stale denial failed.");
+    on_search_artist_done(exact, alternatives, false);
+    if (m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native staged master QA did not restore the search tree.");
+    log_msg("DISCOGGER_NATIVE_MASTER_STAGED_PUBLICATION_QA=PASS");
+
+    // Native Jansson/Discogs parser: the matching partial version is at
+    // index 0 while the provider's page index is 1. Indexing the partial
+    // array by the page index was an out-of-bounds read.
+    MasterRelease partial_master("410077");
+    Release_ptr partial_match = std::make_shared<Release>("410087");
+    partial_master.sub_releases.append_single(partial_match);
+    json_error_t versions_error{};
+    json_t* versions_json = json_loads(
+        "{\\"versions\\":[{\\"id\\":\\"410088\\",\\"title\\":\\"Other version\\"},"
+        "{\\"id\\":\\"410087\\",\\"title\\":\\"Matched synthetic version\\"}]}",
+        0, &versions_error);
+    if (!versions_json)
+        throw std::runtime_error("Native synthetic master versions JSON failed to parse.");
+    try {
+        Discogs::parseMasterVersions(versions_json, &partial_master, SearchMode::AT);
+    } catch (...) {
+        json_decref(versions_json);
+        throw;
+    }
+    json_decref(versions_json);
+    const Release_ptr parsed_match = discogs_interface->get_release(encode_mr(0, 410087));
+    if (partial_master.sub_releases.get_count() != 1 ||
+        partial_master.sub_releases[0] != partial_match ||
+        !parsed_match || !parsed_match->loaded_preview ||
+        !parsed_match->title.equals("Matched synthetic version"))
+        throw std::runtime_error("Native partial-master version index/review isolation failed.");
+    log_msg("DISCOGGER_NATIVE_PARTIAL_MASTER_INDEX_QA=PASS");
     log_msg("DISCOGGER_NATIVE_MASTER_FILTER_SUPERSESSION_QA=PASS");
     log_msg("DISCOGGER_NATIVE_FILTER_MASTER_EPOCH_QA=PASS");
     log_msg("DISCOGGER_NATIVE_STALE_SEARCH_QA=PASS");
