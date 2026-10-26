@@ -2208,6 +2208,77 @@ static void runner_qa_native_cache_json_rollback() {
 #endif
 
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
+// Run the real Jansson master-version parser inside both original foobar
+// hosts. All objects and JSON are synthetic; no provider or user-media I/O.
+static void runner_qa_native_master_child_isolation() {
+    MasterRelease_ptr visible_master = std::make_shared<MasterRelease>("901991");
+    Release_ptr visible_child = std::make_shared<Release>("410991");
+    visible_child->title = "Visible partial before request";
+    visible_master->sub_releases.append_single(visible_child);
+    MasterRelease_ptr staged = std::make_shared<MasterRelease>(visible_master->id.get_ptr());
+    for (const Release_ptr& child : visible_master->sub_releases) {
+        staged->sub_releases.append_single(
+            child ? std::make_shared<Release>(*child) : Release_ptr());
+    }
+    if (staged->sub_releases[0] == visible_child)
+        throw std::runtime_error("Master child snapshot still aliases the visible Release.");
+    const char* partial_json = R"({"versions":[{"id":"410991","title":"Completed partial preview","label":"QA Label","format":"Digital","year":"2026"},{"id":"999999","title":"Unrelated version"}]})";
+    json_error_t error = {};
+    json_t* root = json_loads(partial_json, JSON_DECODE_ANY, &error);
+    if (!root) throw std::runtime_error("Native master partial JSON fixture did not parse.");
+    try {
+        Discogs::parseMasterVersions(root, staged.get(), SearchMode::AT, true);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (visible_child->title != "Visible partial before request" ||
+        visible_child->loaded_preview || visible_master->loaded_releases ||
+        visible_master->sub_releases.get_count() != 1 ||
+        staged->sub_releases.get_count() != 1 ||
+        staged->sub_releases[0] == visible_child ||
+        staged->sub_releases[0]->title != "Completed partial preview" ||
+        !staged->sub_releases[0]->loaded_preview ||
+        staged->sub_releases[0]->id != visible_child->id)
+        throw std::runtime_error("Native staged partial preview changed visible child or lost parsed fields.");
+    // Negative stale completion: a rejected stage has no path to mutate the
+    // visible child, even though its private preview was populated.
+    if (visible_child->title != "Visible partial before request")
+        throw std::runtime_error("Stale master child preview leaked before UI publication.");
+    // Positive current completion: publish exactly the isolated child once.
+    visible_master->sub_releases = staged->sub_releases;
+    visible_master->loaded_releases = true;
+    if (visible_master->sub_releases.get_count() != 1 ||
+        visible_master->sub_releases[0]->title != "Completed partial preview" ||
+        visible_child->title != "Visible partial before request")
+        throw std::runtime_error("Native master child publication lost preview or mutated old pointer.");
+
+    MasterRelease_ptr full = std::make_shared<MasterRelease>("901992");
+    const char* full_json = R"({"versions":[{"id":"410992","title":"First version"},{"id":"410992","title":"Duplicate version"},{"id":"410993","title":"Second version"}]})";
+    root = json_loads(full_json, JSON_DECODE_ANY, &error);
+    if (!root) throw std::runtime_error("Native master full JSON fixture did not parse.");
+    try {
+        Discogs::parseMasterVersions(root, full.get(), 0, true);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (full->sub_releases.get_count() != 2 ||
+        !full->sub_releases[0] || !full->sub_releases[1] ||
+        full->sub_releases[0]->id != "410992" ||
+        full->sub_releases[0]->title != "First version" ||
+        full->sub_releases[1]->id != "410993" ||
+        full->sub_releases[1]->title != "Second version" ||
+        !full->sub_releases[0]->loaded_preview ||
+        !full->sub_releases[1]->loaded_preview)
+        throw std::runtime_error("Native isolated master full versions duplicated or lost identity.");
+    log_msg("DISCOGGER_NATIVE_MASTER_CHILD_ISOLATION_QA=PASS");
+}
+#endif
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
 std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char* expected_release_id) {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Live result inspection requires an open native Find Releases dialog.");
@@ -2246,6 +2317,7 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
     runner_qa_native_cache_json_rollback();
+    runner_qa_native_master_child_isolation();
     const size_t previous_mode = m_query_mode;
     m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
 
