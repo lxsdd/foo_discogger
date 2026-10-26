@@ -11,6 +11,7 @@
 #include "discogs.h"
 #include "ol_cache.h"
 #include "discogger_cache_pages.h"  // paginated release list completeness guard
+#include "discogger_master_versions.h"
 
 using namespace Discogs;
 
@@ -2827,13 +2828,11 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 
 					if (!master_release->loaded_releases && master_release->sub_releases.get_count()) {
 
-						for (size_t i = 0; i < master_release->sub_releases.get_size(); i++) {
-							if (master_release->sub_releases[i] && master_release->sub_releases[i]->id.equals(release_id)) {
-								found_i = i;
-								release = master_release->sub_releases[i];
-								break;
-							}
-						}
+						found_i = discogger_master::find_partial_version_index(
+                            master_release->sub_releases.get_count(), [&](size_t candidate) {
+                                const auto& existing = master_release->sub_releases[candidate];
+                                return existing && existing->id.equals(release_id);
+                            });
 						if (found_i == SIZE_MAX) {
 							continue;
 						}
