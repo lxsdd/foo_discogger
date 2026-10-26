@@ -183,6 +183,31 @@ inline std::vector<fallback_candidate> build_fallback_plan(
     return plan;
 }
 
+// Every planned review-only phase gets a chance to contribute results. A
+// nonempty guest/title response may contain only unrelated releases, so it
+// must not suppress the subsequent broad-title phase. The budget is capped
+// independently of the planner; a provider limit/error still stops requests.
+class fallback_query_budget {
+public:
+    explicit fallback_query_budget(std::size_t planned) noexcept
+        : remaining_(std::min(planned, std::size_t{3})) {}
+    bool begin() noexcept {
+        if (stopped_ || remaining_ == 0) return false;
+        --remaining_;
+        return true;
+    }
+    void observe(bool has_parsed_candidates) noexcept {
+        saw_candidates_ = saw_candidates_ || has_parsed_candidates;
+    }
+    void stop() noexcept { stopped_ = true; }
+    bool has_candidates() const noexcept { return saw_candidates_; }
+    bool can_continue() const noexcept { return !stopped_ && remaining_ != 0; }
+private:
+    std::size_t remaining_;
+    bool saw_candidates_ = false;
+    bool stopped_ = false;
+};
+
 // Identity is type + numerical Discogs ID, not title, role or search source.
 // Release and master with the same numerical ID are different objects.
 inline bool already_seen_release_id(
