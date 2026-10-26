@@ -190,7 +190,7 @@ inline std::vector<fallback_candidate> build_fallback_plan(
 class fallback_query_budget {
 public:
     explicit fallback_query_budget(std::size_t planned) noexcept
-        : remaining_(std::min(planned, std::size_t{3})) {}
+        : remaining_(planned < std::size_t{3} ? planned : std::size_t{3}) {}
     bool begin() noexcept {
         if (stopped_ || remaining_ == 0) return false;
         --remaining_;
