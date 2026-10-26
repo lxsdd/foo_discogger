@@ -1285,6 +1285,15 @@ pfc::string8 search_query_run_message(const QueryDefMap qdm_search_query, const 
 	return msg;
 }
 
+bool CFindReleaseDialog::on_search_artist_done_if_current(
+    std::uint64_t ticket, const pfc::array_t<Artist_ptr>& exact,
+    const pfc::array_t<Artist_ptr>& other, bool append,
+    std::pair<size_t, size_t>& cap) {
+    if (!is_current_search_request(ticket)) return false;
+    on_search_artist_done(exact, other, append, cap);
+    return true;
+}
+
 void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap) {
 
     // Search providers may return an allocated artist with an empty ID.
@@ -1856,19 +1865,22 @@ void CFindReleaseDialog::route_artist_search(pfc::string8 artistname, bool dlgbu
 				service_ptr_t<get_multi_artists_process_callback> task =
 					new service_impl_t<get_multi_artists_process_callback>(cupdsrc, m_query_mode, m_tracer.get_vartist_ids());
 
+				m_search_request_epoch.begin();
 				task->start(m_hWnd);
 		}
 			else {
 				service_ptr_t<get_artist_process_callback> task =
 					new service_impl_t<get_artist_process_callback>(cupdsrc, artist_id, artistname);
 
+				m_search_request_epoch.begin();
 				task->start(m_hWnd);
 			}
 		}
 		else if (by_name && !CONF.awt_get_alt_mode() && !(by_id && b_skipping_idded)) {
 			service_ptr_t<search_artist_process_callback> task =
 				new service_impl_t<search_artist_process_callback>(artistname.get_ptr(), dlgbutton, m_query_mode, m_qdm_search_query, 0);
-			task->start(m_hWnd);
+			m_search_request_epoch.begin();
+				task->start(m_hWnd);
 		}
 	}
 }
@@ -2532,6 +2544,24 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     on_search_artist_done(empty_id_exact, empty_id_exact, true);
     if (m_alist.Get_Artists().get_count() != 1 || m_dctree.Get_Size() != 5)
         throw std::runtime_error("Native empty-ID append polluted rows or preview.");
+    // A late modeless completion targeting the SAME HWND must not replace
+    // a newer search's rows or release tree. The accepted ticket must still
+    // use the real presentation path, not a synthetic state-only assertion.
+    const auto obsolete = m_search_request_epoch.begin();
+    const auto latest = m_search_request_epoch.begin();
+    std::pair<size_t, size_t> cap{0, 0};
+    if (on_search_artist_done_if_current(obsolete, changed_artists, exact, false, cap) ||
+        m_alist.Get_Artists().get_count() != 1 ||
+        !m_alist.Get_Artists()[0]->id.equals("0") ||
+        m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native stale search completion overwrote newer GUI results.");
+    if (!on_search_artist_done_if_current(latest, changed_artists, exact, false, cap) ||
+        m_dctree.Get_Size() != 1)
+        throw std::runtime_error("Native current search completion was incorrectly discarded.");
+    on_search_artist_done(exact, alternatives, false);
+    if (m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native search epoch QA failed to restore preview.");
+    log_msg("DISCOGGER_NATIVE_STALE_SEARCH_QA=PASS");
     m_query_mode = previous_mode;
     return {1, initial_tree};
 }
