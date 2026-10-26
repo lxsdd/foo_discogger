@@ -2148,13 +2148,20 @@ expand_background = expand_parts.split("void expand_master_release_process_callb
 expand_foreground = expand_parts.split("void expand_master_release_process_callback::on_success(", 1)[1].split(
     "void expand_master_release_process_callback::on_abort(", 1)[0]
 assert "on_expand_master_release_done(" not in expand_background
-assert "m_master_release->load_releases(" in expand_background
+assert "m_staged_master->load_releases(" in expand_background
+assert "m_master_release->load_releases(" not in expand_background
+assert "m_master_release->sub_releases" not in expand_background
+assert "m_staged_master->sub_releases = m_master_release->sub_releases;" in expand_parts
+assert "m_staged_master->loaded_releases = m_master_release->loaded_releases;" in expand_parts
+assert "m_staged_master->loaded_releases" in expand_foreground
+assert "m_staged_master" in expand_header
 assert "p_abort.check();" in expand_background
 assert "PFC_ASSERT(core_api::is_main_thread());" in expand_foreground
 assert "::IsWindow(m_owner_window)" in expand_foreground
 assert "g_discogs->find_release_dialog->m_hWnd != m_owner_window" in expand_foreground
 assert "on_expand_master_release_done(" in expand_foreground
 assert "fake_threaded_process_status status;" in expand_foreground
+assert "m_master_release, m_pos, status, abort, m_staged_master" in expand_foreground
 assert "m_owner_window = parent;" in expand_parts
 assert "class expand_master_release_process_callback" in expand_header
 print("PASS: owner-bound main-thread master expansion, background load-only.")
@@ -2169,6 +2176,16 @@ assert "PFC_ASSERT(core_api::is_main_thread());" in master_completion
 assert "!master_release || !m_find_release_artist || list_index < 0" in master_completion
 assert "static_cast<size_t>(list_index) >= original_rows->size()" in master_completion
 assert master_completion.index("original_rows->size()") < master_completion.index("m_rt_cache.expand_releases(")
+assert "staged_master->id != master_release->id" in master_completion
+assert "master_release->sub_releases = staged_master->sub_releases;" in master_completion
+assert "master_release->loaded_releases = true;" in master_completion
+assert master_completion.index("m_find_release_artist->master_releases[selected_row.master_ndx] != master_release") < master_completion.index("master_release->sub_releases = staged_master->sub_releases;")
+assert "runner_qa_staged_master_publication()" in tree_source
+assert "DISCOGGER_NATIVE_MASTER_STAGED_PUBLICATION_QA=PASS" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "DISCOGGER_NATIVE_PARTIAL_MASTER_INDEX_QA=PASS" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "discogger_master::find_partial_version_index(" in parsed_releases
+assert "master_release->sub_releases[found_i]->id" in parsed_releases
+assert "master_release->sub_releases[i]->id" not in parsed_releases[parsed_releases.index("void Discogs::parseMasterVersions("):parsed_releases.index("void Discogs::parseArtist(")]
 assert "static_cast<size_t>(list_index) >= vec_items->size()" in master_completion
 assert master_completion.index("vec_items->size()") < master_completion.index("vec_items->at(list_index)")
 print("PASS: asynchronous master tree updates guard stale artist and row indices.")
