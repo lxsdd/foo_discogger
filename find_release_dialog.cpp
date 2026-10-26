@@ -2341,6 +2341,16 @@ static void runner_qa_native_master_page_transaction() {
             staged->sub_releases[2]->id != "410998")
             throw std::runtime_error("Native master version stage mutated visible child or lost page two.");
 
+        // AT partial mode must update the matching preloaded child only,
+        // excluding unrelated versions even when later pages contain them.
+        MasterRelease_ptr partial = Discogs::stageMasterVersionPages(
+            original, good, SearchMode::AT, []() {});
+        if (partial->sub_releases.get_count() != 1 ||
+            partial->sub_releases[0] == visible_child ||
+            partial->sub_releases[0]->title != "Updated partial" ||
+            visible_child->title != "Visible before page one")
+            throw std::runtime_error("Native partial master selection leaked a full-version child.");
+
         bool rejected = false;
         try {
             const std::vector<json_t*> bad{first, invalid};
