@@ -726,16 +726,38 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 		parse_amt_page(fake_artist, pages[i], pai, p_status, p_abort);
 	}
 
-    // Exact structured results take precedence; only widen after no parsed
-    // release/master candidates. At most three bounded online searches.
-    // Discogs fallback matches are suggestions, never silently promoted to
-    // an exact artist or metadata write.
+    // A nonempty structured response is not necessarily a usable release:
+    // e.g. a broad artist query can return only unrelated release titles.
+    // Preserve plausible structured matches; otherwise offer at most three
+    // bounded, review-only discovery queries. Never auto-approve a fallback.
+    const auto& original_artist = qdm_search_query.at("artist=").first;
+    const auto& release_title = qdm_search_query.at("title=").first;
+    const auto& original_track = qdm_search_query.at("track=").first;
+    const bool original_has_candidates =
+        fake_artist->master_releases.get_count() || fake_artist->releases.get_count();
+    bool original_title_plausible = false;
+    if (original_has_candidates) {
+        for (const auto& master : fake_artist->master_releases) {
+            if (master && discogger_search::plausible_release_title(
+                    release_title, master->title.c_str())) {
+                original_title_plausible = true;
+                break;
+            }
+        }
+        if (!original_title_plausible) {
+            for (const auto& release : fake_artist->releases) {
+                if (release && discogger_search::plausible_release_title(
+                        release_title, release->title.c_str())) {
+                    original_title_plausible = true;
+                    break;
+                }
+            }
+        }
+    }
     bool used_broad_fallback = false;
-    if (!fake_artist->master_releases.get_count() && !fake_artist->releases.get_count()) {
-        const auto& original_artist = qdm_search_query.at("artist=").first;
-        const auto& release_title = qdm_search_query.at("title=").first;
-        const auto& original_track = qdm_search_query.at("track=").first;
-        // Keep this explicit for compatibility checks and collaborator UX.
+    if (!original_has_candidates || !original_title_plausible) {
+        // Keep the exact original query untouched; the plan only suggests
+        // additional Discogs candidates and never writes tags.
         const auto plans = discogger_search::build_fallback_plan(
             original_artist, release_title, original_track);
         discogger_search::fallback_query_budget budget(plans.size());
@@ -749,7 +771,8 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             if (fallback_query.empty()) continue;
             if (!budget.begin()) break;
 
-            pfc::string8 status("No exact result: ");
+            pfc::string8 status(original_has_candidates
+                ? "No plausible release-title match: " : "No exact result: ");
             status << candidate.label.c_str();
             p_status.set_item(status);
             pfc::string8 fallback_url("https://api.discogs.com/database/search");
@@ -776,15 +799,19 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                         static_cast<unsigned>(json_array_size(results)));
             }
 #endif
+            const size_t prior_masters = fake_artist->master_releases.get_count();
+            const size_t prior_releases = fake_artist->releases.get_count();
             for (size_t i = 0; i < fallback_pages.get_count(); ++i) {
                 p_abort.check();
                 parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
             }
-            const bool have_candidates =
-                fake_artist->master_releases.get_count() ||
-                fake_artist->releases.get_count();
-            budget.observe(have_candidates);
-            if (have_candidates) {
+            // A duplicate ID from fallback must not demote an otherwise
+            // unchanged original candidate into the review-only bucket.
+            const bool have_new_candidates =
+                fake_artist->master_releases.get_count() > prior_masters ||
+                fake_artist->releases.get_count() > prior_releases;
+            budget.observe(have_new_candidates);
+            if (have_new_candidates) {
                 used_broad_fallback = true;
                 p_status.set_item("Broader Discogs results: review release/version before tagging.");
                 // Never stop merely because a fallback returned something:
