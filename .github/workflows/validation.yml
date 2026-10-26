@@ -56,7 +56,7 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
       - name: Run collaboration search fallback tests
         run: /tmp/discogger-search-test
-      - name: Atomic master-version pages: positive, negative and cancellation
+      - name: Atomic master-version pagination positive negative and cancellation
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/master_page_transaction_test.cpp -o /tmp/discogger-master-pages && /tmp/discogger-master-pages
       - name: Compile and run exact-filter fallback visibility tests
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_visibility_test.cpp -o /tmp/discogger-search-visibility && /tmp/discogger-search-visibility
