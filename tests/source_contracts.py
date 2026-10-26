@@ -368,6 +368,22 @@ assert "if (fallback_max > max_to_abort)" in search
 assert 'presentation_query["artist="].first.clear();' in search
 assert "used_broad_fallback = true;" in search
 assert "p_abort.check();" in search
+# A nonempty partner/guest result may be unrelated. The next bounded
+# fallback must still run, while an explicit provider limit stops requests.
+fallback_loop = amt_search.split("for (const auto& candidate : plans) {", 1)[1].split(
+    "va_res_cap.first = ", 1)[0]
+assert "discogger_search::fallback_query_budget budget(plans.size());" in amt_search
+assert "if (!budget.begin()) break;" in fallback_loop
+assert "budget.stop();" in fallback_loop
+assert "budget.observe(have_candidates);" in fallback_loop
+assert "used_broad_fallback = true;" in fallback_loop
+nonempty_result = fallback_loop.split("if (have_candidates) {", 1)[1].split(
+    "            }", 1)[0]
+assert "break;" not in nonempty_result
+assert "review release/version before tagging" in nonempty_result
+native_fallback = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "Native fallback stopped on an unrelated first result." in native_fallback
+assert "Native later fallback phase lost a review-only result." in native_fallback
 parsed_releases = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 release_section = parsed_releases[parsed_releases.index("void Discogs::parseArtistReleases("):
                                   parsed_releases.index("void Discogs::parseMasterVersions(")]
