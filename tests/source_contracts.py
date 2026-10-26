@@ -1883,6 +1883,16 @@ validation_trigger = (root / ".github/workflows/validation.yml").read_text(encod
 assert "  pull_request:" in validation_trigger
 assert "  push:" in validation_trigger
 assert "- work/portable-build-properties-20261018" in validation_trigger
+# Master-ready integration must not continue launching full, expensive
+# push builds on one-off draft branches after their SHA-pinned qualification.
+assert "- master" in validation_trigger
+for temporary_branch in (
+    "fix/discogger-worker-resilience-20261026",
+    "fix/discogger-optional-fallback-recovery-20261026",
+    "qa/discogger-integrated-search-master-20261026",
+):
+    assert "- " + temporary_branch not in validation_trigger
+assert "  workflow_dispatch:" in validation_trigger
 assert "github.head_ref || github.ref_name" in validation_trigger
 assert "github.event_name == 'workflow_dispatch' && 'manual' || 'automatic'" in validation_trigger
 assert "cancel-in-progress: true" in validation_trigger
