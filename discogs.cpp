@@ -2958,7 +2958,7 @@ MasterRelease_ptr Discogs::stageMasterVersionPages(
             if (!json_is_array(versions))
                 throw foo_discogs_exception("Missing master versions array; retaining prior list.");
             for (std::size_t i = 0; i < json_array_size(versions); ++i) {
-                const json_t* child = json_array_get(versions, i);
+                json_t* child = json_array_get(versions, i);
                 if (!json_is_object(child))
                     throw foo_discogs_exception("Invalid master version object; retaining prior list.");
                 const pfc::string8 child_id = JSONAttributeString(child, "id");
