@@ -1491,8 +1491,13 @@ void search_artist_process_callback::on_error(HWND p_wnd) {
 void expand_master_release_process_callback::start(HWND parent) {
     m_owner_window = parent;
     if (g_discogs && g_discogs->find_release_dialog &&
-        g_discogs->find_release_dialog->m_hWnd == parent)
-        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
+        g_discogs->find_release_dialog->m_hWnd == parent) {
+        CFindReleaseDialog* dialog = g_discogs->find_release_dialog;
+        m_search_ticket = dialog->current_search_request();
+        m_filter_ticket = dialog->current_filter_request();
+        if (::IsWindow(dialog->m_edit_filter))
+            m_filter_text = trim(uGetWindowText(dialog->m_edit_filter));
+    }
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1519,7 +1524,11 @@ void expand_master_release_process_callback::on_success(HWND p_wnd) {
     if (!m_master_release || !m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
         g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
-        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket) ||
+        !g_discogs->find_release_dialog->is_current_filter_request(m_filter_ticket) ||
+        g_discogs->find_release_dialog->GetSearchMode() != static_cast<size_t>(m_query_mode) ||
+        !::IsWindow(g_discogs->find_release_dialog->m_edit_filter) ||
+        !trim(uGetWindowText(g_discogs->find_release_dialog->m_edit_filter)).equals(m_filter_text))
         return;
     // The active tree checks the master ID against its current artist before
     // expanding; a stale background load must not touch the old dialog.
