@@ -20,6 +20,19 @@ int main() {
     assert(presented);
     // A failed/aborted task cannot reactivate its previous ticket.
     assert(!request.matches(first) && request.matches(second));
+    // The release-tree double-click is another async request. Selecting a
+    // release invalidates an in-flight artist search and the previous release
+    // on the same HWND; only the newest selection may open track matching.
+    const auto release_a = request.begin();
+    assert(request.matches(release_a) && !request.matches(second));
+    const auto release_b = request.begin();
+    assert(request.matches(release_b) && !request.matches(release_a));
+    // Aborting an old release cannot restore an obsolete dialog's visibility.
+    bool old_abort_can_show = request.matches(release_a);
+    assert(!old_abort_can_show);
+    // A later search also supersedes a pending release detail callback.
+    const auto later_search = request.begin();
+    assert(request.matches(later_search) && !request.matches(release_b));
     for (int i = 0; i != 8; ++i) {
         const auto previous = request.current();
         const auto current = request.begin();
