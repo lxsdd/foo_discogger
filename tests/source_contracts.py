@@ -372,6 +372,9 @@ assert "p_abort.check();" in search
 # fallback must still run, while an explicit provider limit stops requests.
 fallback_loop = amt_search.split("for (const auto& candidate : plans) {", 1)[1].split(
     "va_res_cap.first = ", 1)[0]
+# Windows foobar includes may define min as a function-like macro. The
+# original SDK DLL compile (unlike portable/MSVC isolated units) exposed it.
+assert "std::min(" not in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
 assert "discogger_search::fallback_query_budget budget(plans.size());" in amt_search
 assert "if (!budget.begin()) break;" in fallback_loop
 assert "budget.stop();" in fallback_loop
