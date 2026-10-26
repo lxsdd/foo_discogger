@@ -5,6 +5,9 @@
 #include "discogs_interface.h"
 
 #include "conf.h"
+#include "cfg_snapshot_ops.h"
+#include "ol_cache.h"
+#include "discogger_cache_expiry.h"
 #include "utils.h"
 #include "utils_path.h"
 #include "utils_db.h"
@@ -155,7 +158,10 @@ bool CConf::load() {
 	vspec v212{ &vec_specs, 27, 54, 18 }; // 1.0.22Beta6
 	vspec v213{ &vec_specs, 27, 54, 19 }; // 1.0.22Beta14
 	vspec v214{ &vec_specs, 27, 55, 19 }; // 1.0.22Beta14
-	vspec v215{ &vec_specs, 27, 55, 20 }; // 1.0.22RC3
+	// Historical save() omitted disk TTL and produced 54-int profiles.
+    vspec v215short{ &vec_specs, 27, 54, 20 };
+    vspec v215{ &vec_specs, 27, 55, 20 }; // 1.0.22RC3
+    vspec v216{ &vec_specs, 27, 56, 20 }; // Discogger TTL
 
 	vspec* vlast = &vec_specs.at(vec_specs.size() - 1);
 
@@ -200,9 +206,9 @@ bool CConf::load() {
 		
 			if (fallback != vec_specs.rend()) {
 				//truncate to the closest
-				cfg_bool_entries.truncate(fallback->boolvals);
-				cfg_int_entries.truncate(fallback->intvals);
-				cfg_string_entries.truncate(fallback->stringvals);
+				discogger_cfg::truncate(cfg_bool_entries, fallback->boolvals);
+				discogger_cfg::truncate(cfg_int_entries, fallback->intvals);
+				discogger_cfg::truncate(cfg_string_entries, fallback->stringvals);
 
 				log_msg(PFC_string_formatter() << "Downgrading config file - src: " << vLoad.boolvals << " bools, " << vLoad.intvals << " ints, " << vLoad.stringvals << " strs" << ", dst: " << fallback->boolvals << " bools, " << fallback->intvals << " ints, " << fallback->stringvals << " strs");
 
@@ -221,12 +227,7 @@ bool CConf::load() {
 
 	// ignore bres while upgrading (loading depricated values will fail)
 	for (unsigned int i = 0; i < cfg_bool_entries.get_count(); i++) {
-		if (i < vlast->boolvals) {
-			bool_load(cfg_bool_entries[i]);
-		}
-		else {
-			cfg_bool_entries.remove_by_idx(cfg_bool_entries[i].id);
-		}
+		bool_load(cfg_bool_entries[i]);
 	}
 
 	if (vLoad < v206) {
@@ -243,12 +244,7 @@ bool CConf::load() {
 	}
 
 	for (unsigned int i = 0; i < cfg_int_entries.get_count(); i++) {
-		if (i < cfg_int_entries.get_count()) {
-			int_load(cfg_int_entries[i]);
-		}
-		else {
-			cfg_int_entries.remove_by_idx(cfg_int_entries[i].id);
-		}
+		int_load(cfg_int_entries[i]);
 	}
 
 	if (vLoad < v206) {
@@ -298,6 +294,11 @@ bool CConf::load() {
 		);
 	}
 
+    if (vLoad == v215short)
+        cfg_int_entries.add_item(make_conf_entry(CFG_DISK_CACHE_EXP, disk_cache_exp));
+    if (vLoad < v216)
+        cfg_int_entries.add_item(make_conf_entry(CFG_ARTIST_RELEASE_CACHE_HOURS, artist_release_cache_hours));
+
 	if (vLoad < v209) {
 		cfg_int_entries.add_item(
 			make_conf_entry(CFG_ALT_WRITE_FLAGS, alt_write_flags)
@@ -332,42 +333,18 @@ bool CConf::load() {
 			DEPRI_CFG_EDIT_TAGS_DIALOG_SIZE,
 			DEPRI_CFG_EDIT_TAGS_DIALOG_POSITION };
 
-		for (auto walk_delete : vdel) {
-			for (unsigned int i = 0; i < cfg_int_entries.get_count(); i++) {
-				const conf_int_entry& item = cfg_int_entries[i];
-				if (item.id == walk_delete) {
-					cfg_int_entries.remove_by_idx(item.id);
-					break;
-				}
-			}
+		for (auto deprecated_id : vdel) {
+			discogger_cfg::remove_by_id(cfg_int_entries, deprecated_id);
 		}
-
-		size_t dummy;
-		cfg_bool_entries.sort_t(compare_id);
-		conf_bool_entry entry = {}, entry2 = {};
-
-		entry.id = DEPRI_CFG_FIND_RELEASE_DIALOG_SHOW_ID;
-		auto found = cfg_bool_entries.bsearch_t(compare_id, entry, dummy);
-		entry2 = cfg_bool_entries.get_item(dummy);
-		cfg_bool_entries.remove_item(entry2);
-
-		entry.id = DEPRI_CFG_SKIP_RELEASE_DLG_IF_MATCHED;
-		found = cfg_bool_entries.bsearch_t(compare_id, entry, dummy);
-		entry2 = cfg_bool_entries.get_item(dummy);
-		skip_mng_flag |= entry2.value ? 1 << 0 : 0;
-		cfg_bool_entries.remove_item(entry2);
-
-		entry.id = DEPRI_CFG_SKIP_FIND_RELEASE_DLG_IF_IDED;
-		found = cfg_bool_entries.bsearch_t(compare_id, entry, dummy);
-		entry2 = cfg_bool_entries.get_item(dummy);
-		skip_mng_flag |= entry2.value ? 1 << 1 : 0;
-		cfg_bool_entries.remove_item(entry2);
-
-		entry.id = DEPRI_CFG_SKIP_PREVIEW_DIALOG;
-		found = cfg_bool_entries.bsearch_t(compare_id, entry, dummy);
-		entry2 = cfg_bool_entries.get_item(dummy);
-		skip_mng_flag |= entry2.value ? 1 << 2 : 0;
-		cfg_bool_entries.remove_item(entry2);
+		// Match by ID, never by sorted position; absent legacy IDs are harmless.
+		conf_bool_entry legacy = {};
+		discogger_cfg::remove_by_id(cfg_bool_entries, DEPRI_CFG_FIND_RELEASE_DIALOG_SHOW_ID);
+		if (discogger_cfg::take_by_id(cfg_bool_entries, DEPRI_CFG_SKIP_RELEASE_DLG_IF_MATCHED, legacy) && legacy.value)
+			skip_mng_flag |= 1 << 0;
+		if (discogger_cfg::take_by_id(cfg_bool_entries, DEPRI_CFG_SKIP_FIND_RELEASE_DLG_IF_IDED, legacy) && legacy.value)
+			skip_mng_flag |= 1 << 1;
+		if (discogger_cfg::take_by_id(cfg_bool_entries, DEPRI_CFG_SKIP_PREVIEW_DIALOG, legacy) && legacy.value)
+			skip_mng_flag |= 1 << 2;
 		cfg_int_entries.add_item(make_conf_entry(CFG_DC_DB_FLAG, 0));
 		cfg_int_entries.add_item(make_conf_entry(CFG_FIND_RELEASE_FILTER_FLAG, find_release_filter_flag));
 		cfg_int_entries.add_item(make_conf_entry(CFG_SKIP_MNG_FLAG, skip_mng_flag));
@@ -381,13 +358,7 @@ bool CConf::load() {
 	//..
 
 	for (unsigned int i = 0; i < cfg_string_entries.get_count(); i++) {
-		if (i < cfg_string_entries.get_count()) {
-			string_load(cfg_string_entries[i]);
-		}
-		else {
-			auto tmp = cfg_string_entries[i];
-			cfg_string_entries.remove_by_idx(tmp.id);
-		}
+		string_load(cfg_string_entries[i]);
 	}
 
 	if (vLoad == v204) {
@@ -408,7 +379,7 @@ bool CConf::load() {
 		cfg_string_entries.add_item(make_conf_entry(CFG_MA_LINKS, multiple_artists_links));
 	}
 	if (vLoad < v215) {
-		cfg_string_entries.add_item(make_conf_entry(CFG_STATUS_BAR_FORMATTING, release_status_bar_info_format_string));
+		cfg_string_entries.add_item(make_conf_entry(CFG_STATUS_BAR_FORMATTING, pfc::string8((const char*)release_status_bar_info_format_string)));
 	}
 	//..
 
@@ -680,8 +651,11 @@ bool CConf::int_load(const conf_int_entry& item) {
 		break;
 	//v210 (1.0.21)
 	case CFG_DISK_CACHE_EXP:
-		disk_cache_exp = item.value;
-		break;
+        disk_cache_exp = item.value;
+        break;
+    case CFG_ARTIST_RELEASE_CACHE_HOURS:
+        artist_release_cache_hours = discogger_cache::artist_hours(item.value);
+        break;
 	//v212 (1.0.22Beta6)
 	case CFG_ON_INIT_QUERY_FLAGS:
 		on_init_query_flags = item.value;
@@ -1087,8 +1061,11 @@ bool CConf::id_to_val_int(int id, const CConf& in_conf, int& out, bool assert) {
 		break;
 	//v210 (1.0.21)
 	case CFG_DISK_CACHE_EXP:
-		out = in_conf.disk_cache_exp;
-		break;
+        out = in_conf.disk_cache_exp;
+        break;
+    case CFG_ARTIST_RELEASE_CACHE_HOURS:
+        out = discogger_cache::artist_hours(in_conf.artist_release_cache_hours);
+        break;
 	//v212 (1.0.22 beta 6)
 	case CFG_ON_INIT_QUERY_FLAGS:
 		out = in_conf.on_init_query_flags;
@@ -1272,7 +1249,7 @@ void CConf::save(cfgFilter cfgfilter, const CConf& in_conf) {
 		if (filterok != std::end(idarray)) {
 			bool val;
 			/*bool bres = */id_to_val_bool(id, in_conf, val);
-			cfg_bool_entries.replace_item(i, make_conf_entry(id, val));
+			cfg_bool_entries.set(i, make_conf_entry(id, val));
 		}
 	}
 
@@ -1292,7 +1269,7 @@ void CConf::save(cfgFilter cfgfilter, const CConf& in_conf) {
 		if (filterok != std::end(idarray)) {
 			int val;
 			/*bool bres = */id_to_val_int(id, in_conf, val);
-			cfg_int_entries.replace_item(i, make_conf_entry(id, val));
+			cfg_int_entries.set(i, make_conf_entry(id, val));
 		}
 	}
 
@@ -1312,7 +1289,7 @@ void CConf::save(cfgFilter cfgfilter, const CConf& in_conf) {
 		if (filterok != std::end(idarray)) {
 			pfc::string8 str;
 			/*bool bres = */id_to_val_str(id, in_conf, str);
-			cfg_string_entries.replace_item(i, make_conf_entry(id, str));
+			cfg_string_entries.set(i, make_conf_entry(id, str));
 		}
 	}
 }
@@ -1335,7 +1312,7 @@ void CConf::save(cfgFilter cfgfilter, const CConf& in_conf, int id) {
 		if (item.id == id) {
 			bool val;
 			bool bres = id_to_val_bool(id, in_conf, val);
-			cfg_bool_entries.replace_item(i, make_conf_entry(id, val));
+			cfg_bool_entries.set(i, make_conf_entry(id, val));
 			return;
 		}
 	}
@@ -1345,7 +1322,7 @@ void CConf::save(cfgFilter cfgfilter, const CConf& in_conf, int id) {
 		if (item.id == id) {
 			int val;
 			bool bres = id_to_val_int(id, in_conf, val);
-			cfg_int_entries.replace_item(i, make_conf_entry(id, val));
+			cfg_int_entries.set(i, make_conf_entry(id, val));
 			return;
 		}
 	}
@@ -1354,169 +1331,174 @@ void CConf::save(cfgFilter cfgfilter, const CConf& in_conf, int id) {
 		if (item.id == id) {
 			pfc::string8 str;
 			bool res = id_to_val_str(id, in_conf, str);
-			cfg_string_entries.replace_item(i, make_conf_entry(id, str));
+			cfg_string_entries.set(i, make_conf_entry(id, str));
 			return;
 		}
 	}
 }
 
 void CConf::save() {
-	cfg_bool_entries.remove_all();
-	cfg_bool_entries.add_item(make_conf_entry(CFG_REPLACE_ANVS, replace_ANVs));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_MOVE_THE_AT_BEGINNING, move_the_at_beginning));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_DISCARD_NUMERIC_SUFFIX, discard_numeric_suffix));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_MATCH_TRACKS_USING_DURATION, match_tracks_using_duration));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_SAVE_ALBUM_ART, save_album_art));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_SAVE_ARTIST_ART, save_artist_art));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_ALBUM_ART_FETCH_ALL, album_art_fetch_all));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_ALBUM_ART_EMBED, embed_album_art));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_ALBUM_ART_OVERWRITE, album_art_overwrite));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_ARTIST_ART_FETCH_ALL, artist_art_fetch_all));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_ARTIST_ART_EMBED, embed_artist_art));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_ARTIST_ART_OVERWRITE, artist_art_overwrite));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_DISPLAY_EXACT_MATCHES, display_exact_matches));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_ENABLE_AUTOSEARCH, enable_autosearch));
+	std::vector<conf_bool_entry> bool_snapshot;
+	bool_snapshot.emplace_back(make_conf_entry(CFG_REPLACE_ANVS, replace_ANVs));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_MOVE_THE_AT_BEGINNING, move_the_at_beginning));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_DISCARD_NUMERIC_SUFFIX, discard_numeric_suffix));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_MATCH_TRACKS_USING_DURATION, match_tracks_using_duration));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_SAVE_ALBUM_ART, save_album_art));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_SAVE_ARTIST_ART, save_artist_art));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_ALBUM_ART_FETCH_ALL, album_art_fetch_all));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_ALBUM_ART_EMBED, embed_album_art));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_ALBUM_ART_OVERWRITE, album_art_overwrite));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_ARTIST_ART_FETCH_ALL, artist_art_fetch_all));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_ARTIST_ART_EMBED, embed_artist_art));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_ARTIST_ART_OVERWRITE, artist_art_overwrite));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_DISPLAY_EXACT_MATCHES, display_exact_matches));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_ENABLE_AUTOSEARCH, enable_autosearch));
 	//todo: depricated
-	cfg_bool_entries.add_item(make_conf_entry(CFG_DISPLAY_ANVS, display_ANVs));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_REMOVE_OTHER_TAGS, remove_other_tags));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_MATCH_TRACKS_USING_NUMBER, match_tracks_using_number));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_ASSUME_TRACKS_SORTED, assume_tracks_sorted));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_UPDATE_PREVIEW_CHANGES, update_tags_preview_changes));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_UPDATE_TAGS_MANUALLY_PROMPT, update_tags_manually_match));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_PARSE_HIDDEN_AS_REGULAR, parse_hidden_as_regular));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_SKIP_VIDEO_TRACKS, skip_video_tracks));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_DISPLAY_ANVS, display_ANVs));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_REMOVE_OTHER_TAGS, remove_other_tags));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_MATCH_TRACKS_USING_NUMBER, match_tracks_using_number));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_ASSUME_TRACKS_SORTED, assume_tracks_sorted));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_UPDATE_PREVIEW_CHANGES, update_tags_preview_changes));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_UPDATE_TAGS_MANUALLY_PROMPT, update_tags_manually_match));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_PARSE_HIDDEN_AS_REGULAR, parse_hidden_as_regular));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_SKIP_VIDEO_TRACKS, skip_video_tracks));
 	//v200
-	cfg_bool_entries.add_item(make_conf_entry(CFG_EDIT_TAGS_DIALOG_SHOW_TM_STATS, edit_tags_dlg_show_tm_stats));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_RELEASE_ENTER_KEY_OVR, release_enter_key_override));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_EDIT_TAGS_DIALOG_SHOW_TM_STATS, edit_tags_dlg_show_tm_stats));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_RELEASE_ENTER_KEY_OVR, release_enter_key_override));
 	//v206
-	cfg_bool_entries.add_item(make_conf_entry(CFG_AUTO_REL_LOAD_ON_OPEN, auto_rel_load_on_open));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_AUTO_REL_LOAD_ON_SELECT, auto_rel_load_on_select));
-	cfg_bool_entries.add_item(make_conf_entry(CFG_PARSE_HIDDEN_MERGE_TITLES, parse_hidden_merge_titles));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_AUTO_REL_LOAD_ON_OPEN, auto_rel_load_on_open));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_AUTO_REL_LOAD_ON_SELECT, auto_rel_load_on_select));
+	bool_snapshot.emplace_back(make_conf_entry(CFG_PARSE_HIDDEN_MERGE_TITLES, parse_hidden_merge_titles));
 	//..
 
-	cfg_int_entries.remove_all();
-	cfg_int_entries.add_item(make_conf_entry(CFG_TAGSAVE_FLAGS, tag_save_flags));
-	cfg_int_entries.add_item(make_conf_entry(CFG_EDIT_TAGS_DIALOG_COL1_WIDTH, edit_tags_dialog_col1_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_EDIT_TAGS_DIALOG_COL2_WIDTH, edit_tags_dialog_col2_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_EDIT_TAGS_DIALOG_COL3_WIDTH, edit_tags_dialog_col3_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_LAST_CONF_TAB, last_conf_tab));
-	cfg_int_entries.add_item(make_conf_entry(CFG_PREVIEW_MODE, preview_mode));
-	cfg_int_entries.add_item(make_conf_entry(CFG_CACHE_MAX_OBJECTS, cache_max_objects));
+	cfg_bool_entries.set(std::move(bool_snapshot));
+	std::vector<conf_int_entry> int_snapshot;
+	int_snapshot.emplace_back(make_conf_entry(CFG_TAGSAVE_FLAGS, tag_save_flags));
+	int_snapshot.emplace_back(make_conf_entry(CFG_EDIT_TAGS_DIALOG_COL1_WIDTH, edit_tags_dialog_col1_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_EDIT_TAGS_DIALOG_COL2_WIDTH, edit_tags_dialog_col2_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_EDIT_TAGS_DIALOG_COL3_WIDTH, edit_tags_dialog_col3_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_LAST_CONF_TAB, last_conf_tab));
+	int_snapshot.emplace_back(make_conf_entry(CFG_PREVIEW_MODE, preview_mode));
+	int_snapshot.emplace_back(make_conf_entry(CFG_CACHE_MAX_OBJECTS, cache_max_objects));
 	//v200
-	cfg_int_entries.add_item(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_COL1_WIDTH, preview_tags_dialog_col1_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_COL2_WIDTH, preview_tags_dialog_col2_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_TRACKS_DISCOGS_COL1_WIDTH, match_tracks_discogs_col1_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_TRACKS_DISCOGS_COL2_WIDTH, match_tracks_discogs_col2_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_TRACKS_FILES_COL1_WIDTH, match_tracks_files_col1_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_TRACKS_FILES_COL2_WIDTH, match_tracks_files_col2_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_TRACKS_DISCOGS_STYLE, match_tracks_discogs_style));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_TRACKS_FILES_STYLE, match_tracks_files_style));
-	cfg_int_entries.add_item(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_W_WIDTH, preview_tags_dialog_w_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_U_WIDTH, preview_tags_dialog_u_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_S_WIDTH, preview_tags_dialog_s_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_E_WIDTH, preview_tags_dialog_e_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_CACHE_OFFLINE_CACHE_FLAG, cache_offline_cache_flag));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_RA_WIDTH, match_discogs_artwork_ra_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_TYPE_WIDTH, match_discogs_artwork_type_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_DIM_WIDTH, match_discogs_artwork_dim_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_SAVE_WIDTH, match_discogs_artwork_save_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_OVR_WIDTH, match_discogs_artwork_ovr_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_EMBED_WIDTH, match_discogs_artwork_embed_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_FILE_ARTWORK_NAME_WIDTH, match_file_artwork_name_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_FILE_ARTWORK_DIM_WIDTH, match_file_artwork_dim_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_FILE_ARTWORK_SIZE_WIDTH, match_file_artwork_size_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_COL1_WIDTH, preview_tags_dialog_col1_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_COL2_WIDTH, preview_tags_dialog_col2_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_TRACKS_DISCOGS_COL1_WIDTH, match_tracks_discogs_col1_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_TRACKS_DISCOGS_COL2_WIDTH, match_tracks_discogs_col2_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_TRACKS_FILES_COL1_WIDTH, match_tracks_files_col1_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_TRACKS_FILES_COL2_WIDTH, match_tracks_files_col2_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_TRACKS_DISCOGS_STYLE, match_tracks_discogs_style));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_TRACKS_FILES_STYLE, match_tracks_files_style));
+	int_snapshot.emplace_back(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_W_WIDTH, preview_tags_dialog_w_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_U_WIDTH, preview_tags_dialog_u_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_S_WIDTH, preview_tags_dialog_s_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_PREVIEW_TAGS_DIALOG_E_WIDTH, preview_tags_dialog_e_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_CACHE_OFFLINE_CACHE_FLAG, cache_offline_cache_flag));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_RA_WIDTH, match_discogs_artwork_ra_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_TYPE_WIDTH, match_discogs_artwork_type_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_DIM_WIDTH, match_discogs_artwork_dim_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_SAVE_WIDTH, match_discogs_artwork_save_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_OVR_WIDTH, match_discogs_artwork_ovr_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_EMBED_WIDTH, match_discogs_artwork_embed_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_FILE_ARTWORK_NAME_WIDTH, match_file_artwork_name_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_FILE_ARTWORK_DIM_WIDTH, match_file_artwork_dim_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_FILE_ARTWORK_SIZE_WIDTH, match_file_artwork_size_width));
 	//todo: depri
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_DISCOGS_ARTWORK_STYLE, match_discogs_artwork_art_style));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_FILE_ARTWORKS_STYLE, match_file_artworks_art_style));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_DISCOGS_ARTWORK_STYLE, match_discogs_artwork_art_style));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_FILE_ARTWORKS_STYLE, match_file_artworks_art_style));
 	//..
-	cfg_int_entries.add_item(make_conf_entry(CFG_ALBUM_ART_SKIP_DEFAULT_CUST, album_art_skip_default_cust));
+	int_snapshot.emplace_back(make_conf_entry(CFG_ALBUM_ART_SKIP_DEFAULT_CUST, album_art_skip_default_cust));
 	//v204
-	cfg_int_entries.add_item(make_conf_entry(CFG_EDIT_TAGS_DIALOG_FLAGS, edit_tags_dlg_flags));
+	int_snapshot.emplace_back(make_conf_entry(CFG_EDIT_TAGS_DIALOG_FLAGS, edit_tags_dlg_flags));
 	//v205
-	cfg_int_entries.add_item(make_conf_entry(CFG_DC_DB_FLAG, 0));
-	cfg_int_entries.add_item(make_conf_entry(CFG_FIND_RELEASE_FILTER_FLAG, find_release_filter_flag));
-	cfg_int_entries.add_item(make_conf_entry(CFG_SKIP_MNG_FLAG, skip_mng_flag));
-	cfg_int_entries.add_item(make_conf_entry(CFG_LIST_STYLE, list_style));
-	cfg_int_entries.add_item(make_conf_entry(CFG_HISTORY_MAX_ITEMS, history_enabled_max));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DC_DB_FLAG, 0));
+	int_snapshot.emplace_back(make_conf_entry(CFG_FIND_RELEASE_FILTER_FLAG, find_release_filter_flag));
+	int_snapshot.emplace_back(make_conf_entry(CFG_SKIP_MNG_FLAG, skip_mng_flag));
+	int_snapshot.emplace_back(make_conf_entry(CFG_LIST_STYLE, list_style));
+	int_snapshot.emplace_back(make_conf_entry(CFG_HISTORY_MAX_ITEMS, history_enabled_max));
 
-	cfg_int_entries.add_item(make_conf_entry(CFG_FIND_RELEASE_DIALOG_FLAG, find_release_dlg_flags));
+	int_snapshot.emplace_back(make_conf_entry(CFG_FIND_RELEASE_DIALOG_FLAG, find_release_dlg_flags));
 	//v206
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_INDEX_WIDTH, match_discogs_artwork_index_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_MATCH_FILE_ARTWORK_INDEX_WIDTH, match_file_artwork_index_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_PREVIEW_LEADING_TAGS_DLG_COLS_WIDTH, this->preview_leading_tags_dlg_cols_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_INDEX_WIDTH, match_discogs_artwork_index_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_MATCH_FILE_ARTWORK_INDEX_WIDTH, match_file_artwork_index_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_PREVIEW_LEADING_TAGS_DLG_COLS_WIDTH, this->preview_leading_tags_dlg_cols_width));
 	//v207
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_RA_WIDTH, match_discogs_artwork_tl_ra_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_TYPE_WIDTH, match_discogs_artwork_tl_type_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_DIM_WIDTH, match_discogs_artwork_tl_dim_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_SAVE_WIDTH, match_discogs_artwork_tl_save_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_OVR_WIDTH, match_discogs_artwork_tl_ovr_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_EMBED_WIDTH, match_discogs_artwork_tl_embed_width));
-	cfg_int_entries.add_item(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_INDEX_WIDTH, match_discogs_artwork_tl_index_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_RA_WIDTH, match_discogs_artwork_tl_ra_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_TYPE_WIDTH, match_discogs_artwork_tl_type_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_DIM_WIDTH, match_discogs_artwork_tl_dim_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_SAVE_WIDTH, match_discogs_artwork_tl_save_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_OVR_WIDTH, match_discogs_artwork_tl_ovr_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_EMBED_WIDTH, match_discogs_artwork_tl_embed_width));
+	int_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_ARTWORK_TL_INDEX_WIDTH, match_discogs_artwork_tl_index_width));
 
-	cfg_int_entries.add_item(make_conf_entry(CFG_CUSTOM_FONT, custom_font));
+	int_snapshot.emplace_back(make_conf_entry(CFG_CUSTOM_FONT, custom_font));
 	//v209 (1.0.16.1)
-	cfg_int_entries.add_item(make_conf_entry(CFG_ALT_WRITE_FLAGS, alt_write_flags));
+	int_snapshot.emplace_back(make_conf_entry(CFG_ALT_WRITE_FLAGS, alt_write_flags));
+    int_snapshot.emplace_back(make_conf_entry(CFG_DISK_CACHE_EXP, disk_cache_exp));
 	//v212 (1.0.22 beta 6)
-	cfg_int_entries.add_item(make_conf_entry(CFG_ON_INIT_QUERY_FLAGS, on_init_query_flags));
-	cfg_int_entries.add_item(make_conf_entry(CFG_ON_INIT_QUERY_DEF, on_init_query_def));
+	int_snapshot.emplace_back(make_conf_entry(CFG_ON_INIT_QUERY_FLAGS, on_init_query_flags));
+	int_snapshot.emplace_back(make_conf_entry(CFG_ON_INIT_QUERY_DEF, on_init_query_def));
 	//v214 (1.0.22 beta 15)
-	cfg_int_entries.add_item(make_conf_entry(CFG_QUERY_MAX, query_max));
+	int_snapshot.emplace_back(make_conf_entry(CFG_QUERY_MAX, query_max));
+    int_snapshot.emplace_back(make_conf_entry(CFG_ARTIST_RELEASE_CACHE_HOURS,
+        discogger_cache::artist_hours(artist_release_cache_hours)));
 	//..
 
-	cfg_string_entries.remove_all();
-	cfg_string_entries.add_item(make_conf_entry(CFG_ALBUM_ART_DIRECTORY_STRING, pfc::string8((const char*)album_art_directory_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_ALBUM_ART_FILENAME_STRING, pfc::string8((const char*)album_art_filename_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_ARTIST_ART_DIRECTORY_STRING, pfc::string8((const char*)artist_art_directory_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_ARTIST_ART_FILENAME_STRING, pfc::string8((const char*)artist_art_filename_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_OAUTH_TOKEN, oauth_token));
-	cfg_string_entries.add_item(make_conf_entry(CFG_OAUTH_TOKEN_SECRET, oauth_token_secret));
-	cfg_string_entries.add_item(make_conf_entry(CFG_REMOVE_EXCLUDE_TAGS, raw_remove_exclude_tags));
-	cfg_string_entries.add_item(make_conf_entry(CFG_SEARCH_RELEASE_FORMAT_STRING, pfc::string8((const char*)search_release_format_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_SEARCH_MASTER_FORMAT_STRING, pfc::string8((const char*)search_master_format_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_SEARCH_MASTER_SUB_FORMAT_STRING, pfc::string8((const char*)search_master_sub_format_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_DISCOGS_TRACK_FORMAT_STRING, pfc::string8((const char*)release_discogs_format_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_FILE_TRACK_FORMAT_STRING, pfc::string8((const char*)release_file_format_string)));
-	cfg_string_entries.add_item(make_conf_entry(CFG_ARTIST_ART_IDS_TF_STRING, pfc::string8((const char*)artist_art_id_format_string)));
+	cfg_int_entries.set(std::move(int_snapshot));
+	std::vector<conf_string_entry> string_snapshot;
+	string_snapshot.emplace_back(make_conf_entry(CFG_ALBUM_ART_DIRECTORY_STRING, pfc::string8((const char*)album_art_directory_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_ALBUM_ART_FILENAME_STRING, pfc::string8((const char*)album_art_filename_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_ARTIST_ART_DIRECTORY_STRING, pfc::string8((const char*)artist_art_directory_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_ARTIST_ART_FILENAME_STRING, pfc::string8((const char*)artist_art_filename_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_OAUTH_TOKEN, oauth_token));
+	string_snapshot.emplace_back(make_conf_entry(CFG_OAUTH_TOKEN_SECRET, oauth_token_secret));
+	string_snapshot.emplace_back(make_conf_entry(CFG_REMOVE_EXCLUDE_TAGS, raw_remove_exclude_tags));
+	string_snapshot.emplace_back(make_conf_entry(CFG_SEARCH_RELEASE_FORMAT_STRING, pfc::string8((const char*)search_release_format_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_SEARCH_MASTER_FORMAT_STRING, pfc::string8((const char*)search_master_format_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_SEARCH_MASTER_SUB_FORMAT_STRING, pfc::string8((const char*)search_master_sub_format_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_DISCOGS_TRACK_FORMAT_STRING, pfc::string8((const char*)release_discogs_format_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_FILE_TRACK_FORMAT_STRING, pfc::string8((const char*)release_file_format_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_ARTIST_ART_IDS_TF_STRING, pfc::string8((const char*)artist_art_id_format_string)));
 	//v200
-	cfg_string_entries.add_item(make_conf_entry(CFG_EDIT_TAGS_DIALOG_HL_KEYWORD, pfc::string8((const char*)edit_tags_dlg_hl_keyword)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_EDIT_TAGS_DIALOG_HL_KEYWORD, pfc::string8((const char*)edit_tags_dlg_hl_keyword)));
 	//v205
-	cfg_string_entries.add_item(make_conf_entry(CFG_DC_DB_PATH, pfc::string8((const char*)db_dc_path)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_DC_DB_PATH, pfc::string8((const char*)db_dc_path)));
 	//v208
-	cfg_string_entries.add_item(make_conf_entry(CFG_MULTIVALUE_FIELDS, pfc::string8((const char*)multivalue_fields)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_MULTIVALUE_FIELDS, pfc::string8((const char*)multivalue_fields)));
 	//v211
-	cfg_string_entries.add_item(make_conf_entry(CFG_VA_PREFIXES, pfc::string8((const char*)various_prefixes)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_VA_PREFIXES, pfc::string8((const char*)various_prefixes)));
 	//v212
-	cfg_string_entries.add_item(make_conf_entry(CFG_ON_INIT_QUERY_TF, pfc::string8((const char*)on_init_query_tf)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_ON_INIT_QUERY_TF, pfc::string8((const char*)on_init_query_tf)));
 	//v213
-	cfg_string_entries.add_item(make_conf_entry(CFG_MA_LINKS, pfc::string8((const char*)multiple_artists_links)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_MA_LINKS, pfc::string8((const char*)multiple_artists_links)));
 	//v215
-	cfg_string_entries.add_item(make_conf_entry(CFG_STATUS_BAR_FORMATTING, pfc::string8((const char*)release_status_bar_info_format_string)));
+	string_snapshot.emplace_back(make_conf_entry(CFG_STATUS_BAR_FORMATTING, pfc::string8((const char*)release_status_bar_info_format_string)));
 
 
-	//..
+	// Persist once per list, never remove_all followed by intermediate saves.
+	cfg_string_entries.set(std::move(string_snapshot));
 }
 
 void CConf::save_active_config_tab(int newtab) {
-	const conf_int_entry& entry = make_conf_entry(CFG_LAST_CONF_TAB, last_conf_tab);
-	auto pos = cfg_int_entries.find_item(entry);
-
-	if (pos != pfc_infinite) {
-		conf_int_entry new_entry = make_conf_entry(CFG_LAST_CONF_TAB, newtab);
-		cfg_int_entries.swap_item_with(pos, new_entry);
+	if (discogger_cfg::replace_by_id(cfg_int_entries, CFG_LAST_CONF_TAB,
+		make_conf_entry(CFG_LAST_CONF_TAB, newtab))) {
 		last_conf_tab = newtab;
 	}
 }
 
 void CConf::save_preview_modal_tab_widths(int newwidths) {
 
-	const conf_int_entry& entry = make_conf_entry(CFG_PREVIEW_LEADING_TAGS_DLG_COLS_WIDTH, preview_leading_tags_dlg_cols_width);
-	auto pos = cfg_int_entries.find_item(entry);
-
-	if (pos != pfc_infinite) {
-		conf_int_entry new_entry = make_conf_entry(CFG_PREVIEW_LEADING_TAGS_DLG_COLS_WIDTH, newwidths);
-		cfg_int_entries.swap_item_with(pos, new_entry);
+	if (discogger_cfg::replace_by_id(cfg_int_entries, CFG_PREVIEW_LEADING_TAGS_DLG_COLS_WIDTH,
+		make_conf_entry(CFG_PREVIEW_LEADING_TAGS_DLG_COLS_WIDTH, newwidths))) {
 		preview_leading_tags_dlg_cols_width = newwidths;
 	}
+}
+
+// Preserve the original full-cache precondition for automatic artist release
+// expansion. Check this configuration snapshot, not a different global copy.
+bool CConf::auto_load_releases_on_select_ready() const {
+    const int required = Offline::OC_READ | Offline::OC_WRITE;
+    return auto_rel_load_on_select && (cache_offline_cache_flag & required) == required;
 }
 
 bool CConf::history_enabled() {

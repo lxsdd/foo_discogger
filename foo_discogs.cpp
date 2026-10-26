@@ -21,6 +21,7 @@
 #include "helpers/ui_element_helpers.h"
 
 #include "foo_discogs.h"
+#include "discogger_artwork_noop.h"
 
 using namespace std;
 
@@ -45,7 +46,8 @@ class initquit_discogs : public initquit
 			return;
 		}
 
-		for (auto & entry :  cfg_tag_mappings) {
+		auto tag_mappings = cfg_tag_mappings.get();
+		for (auto& entry : tag_mappings) {
 
 			bool release_id_mod = STR_EQUAL(TAG_RELEASE_ID, entry.tag_name.get_ptr());
 			if (release_id_mod) {
@@ -58,9 +60,10 @@ class initquit_discogs : public initquit
 				entry.enable_update = current_alt & (1 << 1);
 			}
 
-			entry.is_multival_meta = is_multivalue_meta(entry.tag_name);
+			entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
 
 		}
+		cfg_tag_mappings.set(std::move(tag_mappings));
 		init_tag_mappings();
 		discogs_interface = new DiscogsInterface();
 
@@ -165,10 +168,10 @@ foo_discogs::~foo_discogs() {
 void foo_discogs::item_display_web_page(const metadb_handle_ptr item, discog_web_page web_page) {
 	file_info_impl finfo;
 
-	char *url_prefix;
-	char *url_postfix = "";
+	const char *url_prefix;
+	const char *url_postfix = "";
 	const char *tag;
-	char *backup_tag = nullptr;
+	const char *backup_tag = nullptr;
 	switch (web_page) {
 		case ARTIST_PAGE:
 			tag = TAG_ARTIST_ID;
@@ -293,11 +296,10 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 		CONF.album_art_directory_string->run_hook(item->get_location(), &info, &hook, directory, nullptr);
 
 		// hardcoded "nullptr" ?
-		if (!STR_EQUAL(directory, "nullptr")) {
+		if (!STR_EQUAL(directory, "nullptr") && directory.get_length() != 0) {
 			if (directory[directory.get_length() - 1] != '\\') {
 				directory.add_char('\\');
 			}
-			ensure_directory_exists(directory);
 		}
 		else {
 			ada.write_it = false;
@@ -343,7 +345,7 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 
 	for (size_t i = 0; i < cimage_batch; i++) {
 		pfc::string8 path = directory;
-		bool write_this = vwrite_it[i];
+		bool write_this = vwrite_it[i] && ada.write_it;
 		bool embed_req = true; //only embed first album/artist image on non custom jobs
 
 		if (write_this) {
@@ -441,10 +443,15 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 			if (voverwrite_it[i] || !foobar2000_io::filesystem::g_exists(path, p_abort)) {
 				buffer = done_fetches[release->images[i]->url];
 				if (!buffer.get_ptr()) {
-					auto& mbmi = done_fetches.emplace(release->images[i]->url, buffer);
+					auto mbmi = done_fetches.emplace(release->images[i]->url, buffer);
 					g_discogs->fetch_image(mbmi.first->second, release->images[i], p_abort);
 					buffer = mbmi.first->second;
 				}
+				// Path previews and unchanged/failed fetches must not create directories.
+				if (!buffer.get_ptr() || buffer.get_count() == 0) {
+					throw foo_discogs_exception("Cannot write empty artwork data.");
+				}
+				ensure_directory_exists(directory);
 				g_discogs->write_image(buffer, path, p_abort);
 
 				saved_mask.set(i, true);
@@ -473,7 +480,7 @@ void foo_discogs::save_album_art(Release_ptr& release, metadb_handle_ptr item,
 					buffer = done_fetches[release->images[i]->url];
 
 					if (!buffer.get_ptr()) {
-						auto &mbmi = done_fetches.emplace(release->images[i]->url, buffer);
+						auto mbmi = done_fetches.emplace(release->images[i]->url, buffer);
 						g_discogs->fetch_image(mbmi.first->second, release->images[i], p_abort);
 						buffer = mbmi.first->second;
 					}
@@ -645,11 +652,10 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 		hook.set_artist(&artist);
 		CONF.artist_art_directory_string->run_hook(item->get_location(), &info, &hook, directory, nullptr);
 
-		if (vwrite_it[i] && !(STR_EQUAL(directory, "nullptr"))) {
+		if (vwrite_it[i] && !STR_EQUAL(directory, "nullptr") && directory.get_length() != 0) {
 			if (directory[directory.get_length() - 1] != '\\') {
 				directory.add_char('\\');
 			}
-			ensure_directory_exists(directory);
 		}
 		else {
 			vwrite_it[i] = false;
@@ -663,7 +669,7 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 		}
 
 		pfc::string8 path = directory;
-		bool write_this = vwrite_it[i];
+		bool write_this = vwrite_it[i] && ada.write_it;
 		bool embed_req = true & b_multiple_artist_head;
 
 		if (write_this) {
@@ -764,11 +770,16 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 				
 				buffer = done_fetches[artist->images[artist_img_ndx]->url];
 				if (!buffer.get_ptr()) {
-					auto& mbmi = done_fetches.emplace(artist->images[artist_img_ndx]->url, buffer);
+					auto mbmi = done_fetches.emplace(artist->images[artist_img_ndx]->url, buffer);
 					g_discogs->fetch_image(mbmi.first->second, artist->images[artist_img_ndx], p_abort);
 					buffer = mbmi.first->second;
 				}
 
+				// Path previews and unchanged/failed fetches must not create directories.
+				if (!buffer.get_ptr() || buffer.get_count() == 0) {
+					throw foo_discogs_exception("Cannot write empty artwork data.");
+				}
+				ensure_directory_exists(directory);
 				g_discogs->write_image(buffer, path, p_abort);
 				saved_mask.set(i + offset, true);
 			}
@@ -793,7 +804,7 @@ void foo_discogs::save_artist_art(pfc::array_t<Artist_ptr>& artists, Release_ptr
 
 				buffer = done_fetches[artist->images[artist_img_ndx]->url];
 				if (!buffer.get_ptr()) {					
-					auto& mbmi = done_fetches.emplace(artist->images[artist_img_ndx]->url, buffer);
+					auto mbmi = done_fetches.emplace(artist->images[artist_img_ndx]->url, buffer);
 					g_discogs->fetch_image(mbmi.first->second, artist->images[artist_img_ndx], p_abort);
 					buffer = mbmi.first->second;
 				}
@@ -839,45 +850,58 @@ void foo_discogs::fetch_image(MemoryBlock &buffer, Image_ptr &image, abort_callb
 }
 
 void foo_discogs::write_image(MemoryBlock &buffer, const pfc::string8 &full_path, abort_callback &p_abort) {
-	service_ptr_t<file> file;
-	try {
-		foobar2000_io::filesystem::g_open_write_new(file, full_path.get_ptr(), p_abort);
-	}
-	catch (const foobar2000_io::exception_io &e) {
-		foo_discogs_exception ex;
-		ex << "Error creating file \"" << full_path << "\" [" << e.what() << "]";
-		throw ex;
-	}
-
-	try {
-		try {
-			file->write(buffer.get_ptr(), buffer.get_size(), p_abort);
-		}
-		catch (foobar2000_io::exception_io e) {
-			foo_discogs_exception ex;
-			ex << "Error writing to file " << full_path << " [" << e.what() << "]";
-			throw ex;
-		}
-	}
-	catch (foo_discogs_exception) {
-		try {
-			foobar2000_io::filesystem::g_remove(full_path.get_ptr(), p_abort);
-		}
-		catch (foobar2000_io::exception_io) {
-		}
-		throw;
-	}
+    // Never truncate/delete an existing artwork file during a failed overwrite.
+    // The official filesystem::rewrite_file() stages the bytes and replaces
+    // the destination only after the temporary file was written and flushed.
+    if (!buffer.get_ptr() || buffer.get_count() == 0) {
+        throw foo_discogs_exception("Cannot write empty artwork data.");
+    }
+    auto fs = foobar2000_io::filesystem::get(full_path.get_ptr());
+    if (fs->exists(full_path.get_ptr(), p_abort)) {
+        service_ptr_t<file> previous;
+        foobar2000_io::filesystem::g_open_read(previous, full_path.get_ptr(), p_abort);
+        const auto previous_len = previous->get_size(p_abort);
+        if (previous_len == foobar2000_io::filesize_invalid) {
+            throw foo_discogs_exception("Cannot safely compare existing artwork of unknown size.");
+        }
+        if (previous_len == buffer.get_count() &&
+            discogger_write_safety::artwork_stream_matches(
+                static_cast<std::size_t>(previous_len), buffer.get_ptr(), buffer.get_count(),
+                [&](void* dst, std::size_t size) { return previous->read(dst, size, p_abort); })) {
+            return; // Exact byte-for-byte no-op, preserves file and timestamp.
+        }
+    }
+    try {
+        fs->rewrite_file(full_path.get_ptr(), p_abort, 10.0, buffer.get_ptr(), buffer.get_count());
+    } catch (const foobar2000_io::exception_io &e) {
+        foo_discogs_exception ex;
+        ex << "Error atomically updating artwork file \"" << full_path << "\" [" << e.what() << "]";
+        throw ex;
+    }
 }
 
 void foo_discogs::embed_image(MemoryBlock &buffer, metadb_handle_ptr item, GUID embed_guid, abort_callback &p_abort) {
-	static_api_ptr_t<file_lock_manager> api;
-	file_lock_ptr lock = api->acquire_write(item->get_path(), p_abort);
-	service_ptr_t<file> file;
-	album_art_editor_instance_ptr editor = album_art_editor_v2::g_open(nullptr, item->get_path(), p_abort);
-	album_art_data_ptr data = album_art_data_impl::g_create(buffer.get_ptr(), buffer.get_count());
-	editor->remove(embed_guid);
-	editor->set(embed_guid, data, p_abort);
-	editor->commit(p_abort);
+    if (!buffer.get_ptr() || buffer.get_count() == 0) {
+        throw foo_discogs_exception("Cannot embed empty artwork data.");
+    }
+    static_api_ptr_t<file_lock_manager> api;
+    file_lock_ptr lock = api->acquire_write(item->get_path(), p_abort);
+    album_art_editor_instance_ptr editor = album_art_editor_v2::g_open(nullptr, item->get_path(), p_abort);
+    album_art_data_ptr previous;
+    try {
+        previous = editor->query(embed_guid, p_abort);
+    } catch (const exception_album_art_not_found&) {
+        // Missing picture is different from a failed read of an existing picture.
+    }
+    if (previous.is_valid() &&
+        discogger_write_safety::artwork_bytes_equal(
+            previous->data(), previous->size(), buffer.get_ptr(), buffer.get_count())) {
+        return; // The exact same embedded picture: no remove/set/commit.
+    }
+    album_art_data_ptr data = album_art_data_impl::g_create(buffer.get_ptr(), buffer.get_count());
+    editor->remove(embed_guid);
+    editor->set(embed_guid, data, p_abort);
+    editor->commit(p_abort);
 }
 
 void foo_discogs::ui_v2_config_callback::ui_fonts_changed() {
@@ -939,4 +963,8 @@ void foo_discogs::notify(const GUID& p_what, t_size p_param1, const void* p_para
 void foo_discogs::cui_v2_common_callback::on_font_changed(uint32_t changed_items_mask) const {
 	//..
 }
+#endif
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/native-media-writer-qa.inc"
 #endif

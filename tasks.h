@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include "sqlite3.h"
 #include "db_fetcher.h"
 
@@ -7,6 +8,8 @@
 #include "find_release_dialog.h"
 #include "error_manager.h"
 #include "tag_writer.h"
+#include "discogger_async_write_lease.h"
+#include "discogger_artist_load_ownership.h"
 
 #include "track_matching_dialog.h"
 #include "preview_dialog.h"
@@ -33,6 +36,10 @@ protected:
 	// error callback. display errors if return true
 	virtual void on_error(HWND p_wnd) {}
 
+	// Fatal task errors may follow earlier physical writes. Derived writers can
+	// supply an actionable partial-commit warning before the single error popup.
+	virtual const char* fatal_failure_context() const { return nullptr; }
+
 private:
 	void run(threaded_process_status &p_status, abort_callback &p_abort) override final;
 	void on_done(HWND p_wnd, bool p_was_aborted) override final;
@@ -45,21 +52,28 @@ public:
 	locked_task_exception(const char* msg) : foo_discogs_exception(msg) {}
 };
 
-class foo_discogs_locked_threaded_process_callback : public foo_discogs_threaded_process_callback
+class foo_discogs_threaded_locked_process_callback : public foo_discogs_threaded_process_callback
 {
 public:
-	foo_discogs_locked_threaded_process_callback() {
+	foo_discogs_threaded_locked_process_callback() {
+		std::lock_guard<std::mutex> guard(g_discogs->locked_operation_rw_mutex);
 		if (g_discogs->locked_operation) {
-			locked_task_exception e("Operation locked");
-			throw e;
+			throw locked_task_exception("Operation locked");
 		}
-		g_discogs->locked_operation++;
+		++g_discogs->locked_operation;
 	}
 
-	~foo_discogs_locked_threaded_process_callback() {
-		g_discogs->locked_operation--;
+	~foo_discogs_threaded_locked_process_callback() {
+		std::lock_guard<std::mutex> guard(g_discogs->locked_operation_rw_mutex);
+		--g_discogs->locked_operation;
 	}
 };
+
+// Tag writes have their own operation gate, independent of artist/search operations.
+// Acquire before launching the worker and release when its callback is destroyed.
+// Legacy read/filter task name uses the same mutex-protected operation gate.
+// Keep this separate from the asynchronous physical tag-write gate.
+using foo_discogs_locked_threaded_process_callback = foo_discogs_threaded_locked_process_callback;
 
 class generate_tags_task : public foo_discogs_threaded_process_callback
 {
@@ -76,6 +90,8 @@ private:
 	CPreviewTagsDialog *m_preview_dialog = nullptr;
 	CTrackMatchingDialog *m_track_matching_dialog = nullptr;
 	CTagCreditDialog *m_credits_dialog = nullptr;
+    HWND m_owner_window = nullptr; // Captured once before the modeless worker.
+    bool origin_is_current() const;
 
 	bool m_show_preview_dialog;
 	bool m_quick_abort = false;
@@ -90,14 +106,18 @@ private:
 };
 
 
-class write_tags_task : public foo_discogs_write_tag_locked_threaded_process_callback
+class write_tags_task : public foo_discogs_threaded_process_callback
 {
 public:
-	write_tags_task(TagWriter_ptr tag_writer) : m_tag_writer(tag_writer) {}
+	write_tags_task(TagWriter_ptr tag_writer) : m_tag_writer(tag_writer),
+        m_write_lease(discogger_write_safety::acquire_physical_write_lease()) {
+        if (!m_write_lease) throw locked_task_exception("Another Discogger tag/artwork write is active");
+    }
 	void start();
 
 private:
 	TagWriter_ptr m_tag_writer;
+    discogger_write_safety::async_write_gate::lease m_write_lease;
 
 	void safe_run(threaded_process_status &p_status, abort_callback &p_abort) override;
 	void on_success(HWND p_wnd) override;
@@ -109,15 +129,19 @@ private:
 class download_art_task : public foo_discogs_threaded_process_callback
 {
 public:
-	download_art_task(pfc::string8 release_id, metadb_handle_list items, bool file_match);
+	download_art_task(pfc::string8 release_id, metadb_handle_list items, bool file_match,
+        discogger_write_safety::async_write_gate::lease write_lease = {});
 	void start();
 
 private:
 	pfc::string8 release_id;
 	metadb_handle_list items;
 	bool m_file_match;
+    discogger_write_safety::async_write_gate::lease m_write_lease;
 
 	void safe_run(threaded_process_status &p_status, abort_callback &p_abort) override;
+	void on_abort(HWND p_wnd) override;
+	const char* fatal_failure_context() const override;
 };
 
 
@@ -130,15 +154,19 @@ public:
 
 private:
 	CTrackMatchingDialog* m_dialog;
+    HWND m_owner_window = nullptr; // Captured before asynchronous launch.
 	pfc::array_t<GUID> m_album_art_ids;
 	pfc::string8 m_release_id;
 	metadb_handle_list m_items;
-	bool m_to_path_only; //debug sim
+	bool m_to_path_only; // Preview mode must never mutate external/embedded artwork.
 	bool m_file_match;
+    discogger_write_safety::async_write_gate::lease m_write_lease;
 
 	std::vector<std::pair<pfc::string8, bit_array_bittable>> m_vres;
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
+	void on_abort(HWND p_wnd) override;
+	const char* fatal_failure_context() const override;
 };
 
 
@@ -187,18 +215,22 @@ class get_artist_process_callback : public foo_discogs_threaded_process_callback
 {
 public:
 	get_artist_process_callback(cupdRelSrc cupdsrc, const char *artist_id, const char* artist_name)
-			: m_cupdsrc(cupdsrc), m_artist_id(artist_id), m_artist_name(artist_name) {
+			: m_artist_id(artist_id), m_artist_name(artist_name), m_cupdsrc(cupdsrc) {
 		m_bload_releases = m_cupdsrc != updRelSrc::ArtistProfile && m_cupdsrc != updRelSrc::UndefFast;
-        		bload_releases |= m_cupdsrc.extended;
+        		m_bload_releases |= m_cupdsrc.extended;
 	}
 	void start(HWND parent);
 
 private:
 	pfc::string8 m_artist_id;
-	const char* m_artist_name;
+	pfc::string8 m_artist_name;
+    HWND m_owner_window = nullptr;
+    std::uint64_t m_search_ticket = 0;
 	Artist_ptr m_artist;
 	cupdRelSrc m_cupdsrc;
 	bool m_bload_releases = false;
+	// Only the task that inserted the artist ID may remove its in-flight marker.
+	bool m_artist_load_registered = false;
 
 	bool check_in();
 	void check_out();
@@ -215,7 +247,7 @@ class get_multi_artists_process_callback : public foo_discogs_threaded_process_c
 {
 public:
 	get_multi_artists_process_callback(cupdRelSrc cupdsrc, const int va, const std::vector<size_t> & artist_ids)
-		: m_cupdsrc(cupdsrc), m_va(va), m_artist_ids(artist_ids) {
+		: m_artist_ids(discogger_async::unique_artist_ids(artist_ids)), m_cupdsrc(cupdsrc), m_va(va) {
 		
 		m_bload_releases = m_cupdsrc != updRelSrc::ArtistProfile && m_cupdsrc != updRelSrc::UndefFast;
 		m_bload_releases |= m_cupdsrc.extended;	
@@ -223,7 +255,9 @@ public:
 	void start(HWND parent);
 
 private:
-	const std::vector<size_t> & m_artist_ids;
+	std::vector<size_t> m_artist_ids; // Owned across modeless dialog destruction.
+    HWND m_owner_window = nullptr;
+    std::uint64_t m_search_ticket = 0;
 	std::vector<pfc::string8> m_checked_in_artist_ids;
 	pfc::array_t<Artist_ptr> m_artists;
 	Release_ptr m_release;
@@ -250,6 +284,8 @@ public:
 
 private:
 	pfc::string8 m_search;
+    HWND m_owner_window = nullptr;
+    std::uint64_t m_search_ticket = 0; // Captured before the online worker starts.
 	bool m_dlgbutton = false;
 	const int m_va;
 	QueryDefMap m_qdm_search_query = {};
@@ -278,9 +314,14 @@ public:
 
 private:
 	MasterRelease_ptr m_master_release;
+    MasterRelease_ptr m_staged_master; // Worker-owned version data, not the visible tree object.
 	int m_pos;
 	pfc::string8 m_offlineArtist_id;
 	int m_query_mode;
+    HWND m_owner_window = nullptr; // Exact window captured before worker dispatch.
+    std::uint64_t m_search_ticket = 0; // Reject a master expansion from a previous search.
+    std::uint64_t m_filter_ticket = 0; // A filter edit/rebuild invalidates the original master row.
+    pfc::string8 m_filter_text; // Reject silent programmatic filter changes as well.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
@@ -307,6 +348,9 @@ private:
 	pfc::string8 m_strFilter;
 	bool m_force_redraw;
 	bool m_force_rebuild;
+    HWND m_owner_window = nullptr; // Only the originating live dialog may be updated.
+    std::uint64_t m_search_ticket = 0;
+    std::uint64_t m_filter_ticket = 0; // Later edits supersede delayed filter callbacks.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
@@ -315,13 +359,16 @@ private:
 };
 
 
-class on_search_artist_done_process_callback : public foo_discogs_threaded_locked_process_callback {
+// Presentation-only follow-up of search_artist_process_callback::on_success.
+// Parent still owns the search lock; acquiring it again would throw
+// "Operation locked" and suppress otherwise valid Discogs results.
+class on_search_artist_done_process_callback : public foo_discogs_threaded_process_callback {
 
 public:
 	on_search_artist_done_process_callback(const pfc::array_t<Artist_ptr> p_artist_exact_matches,
 		const pfc::array_t<Artist_ptr> p_artist_other_matches,
-		bool append, std::pair<size_t, size_t>& out_va_cap) :
-		m_p_artist_exact_matches(p_artist_exact_matches), m_p_artist_other_matches(p_artist_other_matches), m_append(append), m_out_va_cap(out_va_cap) {};
+		bool append, std::pair<size_t, size_t>& out_va_cap, std::uint64_t ticket) :
+		m_p_artist_exact_matches(p_artist_exact_matches), m_p_artist_other_matches(p_artist_other_matches), m_append(append), m_out_va_cap(out_va_cap), m_search_ticket(ticket) {};
 
 	void start(HWND parent);
 
@@ -331,7 +378,8 @@ private:
 	const pfc::array_t<Artist_ptr> m_p_artist_other_matches;
 	bool m_append;
 	std::pair<size_t, size_t> m_out_va_cap;
-
+    HWND m_owner_window = nullptr; // Captured before dispatch, checked at UI completion.
+    const std::uint64_t m_search_ticket;
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
@@ -351,6 +399,8 @@ private:
 
 	cupdRelSrc m_updsrc;
 	Artist_ptr m_artist;
+    HWND m_owner_window = nullptr;
+    std::uint64_t m_search_ticket = 0; // Do not target a replaced modeless dialog.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
@@ -371,6 +421,9 @@ private:
 	metadb_handle_list m_items;
 
 	CFindReleaseDialog *m_dialog;
+    HWND m_owner_window = nullptr; // Captured on UI thread; never dereference stale m_dialog.
+    std::uint64_t m_search_ticket = 0; // Release selection supersedes older async searches.
+    bool owner_is_current() const; // UI thread only, before any dialog access.
 	pfc::string8 m_release_id;
 	pfc::string8 m_offline_artist_id;
 	pfc::string8 m_inno;

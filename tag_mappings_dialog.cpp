@@ -64,7 +64,8 @@ bool CTagMappingDialog::check_mapping_changed() {
 	if (!mapping_changed) {
 		for (unsigned int i = 0; i < cfg_tag_mappings.get_count(); i++) {
 
-			if (!cfg_tag_mappings.get_item(i).equals(m_ptag_map->get_item(i))) {
+			auto saved_mapping = cfg_tag_mappings[i]; // SDK cfg_objList returns a value snapshot.
+			if (!saved_mapping.equals(m_ptag_map->get_item(i))) {
 				mapping_changed = true;
 				break;
 			}
@@ -410,7 +411,7 @@ LRESULT CTagMappingDialog::OnImport(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndC
 						m_ptag_map->remove_all();
 						deleted = true;
 					}
-					buf->is_multival_meta = is_multivalue_meta(buf->tag_name);
+					buf->is_multival_meta = discogger_is_multivalue_meta(buf->tag_name);
 
 					bool badd_new = true;
 
@@ -461,7 +462,7 @@ LRESULT CTagMappingDialog::OnImport(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndC
 				m_ptag_map->remove_all();
 				deleted = true;
 			}
-			wentry.is_multival_meta = is_multivalue_meta(wentry.tag_name);
+			wentry.is_multival_meta = discogger_is_multivalue_meta(wentry.tag_name);
 
 			bool badd_new = true;
 
@@ -1034,13 +1035,14 @@ LRESULT CTagMappingDialog::OnSplitDropDown(WORD wNotifyCode, WORD wID, HWND hWnd
 		menu_more_info.cbSize = sizeof(MENUITEMINFO);
 		menu_more_info.fMask = MIIM_SUBMENU | MIIM_STRING | MIIM_ID;
 		menu_more_info.hSubMenu = hSplitMenuMore;
-		menu_more_info.dwTypeData = L"Other defaults...";
+		wchar_t menu_more_text[] = L"Other defaults...";
+		menu_more_info.dwTypeData = menu_more_text;
 		menu_more_info.wID = MENU_MORE;
 		InsertMenuItem(hSplitMenu, MENU_MORE, true, &menu_more_info);
 
 		const size_t iSubs = 2;
 		HMENU submenu_other[iSubs] = {};
-		LPWSTR submenus_data[iSubs] = {
+		wchar_t submenus_data[iSubs][64] = {
 		_T("ID3 template"), _T("ID3 MS Explorer"), };
 
 		MENUITEMINFO submenus_infos[iSubs] = {};
@@ -1094,7 +1096,7 @@ LRESULT CTagMappingDialog::OnSplitDropDown(WORD wNotifyCode, WORD wID, HWND hWnd
 		HMENU hSplitMenu = CreatePopupMenu();
 		AppendMenu(hSplitMenu, MF_STRING, MENU_ADD_NEW, L"<Add new>");
 		size_t csubmenus = 8;
-		LPWSTR submenus_data[8] = {
+		wchar_t submenus_data[8][64] = {
 			_T("Basic"), _T("Label"),
 			_T("Id"), _T("Format and series"),
 			_T("Community"), _T("Artist"),
@@ -1224,7 +1226,7 @@ LRESULT CTagMappingDialog::OnSplitDropDown(WORD wNotifyCode, WORD wID, HWND hWnd
 		HMENU hSplitMenu = CreatePopupMenu();
 		AppendMenu(hSplitMenu, MF_STRING, MENU_ADD_NEW, L"<Add new>");
 		size_t csubmenus = 10;
-		LPWSTR submenus_data[10] = {
+		wchar_t submenus_data[10][64] = {
 			_T("Titles"), _T("People && Organization"),
 			_T("Counts and Indexes"), _T("Dates"),
 			_T("Identifiers"), _T("Flags"),

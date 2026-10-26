@@ -16,6 +16,7 @@ const UINT WM_CUSTOM_ANV_CHANGED = WM_USER + 100;
 const UINT WM_CUSTOM_VA_AS_MA_RESET = WM_USER + 101;
 
 
+class foo_discogs_threaded_locked_process_callback;
 class CFindReleaseDialog;
 class CFindReleaseArtistDialog;
 class CTrackMatchingDialog;
@@ -142,7 +143,7 @@ inline CPromptDialog *g_pprompt_dlg = nullptr;
 inline HICON g_hIcon_quian;
 inline HBITMAP g_hIcon_rec;
 
-enum class PreView :int { Normal = 0, Diff, Original, Dbg, Undef, default = 0 };
+enum class PreView :int { Normal = 0, Diff, Original, Dbg, Undef };
 inline pfc::string8 preview_to_label(PreView pv) { return pv == PreView::Normal ? "Results" : pv == PreView::Diff ? "Difference" :
 	pv == PreView::Original ? "Original" : pv == PreView::Dbg ? "Debug" : "Undefine"; }
 

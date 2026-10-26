@@ -1,4 +1,11 @@
 #include "stdafx.h"
+#include "discogger_search_fallback.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
+#include <fstream>
+#include "discogger_cache_pages.h"
+#include <cstdlib>
 
 #include "pfc/other.h"
 #include "discogs_interface.h"
@@ -274,7 +281,13 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 
 				//* * * * * * * *
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::preview_attempts.fetch_add(1);
+#endif
 				mr->load_preview(p_status, p_abort, false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::preview_successes.fetch_add(1);
+#endif
 
 				//* * * * * * * *
 
@@ -343,7 +356,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 					}
 				}
 				if (!mr_found) {
-					tmpArtist->master_releases.add_item(std::move(mr));
+					tmpArtist->master_releases.add_item(mr);
 					tmpArtist->search_order_master.add_item(true);
 				}
 
@@ -399,7 +412,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 			else {
 				no_checkArtist = it->second;
 			}
-			no_checkArtist->master_releases.add_item(std::move(mr));
+			no_checkArtist->master_releases.add_item(mr);
 			no_checkArtist->search_order_master.add_item(true);
 
 				size_t lkey = encode_mr(atoi(no_checkArtist->id), atoi(mr->id));
@@ -459,7 +472,13 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 
 					//* * * * * * * *
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                    discogger_live_search_qa::preview_attempts.fetch_add(1);
+#endif
 					r->load_preview(p_status, p_abort, false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                    discogger_live_search_qa::preview_successes.fetch_add(1);
+#endif
 
 					//* * * * * * * *
 
@@ -518,7 +537,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 				}
 				if (!r_found) {
 				
-					tmpArtist->releases.add_item(std::move(r));
+					tmpArtist->releases.add_item(r);
 					tmpArtist->search_order_master.add_item(false);
 				}
 
@@ -591,7 +610,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 				no_checkArtist = it->second;
 			}
 
-			no_checkArtist->releases.add_item(std::move(r));
+			no_checkArtist->releases.add_item(r);
 			no_checkArtist->search_order_master.add_item(false);
 
 			if (!bskip_preview_and_stats) {
@@ -652,10 +671,19 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 
 		pages = discogs_interface->get_all_pages(url, params, out_max_to_abort, p_abort, "Fetching query results...", p_status);
 		if (out_max_to_abort > max_to_abort) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::query_limit.fetch_add(1);
+#endif
 			return rppair_t({ out_max_to_abort,out_max_to_abort }, { 0,0 });
 		}
 
 	}
+    catch (const exception_aborted&) {
+        // User cancellation is not a search failure. Preserve the SDK's
+        // cancellation signal so no fallback, cache update or UI error is
+        // triggered for a deliberately stopped network request.
+        throw;
+    }
 	catch (foo_discogs_exception& e) {
 
 		pfc::string8 error("Error loading search releases. ");
@@ -669,7 +697,19 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 	}
 
 	const size_t cpages = pages.get_count();
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::response_pages.fetch_add(static_cast<unsigned>(cpages));
+    for (size_t p = 0; p < cpages; ++p) {
+        const json_t* results = json_object_get(pages[p]->root, "results");
+        if (json_is_array(results))
+            discogger_live_search_qa::response_items.fetch_add(
+                static_cast<unsigned>(json_array_size(results)));
+    }
+#endif
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(1);
+#endif
 	bool bCacheSaved = true;
 	bool bmark_pending = false;
 
@@ -700,16 +740,193 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 		//need preview working to avoid unloaded duplicated masters erasing valid data 
 		parse_amt_page(fake_artist, pages[i], pai, p_status, p_abort);
 	}
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(2);
+#endif
+
+    // A nonempty structured response is not necessarily a usable release:
+    // e.g. a broad artist query can return only unrelated release titles.
+    // Preserve plausible structured matches; otherwise offer at most three
+    // bounded, review-only discovery queries. Never auto-approve a fallback.
+    const auto& original_artist = qdm_search_query.at("artist=").first;
+    const auto& release_title = qdm_search_query.at("title=").first;
+    const auto& original_track = qdm_search_query.at("track=").first;
+    const bool original_has_candidates =
+        fake_artist->master_releases.get_count() || fake_artist->releases.get_count();
+    bool original_title_plausible = false;
+    if (original_has_candidates) {
+        for (const auto& master : fake_artist->master_releases) {
+            if (master && discogger_search::plausible_release_group_title(
+                    release_title, master->title.c_str(), master->sub_releases,
+                    [](const Release_ptr& child) -> std::string_view {
+                        return child ? std::string_view(child->title.c_str())
+                                     : std::string_view{};
+                    })) {
+                original_title_plausible = true;
+                break;
+            }
+        }
+        if (!original_title_plausible) {
+            for (const auto& release : fake_artist->releases) {
+                if (release && discogger_search::plausible_release_title(
+                        release_title, release->title.c_str())) {
+                    original_title_plausible = true;
+                    break;
+                }
+            }
+        }
+    }
+    bool used_broad_fallback = false;
+    discogger_search::optional_fallback_outcome fallback_outcome;
+    if (!original_has_candidates || !original_title_plausible) {
+        // Keep the exact original query untouched; the plan only suggests
+        // additional Discogs candidates and never writes tags.
+        const auto plans = discogger_search::build_fallback_plan(
+            original_artist, release_title, original_track);
+        discogger_search::fallback_query_budget budget(plans.size());
+        for (const auto& candidate : plans) {
+            p_abort.check();
+            // Do not round-trip untrusted release titles/artist names through
+            // TextToMap: e.g. "Love & title=Mix" contains a literal field
+            // delimiter, not another user-selected Discogs filter.
+            const std::string fallback_query =
+                discogger_search::encode_fallback_query(candidate);
+            if (fallback_query.empty()) continue;
+            if (!budget.begin()) break;
+
+            pfc::string8 status(original_has_candidates
+                ? "No plausible release-title match: " : "No exact result: ");
+            status << candidate.label.c_str();
+            p_status.set_item(status);
+            pfc::string8 fallback_url("https://api.discogs.com/database/search");
+            pfc::string8 fallback_params(fallback_query.c_str());
+            size_t fallback_max = HIWORD(CONF.query_max);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::fallback_attempts.fetch_add(1);
+            discogger_live_search_qa::worker_phase.store(3);
+#endif
+            pfc::array_t<JSONParser_ptr> fallback_pages;
+            bool optional_fetch_failed = false;
+            // get_all_pages validates every page before returning. A failed
+            // optional request must never leak its partially fetched pages,
+            // but can leave already completed original/earlier fallback
+            // candidates available for explicit user review.
+            try {
+                fallback_pages = get_all_pages(
+                    fallback_url, fallback_params, fallback_max, p_abort,
+                    "Fetching bounded Discogs fallback candidates...", p_status);
+            }
+            catch (const exception_aborted&) {
+                throw;
+            }
+            catch (const http_exception& e) {
+                // Auth, malformed/client responses and exhausted 429 must
+                // retain their existing fail-closed behavior.
+                if (!discogger_search::recoverable_optional_fallback_http(
+                        e.get_status())) throw;
+                optional_fetch_failed = true;
+            }
+            catch (const foo_discogs_exception&) {
+                // Network failures or invalid/changing provider pagination
+                // cannot contribute an incomplete page to the visible list.
+                optional_fetch_failed = true;
+            }
+            if (optional_fetch_failed) {
+                p_abort.check();
+                fallback_outcome.record_fetch_failure();
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::fallback_fetch_errors.fetch_add(1);
+#endif
+                log_msg("Optional Discogs discovery unavailable (request redacted); retaining complete candidates.");
+                p_status.set_item("Optional Discogs discovery unavailable; continuing review-only search.");
+                continue; // Remaining bounded plans can still find a match.
+            }
+            if (fallback_max > max_to_abort) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::query_limit.fetch_add(1);
+#endif
+                p_status.set_item("Fallback result limit exceeded; refine the search.");
+                budget.stop();
+                break;
+            }
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::response_pages.fetch_add(
+                static_cast<unsigned>(fallback_pages.get_count()));
+            for (size_t p = 0; p < fallback_pages.get_count(); ++p) {
+                const json_t* results = json_object_get(fallback_pages[p]->root, "results");
+                if (json_is_array(results))
+                    discogger_live_search_qa::response_items.fetch_add(
+                        static_cast<unsigned>(json_array_size(results)));
+            }
+#endif
+            const size_t prior_masters = fake_artist->master_releases.get_count();
+            const size_t prior_releases = fake_artist->releases.get_count();
+            for (size_t i = 0; i < fallback_pages.get_count(); ++i) {
+                p_abort.check();
+                parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
+            }
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::worker_phase.store(4);
+#endif
+            // A duplicate ID from fallback must not demote an otherwise
+            // unchanged original candidate into the review-only bucket.
+            const bool have_new_candidates =
+                fake_artist->master_releases.get_count() > prior_masters ||
+                fake_artist->releases.get_count() > prior_releases;
+            budget.observe(have_new_candidates);
+            if (have_new_candidates) {
+                used_broad_fallback = true;
+                p_status.set_item("Broader Discogs results: review release/version before tagging.");
+                // Never stop merely because a fallback returned something:
+                // guest/title may return an unrelated release while the next
+                // bounded phase contains the requested ID. The parser merges
+                // distinct IDs; presentation stays review-only.
+            }
+        }
+    }
+    // Do not misreport a completely failed search as an empty-success result.
+    // Only fully received and parsed primary/earlier fallback candidates
+    // can survive a later optional fetch failure.
+    const size_t completed_candidates =
+        fake_artist->master_releases.get_count() + fake_artist->releases.get_count();
+    if (fallback_outcome.requires_error(completed_candidates)) {
+        p_abort.check();
+        throw foo_discogs_exception(
+            "Optional Discogs discovery failed without complete candidates; retry.");
+    }
+    if (fallback_outcome.failed_fetches)
+        p_status.set_item("Some Discogs discovery requests unavailable; review completed candidates.");
 
 	va_res_cap.first = fake_artist->master_releases.get_count();
 	va_res_cap.second = fake_artist->releases.get_count();
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    // These are parsed preview candidates, never independently fetched probes.
+    discogger_live_search_qa::parsed_masters.store(static_cast<unsigned>(va_res_cap.first));
+    discogger_live_search_qa::parsed_releases.store(static_cast<unsigned>(va_res_cap.second));
+#endif
 
 	//to load while parsing
 	for (auto mr : pai.mva_masters) {
 		mr.second->loaded_preview = false;
 	}
 
-	process_amt_parsed_fake_artist(fake_artist, pai, true, true, va_res_cap, va_done_cap, p_status, p_abort);
+	// Low-confidence fallback suggestions stay in the 'other' section:
+    // the UI cannot mistake them for exact original-artist hits.
+    QueryDefMap presentation_query = qdm_search_query;
+    if (fallback_outcome.requires_review(original_title_plausible, used_broad_fallback))
+        presentation_query["artist="].first.clear();
+    parse_amt_info presentation_pai = {
+        presentation_query, map_found_artists, set_bad_artists, mva_masters,
+        exact_matches, other_matches, qry_m_r_found
+    };
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(5);
+#endif
+    process_amt_parsed_fake_artist(fake_artist, presentation_pai, true, true,
+        va_res_cap, va_done_cap, p_status, p_abort);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(6);
+#endif
 
 	size_t cmatches = pai.other_matches.get_count();
 
@@ -732,37 +949,60 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 
 	pfc::list_to_array(om, lp);
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(7);
+#endif
 	return rppair_t({ va_res_cap }, { va_done_cap });
 
 }
 
 pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8 &url, pfc::string8 params, abort_callback &p_abort) {
+    pfc::array_t<JSONParser_ptr> results;
+    if (params.get_length()) params << "&";
+    params << "per_page=100";
+    size_t page = 1, last = 0, first_items = 0, first_per_page = 0;
 
-	pfc::array_t<JSONParser_ptr> results;
-	if (params.get_length()) {
-		params << "&";
-	}
-	params << "per_page=100";
-	size_t page = 1;
-	size_t last = 0;
+    for (;;) {
+        p_abort.check();
+        pfc::string8 page_params;
+        page_params << params << "&page=" << page;
+        pfc::string8 json;
+        fetcher->fetch_html(url, page_params, json, p_abort);
+        JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
 
-	do {
-		pfc::string8 page_params;
-		page_params << params;
-		page_params << "&page=" << page;
+        // Inspect the response BEFORE moving jp into the result array.
+        const size_t returned_page = jp->get_object_int("pagination", "page");
+        const size_t returned_pages = jp->get_object_int("pagination", "pages");
+        const size_t per_page = jp->get_object_int("pagination", "per_page");
+        const size_t items = jp->get_object_int("pagination", "items");
+        if (!discogger_cache::valid_online_page(page, returned_page, returned_pages,
+                per_page, items, last, first_per_page, first_items))
+            throw foo_discogs_exception("Discogs returned invalid or changing pagination; refresh and retry.");
+        // Search, artist releases, collection and master-version endpoints
+        // return one of these known paginated arrays. A truncated/missing
+        // array with a plausible count must never be shown as a complete
+        // search result or overwrite the last good cache.
+        const json_t* page_entries = json_object_get(jp->root, "results");
+        if (!page_entries) page_entries = json_object_get(jp->root, "releases");
+        if (!page_entries) page_entries = json_object_get(jp->root, "versions");
+        if (!json_is_array(page_entries) ||
+            !discogger_cache::valid_online_payload_count(
+                page, returned_pages, per_page, items, json_array_size(page_entries)))
+            throw foo_discogs_exception(
+                "Discogs returned a missing or incomplete result page; refresh and retry.");
 
-		pfc::string8 json;
-		fetcher->fetch_html(url, page_params, json, p_abort);
-		JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
-		results.append_single(std::move(jp));
-		if (page == 1) {
-			last = jp->get_object_int("pagination", "pages");
-		}
-		page++;
-
-	} while (page <= last && !p_abort.is_aborting());
-
-	return results;
+        if (page == 1) {
+            last = returned_pages;
+            first_items = items;
+            first_per_page = per_page;
+        }
+        p_abort.check();
+        results.append_single(std::move(jp));
+        if (page >= last) break;
+        ++page;
+    }
+    p_abort.check();
+    return results;
 }
 
 pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8& url, pfc::string8 params, abort_callback& p_abort, const char* msg, threaded_process_status& p_status) {
@@ -771,108 +1011,155 @@ pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8& url, 
 }
 
 pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(pfc::string8 &url, pfc::string8 params, size_t& max_to_abort, abort_callback &p_abort, const char *msg, threaded_process_status &p_status) {
+    pfc::array_t<JSONParser_ptr> results;
+    if (params.get_length()) params << "&";
+    params << "per_page=100";
+    size_t page = 1, last = 0, first_items = 0, first_per_page = 0;
 
-	pfc::array_t<JSONParser_ptr> results;
-	if (params.get_length()) {
-		params << "&";
-	}
-	params << "per_page=100";
-	size_t page = 1;
-	size_t last = 0;
+    for (;;) {
+        p_abort.check();
+        pfc::string8 status(msg);
+        if (page > 1) status << " page " << page << "/" << last << " (100 x page)";
+        p_status.set_item(status);
+        pfc::string8 page_params;
+        page_params << params << "&page=" << page;
+        pfc::string8 json;
+        fetcher->fetch_html(url, page_params, json, p_abort);
+        JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
 
-	do {
-		pfc::string8 status(msg);
-		if (page > 1) {
-			status << " page " << page << "/" << last << " (100 x page)";
-		}
-		p_status.set_item(status);
+        // Validate first: std::move(jp) transfers ownership of the parser.
+        const size_t returned_page = jp->get_object_int("pagination", "page");
+        const size_t returned_pages = jp->get_object_int("pagination", "pages");
+        const size_t per_page = jp->get_object_int("pagination", "per_page");
+        const size_t items = jp->get_object_int("pagination", "items");
+        if (!discogger_cache::valid_online_page(page, returned_page, returned_pages,
+                per_page, items, last, first_per_page, first_items))
+            throw foo_discogs_exception("Discogs returned invalid or changing pagination; refresh and retry.");
+        // Search, artist releases, collection and master-version endpoints
+        // return one of these known paginated arrays. A truncated/missing
+        // array with a plausible count must never be shown as a complete
+        // search result or overwrite the last good cache.
+        const json_t* page_entries = json_object_get(jp->root, "results");
+        if (!page_entries) page_entries = json_object_get(jp->root, "releases");
+        if (!page_entries) page_entries = json_object_get(jp->root, "versions");
+        if (!json_is_array(page_entries) ||
+            !discogger_cache::valid_online_payload_count(
+                page, returned_pages, per_page, items, json_array_size(page_entries)))
+            throw foo_discogs_exception(
+                "Discogs returned a missing or incomplete result page; refresh and retry.");
 
-		pfc::string8 page_params;
-		page_params << params;
-		page_params << "&page=" << page;
 
-		pfc::string8 json;
-
-		fetcher->fetch_html(url, page_params, json, p_abort);
-		JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
-
-		results.append_single(std::move(jp));
-
-		if (page == 1) {
-			size_t items = jp->get_object_int("pagination", "items");
-			if (items > max_to_abort) {
-				results.force_reset();
-				max_to_abort = items;
-				return results;
-			}
-			last = jp->get_object_int("pagination", "pages");
-		}
-		page++;
-
-	} while (page <= last && !p_abort.is_aborting());
-
-	return results;
+        if (page == 1) {
+            // Preserve the existing explicit query-volume refusal, with no
+            // partially populated result and no additional network requests.
+            if (items > max_to_abort) {
+                max_to_abort = items;
+                return results;
+            }
+            last = returned_pages;
+            first_items = items;
+            first_per_page = per_page;
+        }
+        p_abort.check();
+        results.append_single(std::move(jp));
+        if (page >= last) break;
+        ++page;
+    }
+    p_abort.check();
+    return results;
 }
 
 namespace fs =std::filesystem;
 
 pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages_offline_cache(ol::GetFrom getFrom, pfc::string8& id, pfc::string8 &secid, pfc::string8 params, abort_callback& p_abort, const char* msg, threaded_process_status& p_status) {
+    (void)params; // The caller owns the correct API URL for an online retry.
+    p_abort.check();
+    if (getFrom != ol::GetFrom::ArtistReleases && getFrom != ol::GetFrom::Versions)
+        throw foo_discogs_exception("Unsupported offline cache page type.");
 
-	pfc::string8 path_container = get_offline_path(id, getFrom, secid, true);
-	std::filesystem::path os_path_container = std::filesystem::u8path(path_container.c_str());
+    const pfc::string8 path_container = get_offline_path(id, getFrom, secid, true);
+    const fs::path directory = fs::u8path(path_container.c_str());
+    std::map<std::size_t, fs::path> ordered_pages;
+    pfc::array_t<JSONParser_ptr> staged;
 
-	pfc::array_t<JSONParser_ptr> jparsers;
+    try {
+        if (!fs::is_directory(directory))
+            throw foo_discogs_exception("Offline cache page directory is missing.");
 
-	pfc::string8 status_msg(msg);
+        for (const auto& entry : fs::directory_iterator(directory)) {
+            p_abort.check();
+            if (entry.is_symlink())
+                throw foo_discogs_exception("Offline cache contains a symlink.");
+            if (!entry.is_directory()) continue; // Loading/task markers are files.
+            const auto utf8 = entry.path().filename().u8string();
+            const std::string name(utf8.begin(), utf8.end());
+            std::size_t index = 0;
+            if (!discogger_cache::parse_cache_page_folder(name, index) ||
+                !ordered_pages.emplace(index, entry.path()).second)
+                throw foo_discogs_exception("Offline cache page index is invalid or duplicated.");
+        }
 
-	try
-	{
-		if (fs::exists(os_path_container) && fs::is_directory(os_path_container))
-		{
-			//alt search recursive and detect root.json files
-			std::filesystem::directory_iterator dirpos{ os_path_container };
-			size_t msg_pos = 0;
-			for (std::filesystem::directory_entry walk_dir : dirpos) {
-				if (walk_dir.is_directory()) {
+        std::vector<std::size_t> indexes;
+        for (const auto& page : ordered_pages) indexes.push_back(page.first);
+        if (!discogger_cache::complete_cache_page_sequence(indexes))
+            throw foo_discogs_exception("Offline cache has missing or duplicate pages.");
 
-					if (p_abort.is_aborting()) break;
+        std::size_t expected_items = 0, expected_per_page = 0;
+        for (const auto& page : ordered_pages) {
+            p_abort.check();
+            pfc::string8 status(msg);
+            status << " page " << (page.first + 1) << "/" << ordered_pages.size();
+            p_status.set_item(status);
 
-					p_status.set_item(status_msg);
-					fs::path os_root = walk_dir;
-					os_root += "\\root.json";
-					json_t* json_obj = offline_cache.Read_JSON(os_root.u8string().c_str());
+            const fs::path file = page.second / "root.json";
+            if (fs::is_symlink(file) || !fs::is_regular_file(file) || fs::file_size(file) == 0)
+                throw foo_discogs_exception("Offline cache page JSON is missing or empty.");
+            const auto utf8 = file.u8string();
+            const std::string file_name(utf8.begin(), utf8.end());
 
-					if (json_obj == nullptr) {
-						foo_discogs_exception ex(PFC_string_formatter() << "Invalid cache file:" << os_root.c_str());
-						throw ex;
-					}
+            const auto cleanup = [](json_t* ptr) { if (ptr) json_decref(ptr); };
+            std::unique_ptr<json_t, decltype(cleanup)> raw(
+                offline_cache.Read_JSON(file_name.c_str()), cleanup);
+            if (!json_is_object(raw.get()))
+                throw foo_discogs_exception("Offline cache page JSON root is not an object.");
 
-					pfc::string8 json(json_dumps(json_obj, 0));
+            const json_t* pagination = json_object_get(raw.get(), "pagination");
+            auto read_count = [pagination](const char* key, std::size_t& output) {
+                const json_t* value = json_object_get(pagination, key);
+                if (!json_is_integer(value) || json_integer_value(value) < 0) return false;
+                output = static_cast<std::size_t>(json_integer_value(value));
+                return true;
+            };
+            std::size_t api_page = 0, api_pages = 0, api_per_page = 0, api_items = 0;
+            const bool metadata_valid = json_is_object(pagination) &&
+                read_count("page", api_page) && read_count("pages", api_pages) &&
+                read_count("per_page", api_per_page) && read_count("items", api_items) &&
+                discogger_cache::valid_cache_pagination(page.first, ordered_pages.size(),
+                    api_page, api_pages, api_per_page, api_items);
+            const char* payload_name = getFrom == ol::GetFrom::ArtistReleases ? "releases" : "versions";
+            const json_t* payload = json_object_get(raw.get(), payload_name);
+            const bool payload_valid = metadata_valid && json_is_array(payload) &&
+                discogger_cache::valid_cache_payload_count(page.first, ordered_pages.size(),
+                    api_per_page, api_items, json_array_size(payload));
+            const bool consistent = page.first == 0 ||
+                (expected_items == api_items && expected_per_page == api_per_page);
+            if (!payload_valid || !consistent)
+                throw foo_discogs_exception("Offline cache pagination or page payload is inconsistent.");
 
-					JSONParser_ptr jp = pfc::rcnew_t<JSONParser>(json);
-					jparsers.append_single(std::move(jp));
-
-					status_msg = msg;
-					status_msg << PFC_string_formatter() << " page " << std::to_string(++msg_pos).c_str() << " (100 x page)";
-				}
-			}
-		}
-		else {
-
-			//try transient
-			return get_all_pages(id, params, p_abort, msg, p_status);
-		}
-	}
-	catch (const fs::filesystem_error& err)
-	{
-		log_msg(PFC_string_formatter() << "Can not access file: " << path_container);
-	}
-	catch (const std::exception& ex)
-	{
-		log_msg(PFC_string_formatter() << "Error in path: " << path_container);
-	}
-
-	return jparsers;
+            if (page.first == 0) {
+                expected_items = api_items;
+                expected_per_page = api_per_page;
+            }
+            // JSONParser retains its own Jansson reference; raw is always released.
+            JSONParser_ptr parsed = pfc::rcnew_t<JSONParser>(raw.get());
+            staged.append_single(std::move(parsed));
+        }
+    }
+    catch (const exception_aborted&) { throw; }
+    catch (const fs::filesystem_error&) {
+        throw foo_discogs_exception("Offline cache filesystem access failed.");
+    }
+    return staged; // No partial page array escapes on failure.
 }
 
 void DiscogsInterface::get_entity_offline_cache(ol::GetFrom getfrom, pfc::string8& artist_id, pfc::string8& release_id, pfc::string8& html, abort_callback& p_abort, const char* msg, threaded_process_status& p_status) {
@@ -893,18 +1180,19 @@ void DiscogsInterface::get_entity_offline_cache(ol::GetFrom getfrom, pfc::string
 
 	json_path << "\\root.json";
 
-	json_t* js_obj = offline_cache.Read_JSON(json_path.get_ptr());
+    // Fail closed on missing, invalid or empty offline data: never leave the
+    // caller's previous release JSON in the output argument.
+    html = "";
+    const auto json_cleanup = [](json_t* ptr) { if (ptr) json_decref(ptr); };
+    std::unique_ptr<json_t, decltype(json_cleanup)> js_obj(
+        offline_cache.Read_JSON(json_path.get_ptr()), json_cleanup);
+    if (!json_is_object(js_obj.get()) || json_object_size(js_obj.get()) == 0)
+        return;
 
-	// checking js_obj prevents crash on invalid offline files
-
-	if (js_obj) {
-
-		size_t obj_size = json_object_size(js_obj);
-
-		if (obj_size > 0) {
-			html = pfc::string8(json_dumps(js_obj, 0));
-		}
-	}
+    const auto text_cleanup = [](char* ptr) { if (ptr) std::free(ptr); };
+    std::unique_ptr<char, decltype(text_cleanup)> serialized(
+        json_dumps(js_obj.get(), 0), text_cleanup);
+    if (serialized) html = serialized.get();
 }
 
 pfc::string8 DiscogsInterface::get_username(threaded_process_status &p_status, abort_callback &p_abort) {
@@ -971,113 +1259,64 @@ pfc::array_t<pfc::string8> DiscogsInterface::get_collection(threaded_process_sta
 bool DiscogsInterface::get_thumbnail_from_cache(Release_ptr release, bool isArtist, size_t img_ndx, MemoryBlock& small_art,
 	threaded_process_status& p_status, abort_callback& p_abort) {
 
-	bool bres = false;
+	// Never expose a previous preview after a failed cache read.
+	small_art.set_size(0);
+	if (!release) return false;
 
 	pfc::string8 id;
-	pfc::string8 url;
-	pfc::array_t<Image_ptr>* images;
 	size_t local_ndx = img_ndx;
-
 	if (!isArtist) {
-
+		if (img_ndx >= release->images.get_count() ||
+			!release->images[img_ndx] ||
+			!release->images[img_ndx]->url150.get_length()) {
+			log_msg(PFC_string_formatter() << "Unavailable album thumbnail, index: " << img_ndx);
+			return false;
+		}
 		id = release->id;
-		if (!release->images.get_size() || release->images.get_size() < (img_ndx + 1) || (!release->images[img_ndx]->url150.get_length())) {
-
-			pfc::string8 msg = "Unable to read album thumbnail from cache, index: ";
-			msg << img_ndx;
-			log_msg(msg);
-
+	} else {
+		Artist_ptr artist;
+		if (!img_artists_ndx_to_artist(release, img_ndx, artist, local_ndx) ||
+			!artist || local_ndx >= artist->images.get_count() ||
+			!artist->images[local_ndx] ||
+			!artist->images[local_ndx]->url150.get_length()) {
+			log_msg(PFC_string_formatter() << "Unavailable artist thumbnail, index: " << img_ndx);
 			return false;
 		}
-		else {
-			images = &release->images;
-		}
-	}
-	else {
-
-		Artist_ptr this_artist;
-
-		img_artists_ndx_to_artist(release, img_ndx, this_artist, local_ndx);
-
-		id = this_artist->id;
-
-		if (!release->artists.get_size() || !this_artist.get() ||
-			!this_artist->images.get_size() || this_artist->images.get_count() < (local_ndx + 1) ||
-			!this_artist->images[local_ndx]->url150.get_length()) {
-
-			pfc::string8 msg = "Unable to read artist thumbnail from cache, index: ";
-			msg << local_ndx;
-			log_msg(msg);
-
-			return false;
-		}
-		else {
-			images = &this_artist->images;
-		}
+		id = artist->id;
 	}
 
-	size_t artist_offset = isArtist ? release->images.get_count() : 0;
+	const auto cache_paths = ol::get_thumbnail_cache_path_filenames(
+		id, isArtist ? art_src::art : art_src::alb, LVSIL_NORMAL, true, local_ndx);
+	if (!cache_paths.get_count()) return false;
 
-	pfc::array_t<pfc::string8> n8_cache_thumbs;
-	n8_cache_thumbs = ol::get_thumbnail_cache_path_filenames(id, isArtist ? art_src::art : art_src::alb, LVSIL_NORMAL, true, local_ndx);
-
-	if (n8_cache_thumbs.get_count()) {
-
-		p_status.set_item("fetching artwork preview small album art from cache ...");
-
-		bool bexists = true;
-		pfc::string8 n8_file_name = n8_cache_thumbs[0];
-
-		int jf = -1;
-
-		try {
-
-			std::filesystem::path os_file = std::filesystem::u8path(n8_file_name.get_ptr());
-
-			if (std::filesystem::exists(os_file)) {
-
-				int filesize = std::filesystem::file_size(os_file);
-				errno = 0;
-				jf = _wopen(os_file.wstring().c_str(), _O_RDONLY | _O_BINARY);
-
-				if (jf == -1) {
-					foobar2000_io::exception_io e("Open failed on input file");
-					throw e;
-				}
-				else {
-					small_art.set_size(filesize);
-					size_t done = _read(jf, small_art.get_ptr(), filesize);
-					bres = done;
-					_close(jf);
-				}
-
-				if (errno || !bres) {
-					log_msg(PFC_string_formatter() << "can't open " << n8_file_name);
-					return false;
-				}
-			}
-			else {
-				return false;
-			}
-		}
-		catch (foo_discogs_exception& e) {
-			if (jf != -1) {
-				_close(jf);
-			}
-			throw(e);
+	p_abort.check();
+	p_status.set_item("Reading artwork thumbnail from cache...");
+	const pfc::string8& cache_path = cache_paths[0];
+	try {
+		const auto file_path = std::filesystem::u8path(cache_path.get_ptr());
+		if (!std::filesystem::is_regular_file(file_path)) return false;
+		const auto bytes = std::filesystem::file_size(file_path);
+		if (!discogger_thumbnail::valid_cache_size(bytes)) {
+			log_msg("Ignoring empty or oversized cached artwork thumbnail.");
 			return false;
 		}
-		catch (...) {
-			if (jf != -1) {
-				_close(jf);
-			}
-			foo_discogs_exception e;
-			e << "Unknown exception";
-			throw(e);
+		std::ifstream input(file_path, std::ios::binary);
+		if (!input) return false;
+		const auto size = static_cast<size_t>(bytes);
+		small_art.set_size(size);
+		input.read(reinterpret_cast<char*>(small_art.get_ptr()),
+			static_cast<std::streamsize>(size));
+		const bool complete = discogger_thumbnail::complete_read(input.gcount(), size);
+		if (!complete || input.peek() != std::char_traits<char>::eof()) {
+			small_art.set_size(0);
+			log_msg("Ignoring incomplete or changed cached artwork thumbnail.");
 			return false;
 		}
+		return true;
+	} catch (const std::filesystem::filesystem_error&) {
+		small_art.set_size(0);
+		return false;
 	}
-	return bres;
 }
 
 bool DiscogsInterface::delete_artist_cache(const pfc::string8& artist_id, const pfc::string8& release_id) {
@@ -1094,12 +1333,12 @@ bool DiscogsInterface::delete_artist_cache(const pfc::string8& artist_id, const 
 
 	if (!bmissingArtist && artist.get()) {
 
-		size_t lkey = encode_mr(0, pfc::string8(release_id));
+		size_t lkey = encode_mr(0, release_id);
 		delres = cache_releases->remove(lkey);
 		delres = cache_artists->remove(artist_id);
 
 		if (bonlyRelease) {
-			size_t lkey = encode_mr(artist->search_role_list_pos, pfc::string8(release_id));
+			size_t lkey = encode_mr(artist->search_role_list_pos, release_id);
 			delres &= cache_releases->remove(lkey);
 		}
 		else {
@@ -1140,13 +1379,13 @@ bool DiscogsInterface::delete_artist_cache(const pfc::string8& artist_id, const 
 	}
 	else {
 		if (!bmissingRelease) {
-			size_t lkey = encode_mr(0, pfc::string8(release_id));
+			size_t lkey = encode_mr(0, release_id);
 			delres = cache_releases->remove(lkey);
 			//todo: clean-up encode_mr with 0, artist_id and search_artist_rol pos
 			if (artist) {
-				lkey = encode_mr(artist->search_role_list_pos, pfc::string8(release_id));
+				lkey = encode_mr(artist->search_role_list_pos, release_id);
 				delres &= cache_releases->remove(lkey);
-				lkey = encode_mr(atoi(artist->id), pfc::string8(release_id));
+				lkey = encode_mr(atoi(artist->id), release_id);
 				delres &= cache_releases->remove(lkey);
 			}
 			// exit

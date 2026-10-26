@@ -10,6 +10,12 @@
 
 using namespace Gdiplus;
 
+// C++20 path::u8string uses char8_t: preserve UTF-8 bytes, not the ANSI codepage.
+static pfc::string8 filesystem_path_utf8(const std::filesystem::path& path) {
+	const auto utf8 = path.u8string();
+	return pfc::string8(reinterpret_cast<const char*>(utf8.c_str()));
+}
+
 inline bool GdipErrorMsg(int code, const pfc::string8 path, pfc::string8& outmsg) {
 	bool bret = 0;
 	outmsg << " | ";
@@ -328,7 +334,7 @@ imgpairs MemoryBlockToTmpBitmap(std::pair<pfc::string8, pfc::string8> n8_cache_p
 
 		if (hres != Gdiplus::Status::Ok) {
 			pfc::string8 err = "Error saving small preview tmp bitmap: ";
-			GdipErrorMsg(hres, os_file_mini.u8string().c_str(), err);
+			GdipErrorMsg(hres, filesystem_path_utf8(os_file_mini), err);
 			log_msg(err);
 			return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
 		}
@@ -339,7 +345,7 @@ imgpairs MemoryBlockToTmpBitmap(std::pair<pfc::string8, pfc::string8> n8_cache_p
 		hres = bmMini.GetHBITMAP(Color(255, 255, 255)/*Color::Black*/, &hBmMini);
 		if (hres != Gdiplus::Ok) {
 			pfc::string8 err = "GdiPlus error (GetHBITMAP Small preview 48x48)";
-			GdipErrorMsg(hres, os_file_mini.u8string().c_str(), err);
+			GdipErrorMsg(hres, filesystem_path_utf8(os_file_mini), err);
 			log_msg(err);
 			return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
 		}
@@ -366,7 +372,7 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 	Gdiplus::Status status = bmRealSize.GetLastStatus();
 	if (status != Gdiplus::Status::Ok) {
 		pfc::string8 err = "Error opening real size bitmap";
-		GdipErrorMsg(status, os_src_full_path.u8string().c_str(), err);
+		GdipErrorMsg(status, filesystem_path_utf8(os_src_full_path), err);
 		log_msg(err);
 		return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
 	}
@@ -422,7 +428,7 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 
 	if (!SUCCEEDED(hres)) {
 		pfc::string8 err = "Error saving temp small png icon";
-		GdipErrorMsg(hres, os_tmp.u8string().c_str(), err);
+		GdipErrorMsg(hres, filesystem_path_utf8(os_tmp), err);
 		log_msg(err);
 		return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
 	}
@@ -432,7 +438,7 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 	status = bmSmall.GetLastStatus();
 	if (status != Gdiplus::Status::Ok) {
 		pfc::string8 err = "Error opening small size temp path";
-		GdipErrorMsg(status, os_tmp.u8string().c_str(), err);
+		GdipErrorMsg(status, filesystem_path_utf8(os_tmp), err);
 		log_msg(err);
 		return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
 	}
@@ -500,7 +506,7 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 		hres = imgMini.Save(os_tmp_mini.wstring().c_str(), &pngClsid, NULL);
 		if (!SUCCEEDED(hres)) {
 			pfc::string8 err = "Error saving minimal png icon";
-			GdipErrorMsg(hres, os_tmp_mini.u8string().c_str(), err);
+			GdipErrorMsg(hres, filesystem_path_utf8(os_tmp_mini), err);
 			log_msg(err);
 			return imgpairs{ {hIconSmall, nullptr}, {nullptr, nullptr } };
 		}
@@ -510,7 +516,7 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 		Gdiplus::Status status = bmMini.GetLastStatus();
 		if (status != Gdiplus::Status::Ok) {
 			pfc::string8 err = "Error opening minimal size temp path";
-			GdipErrorMsg(status, os_tmp_mini.u8string().c_str(), err);
+			GdipErrorMsg(status, filesystem_path_utf8(os_tmp_mini), err);
 			log_msg(err);
 			return imgpairs{ {hIconSmall, nullptr}, {nullptr, nullptr } };
 		}
@@ -518,7 +524,7 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 		hres = bmMini.GetHBITMAP(Color(255, 255, 255)/*Color::Black*/, &hBmMini);
 		if (!SUCCEEDED(hres)) {
 			pfc::string8 err = "GdiPlus error (GetHBITMAP 48x48 tmp artwork)";
-			GdipErrorMsg(hres, os_tmp_mini.u8string().c_str(), err);
+			GdipErrorMsg(hres, filesystem_path_utf8(os_tmp_mini), err);
 			log_msg(err);
 			return imgpairs{ {hIconSmall, nullptr}, {nullptr, nullptr } };
 		}

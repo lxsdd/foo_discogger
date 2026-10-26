@@ -45,10 +45,11 @@ public:
 		const CRect* rc = &p_itemRect;
 		Gdiplus::Graphics gr(p_dc);
 		Gdiplus::Pen pen(freeze? gdiROColor : gdiHLColor, static_cast<Gdiplus::REAL>(rc->bottom - rc->top));
-		gr.DrawLine(&pen, rc->left, rc->top + ((rc->bottom - rc->top) / 2), rc->right, rc->top + ((rc->bottom - rc->top) / 2));
+		const Gdiplus::Point start(rc->left, rc->top + ((rc->bottom - rc->top) / 2));
+		const Gdiplus::Point end(rc->right, rc->top + ((rc->bottom - rc->top) / 2));
+		gr.DrawLine(&pen, start, end);
 
-		DeleteObject(&pen);
-		DeleteObject(&gr);
+		// GDI+ stack objects clean up automatically.
 	}
 
 	void RenderItemBackground(CDCHandle p_dc, const CRect& p_itemRect, size_t item, uint32_t bkColor) override {
@@ -131,13 +132,13 @@ public:
 		IDD = IDD_DIALOG_TAG_MAPPINGS,
 	};
 
-	CTagMappingDialog::CTagMappingDialog(HWND p_parent, UINT default_button = IDOK)
+	CTagMappingDialog(HWND p_parent, UINT default_button = IDOK)
 		: cewb_highlight(), m_tag_list(this) {
 
 		m_ptag_map = new pfc::list_t<tag_mapping_entry>();
 	}
 
-	CTagMappingDialog::~CTagMappingDialog() {
+	~CTagMappingDialog() {
 
 		g_discogs->tag_mappings_dialog = nullptr;
 		if (m_ptag_map) {

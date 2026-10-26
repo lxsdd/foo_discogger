@@ -33,7 +33,8 @@ extern pfc::string8 has_csv_prefix(const pfc::string& field, const pfc::string& 
 		}
 		});
 
-	return found_it == std::end(vprefixes) ? "" : trim(found_it->c_str());
+	if (found_it == std::end(vprefixes)) return pfc::string8();
+	return trim(found_it->c_str());
 }
 
 //check multiple artists joins
@@ -98,7 +99,8 @@ namespace search_query {
 
 			}
 		}
-		out = { sanitized, scaped };
+		out.first = sanitized.get_ptr();
+		out.second = scaped.get_ptr();
 		return sanitized.get_length();
 	}
 
@@ -431,7 +433,9 @@ namespace search_query {
 		}
 		else if (ndx == 9) {
 			//plain artist search (no query)
-			out = frm_album_artist.get_length() ? frm_album_artist : frm_artist.get_length() ? frm_artist : "";
+			if (frm_album_artist.get_length()) out = frm_album_artist;
+			else if (frm_artist.get_length()) out = frm_artist;
+			else out = "";
 			return out.get_length();
 		}
 		else if (ndx == 1) {

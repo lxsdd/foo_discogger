@@ -202,7 +202,7 @@ const struct uartwork {
 		ucfg_art_ovr = 0;
 	}
 
-	inline bool operator==(const uartwork& rhs) {
+	inline bool operator==(const uartwork& rhs) const {
 
 		return (ucfg_album_embed == rhs.ucfg_album_embed &&
 			ucfg_album_save_to_dir == rhs.ucfg_album_save_to_dir &&
@@ -358,7 +358,7 @@ const struct multi_uartwork {
 		init = false;
 	};
 
-	inline bool operator==(const multi_uartwork& rhs) {
+	inline bool operator==(const multi_uartwork& rhs) const {
 
 		if (file_match != rhs.file_match) return false;
 

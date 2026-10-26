@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "discogger_result_alignment.h"
 
 #include <GdiPlus.h>
 #pragma comment(lib, "gdiplus.lib")
@@ -35,7 +36,7 @@ struct cfg_preview_column_type {
 	int celltype = 1;
 	int custtype = 0;
 	bool factory = false;
-	bool default = false;
+	bool is_default = false;
 	bool enabled = true;
 	bool defuser = false;
 };
@@ -76,7 +77,7 @@ struct cfg_preview_listview_type {
 					column_configs[it].celltype,
 					column_configs[it].custtype,
 					column_configs[it].factory,
-					column_configs[it].default,
+					column_configs[it].is_default,
 					column_configs[it].enabled,
 					column_configs[it].defuser,
 				};
@@ -221,7 +222,8 @@ inline bool get_diff_release_name(TagWriter_ptr tag_writer, pfc::string8& rel_de
 		tag_writer_rel_id = tw_release->id;
 	}
 
-	diff_rel_id = bdiffid ? "" : tag_writer_rel_id;
+	if (bdiffid) diff_rel_id = "";
+    else diff_rel_id = tag_writer_rel_id;
 	rel_desc = bdiffid ? "!! " : "";
 	rel_desc << ltrim(compact_release);
 
@@ -418,7 +420,7 @@ LRESULT CPreviewTagsDialog::OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lPara
 
 bool CPreviewTagsDialog::context_menu_show(HWND wnd, size_t isel, LPARAM lParamPos) {
 
-	if (!m_tag_writer->GetRelease()) {
+	if (!m_tag_writer || !m_tag_writer->GetRelease()) {
 		return false;
 	}
 
@@ -443,13 +445,17 @@ bool CPreviewTagsDialog::context_menu_show(HWND wnd, size_t isel, LPARAM lParamP
 	auto tw_release = m_tag_writer->GetRelease();
 	pfc::string8 discogs_release_id(tw_release->id);
 	pfc::string8 master_release_id(tw_release->master_id);
-	pfc::string8 artist_id(tw_release->artists[0]->full_artist->id);
+	pfc::string8 artist_id;
+    if (tw_release->artists.get_count() && tw_release->artists[0] &&
+        tw_release->artists[0]->full_artist)
+        artist_id = tw_release->artists[0]->full_artist->id;
 
 	bool hasRelease = discogs_release_id.get_length();
 	bool hasMasterRelease = master_release_id.get_length();
 	bool hasArtist = artist_id.get_length();
 	std::vector<std::pair<std::string, std::string>>vartists;
-	bool bmultiartist = discogs_interface->artists_vid(tw_release, vartists);
+	bool bmultiartist = hasArtist &&
+        discogs_interface->artists_vid(tw_release, vartists);
 	//..
 
 	try {
@@ -522,11 +528,12 @@ bool CPreviewTagsDialog::context_menu_show(HWND wnd, size_t isel, LPARAM lParamP
 			str_force_wu << "&Force Write && Update selected tag" << (csel > 1 ? "s" : "");
 
 			uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-			uAppendMenu(menu, MF_STRING | (csel && is_enabled() ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_TAGS_MASK, str);
-			uAppendMenu(menu, MF_STRING | (csel && is_enabled() ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_TAGS_MASK_FORCE_WU, str_force_wu);
+			const bool can_write = is_enabled() && m_tag_writer->ResultsReady();
+            uAppendMenu(menu, MF_STRING | (csel && can_write ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_TAGS_MASK, str);
+			uAppendMenu(menu, MF_STRING | (csel && can_write ? 0 : MF_DISABLED | MF_GRAYED), ID_PREVIEW_CMD_WRITE_TAGS_MASK_FORCE_WU, str_force_wu);
 		}
 		uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-		uAppendMenu(menu, MF_STRING | (!is_enabled() ? MF_DISABLED | MF_GRAYED : 0), ID_PREVIEW_CMD_WRITE_TAGS, "&Write all tags");
+		uAppendMenu(menu, MF_STRING | (!(is_enabled() && m_tag_writer->ResultsReady()) ? MF_DISABLED | MF_GRAYED : 0), ID_PREVIEW_CMD_WRITE_TAGS, "&Write all tags");
 
 		int cmd = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD, point.x, point.y, 0, wnd, 0);
 		DestroyMenu(menu);
@@ -666,7 +673,7 @@ bool CPreviewTagsDialog::context_menu_switch(HWND wnd, POINT point, int cmd, bit
 			m_uilist.GetSubItemText(isel, 1, out);
 
 			ClipboardHelper::OpenScope scope;
-			scope.Open(core_api::get_main_window(), true);
+			scope.Open(core_api::get_main_window());
 			ClipboardHelper::SetString(out);
 			scope.Close();
 		}
@@ -682,11 +689,15 @@ bool CPreviewTagsDialog::context_menu_switch(HWND wnd, POINT point, int cmd, bit
 		break;
 	}
 	case ID_URL_ARTIST: {
-		url << "https://www.discogs.com/artist/" << m_tag_writer->GetRelease()->artists[0]->full_artist->id;
+        const auto current = m_tag_writer ? m_tag_writer->GetRelease() : Release_ptr{};
+        if (!current || !current->artists.get_count() || !current->artists[0] ||
+            !current->artists[0]->full_artist) return false;
+		url << "https://www.discogs.com/artist/" << current->artists[0]->full_artist->id;
 		break;
 	}
 	default: {
-		if (cmd >= ID_URL_ARTISTS && cmd < ID_URL_ARTISTS + 100) {
+		if (cmd >= ID_URL_ARTISTS && cmd < ID_URL_ARTISTS + 100 &&
+            static_cast<size_t>(cmd - ID_URL_ARTISTS) < vartists.size()) {
 			pfc::string8 artist_id = vartists.at(cmd - ID_URL_ARTISTS).first.c_str();
 			url << "https://www.discogs.com/artist/" << artist_id;
 		}
@@ -703,6 +714,7 @@ bool CPreviewTagsDialog::context_menu_switch(HWND wnd, POINT point, int cmd, bit
 }
 
 bool CPreviewTagsDialog::check_write_tags_status() {
+    if (!m_tag_writer || !m_tag_writer->ResultsReady()) return false;
 
 	auto checkstate = m_tristate.GetState();
 	bool skip_art = checkstate == BST_CHECKED;
@@ -1009,12 +1021,25 @@ void CPreviewTagsDialog::compute_stats_track_map(pfc::bit_array_bittable list_ma
 
 		preview_stats stats;
 
-		const tag_result_ptr res = m_tag_writer->tag_results[walk_tag];
-		const tag_mapping_entry* entry = res->tag_entry;
-
-		int subwrites = 0, subupdates = 0, subskips = 0, wereequal = 0;
-
-		const size_t tk_count = res->r_approved.get_count();
+        const tag_result_ptr res = m_tag_writer->tag_results[walk_tag];
+        const size_t tk_count = res ? res->r_approved.get_count() : 0;
+        // Stats are observational, not a license to read stale preview
+        // rows or approve physical changes. Preserve vector indexing even
+        // when the editor was closed or a generator produced partial data.
+        if (!res || !res->tag_entry ||
+            !discogger_result_alignment::valid_result_shape(
+                tk_count, tk_count, res->value.get_count(),
+                res->old_value.get_count())) {
+            if (m_vstats_mask.size()) {
+                if (walk_tag >= m_vstats.size()) m_vstats.resize(walk_tag + 1);
+                m_vstats[walk_tag] = preview_stats{};
+            } else {
+                m_vstats.emplace_back(preview_stats{});
+            }
+            continue;
+        }
+        const tag_mapping_entry* entry = res->tag_entry;
+        int subwrites = 0, subupdates = 0, subskips = 0, wereequal = 0;
 
 		preview_stats before_tag_loop_stats = stats;
 
@@ -1123,6 +1148,7 @@ void CPreviewTagsDialog::compute_stats_track_map(pfc::bit_array_bittable list_ma
 			updatedtags++;
 
 		if (m_vstats_mask.size()) {
+            if (walk_tag >= m_vstats.size()) m_vstats.resize(walk_tag + 1);
 			m_vstats[walk_tag] = stats;
 		}
 		else {
@@ -1344,7 +1370,7 @@ void CPreviewTagsDialog::reset_default_columns(bool breset, bool bshowstats) {
 			}
 		}
 		else {
-			if (walk_cfg.default || (walk_cfg.enabled && bshowstats && walk_cfg.icol >= COL_STATS_FIRST_COL)) {
+			if (walk_cfg.is_default || (walk_cfg.enabled && bshowstats && walk_cfg.icol >= COL_STATS_FIRST_COL)) {
 				//insert column
 				m_uilist.AddColumnEx(walk_cfg.name, walk_cfg.width, LVCFMT_LEFT);
 			}
@@ -1359,7 +1385,7 @@ void CPreviewTagsDialog::fix_sorted_icol_map(bool reset, bool bshowstats) {
 	for (auto & walk_col : cfg_listview.colmap)	{
 
 		if (reset) {
-			if (walk_col.second.default || (walk_col.second.icol >= COL_STATS_FIRST_COL && bshowstats)) {
+			if (walk_col.second.is_default || (walk_col.second.icol >= COL_STATS_FIRST_COL && bshowstats)) {
 				walk_col.second.enabled = true;
 				m_vcol_data_subitems.push_back(std::make_pair(walk_col.first, walk_col.second.icol));
 			}
@@ -1369,7 +1395,7 @@ void CPreviewTagsDialog::fix_sorted_icol_map(bool reset, bool bshowstats) {
 		}
 		else {
 			//restore
-			if (walk_col.second.default || walk_col.second.enabled) {
+			if (walk_col.second.is_default || walk_col.second.enabled) {
 				m_vcol_data_subitems.push_back(std::make_pair(walk_col.first, walk_col.second.icol));
 			}
 			else {

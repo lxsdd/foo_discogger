@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "libPPUI\HyperLinkCtrl.h"
 #include "helpers\DarkMode.h"
 
@@ -10,6 +12,7 @@
 #include "find_release_tree.h"
 #include "find_artist_list.h"
 #include "find_artist_list_ILO.h"
+#include "discogger_search_request.h"
 
 class expand_master_release_process_callback;
 class get_artist_process_callback;
@@ -44,9 +47,9 @@ public:
 
 		MSG_WM_TIMER(OnTypeFilterTimer)
 
-		NOTIFY_HANDLER(IDC_RELEASE_TREE, TVN_DELETEITEM, OnDeleteTreeItem)
 		MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
-		MESSAGE_HANDLER(WM_CONTEXTMENU, OnContextMenu)
+		// Release-tree WM_CONTEXTMENU is handled by chained m_dctree below.
+		// No dialog-level handler should intercept its keyboard/right-click menu.
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 
 		COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
@@ -55,6 +58,8 @@ public:
 		COMMAND_ID_HANDLER(IDC_BTN_SEARCH, OnButtonSearch)
 		COMMAND_ID_HANDLER(IDC_BTN_CONFIGURE, OnButtonConfigure)
 		COMMAND_ID_HANDLER(IDC_BTN_PROCESS_RELEASE, OnButtonNext)
+
+		NOTIFY_HANDLER(IDC_ARTIST_LIST, NM_DBLCLK, OnArtistListDoubleClick)
 
 		COMMAND_ID_HANDLER(IDC_CHK_ONLY_EXACT_MATCHES, OnCheckboxOnlyExactMatches)
 		COMMAND_ID_HANDLER(IDC_CHK_RELEASE_SHOW_PROFILE, OnCheckboxBindProfilePanel)
@@ -114,10 +119,10 @@ public:
 
 	LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 
-	LRESULT OnContextMenu(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 
 	LRESULT OnButtonNext(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnArtistListDoubleClick(int idCtrl, LPNMHDR hdr, BOOL& bHandled);
 
 	LRESULT OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnButtonConfigure(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -136,6 +141,12 @@ public:
 	void SetSearchModeText(const pfc::string8 msg, bool mode_prefix = true);
 	void SetSearchModeFlag(SearchMode sm, bool enabled);
 	size_t GetSearchMode();
+    // Main-thread-only identity: stale modeless completions cannot replace
+    // a newer artist, direct-ID or advanced-search request in this dialog.
+    std::uint64_t current_search_request() const noexcept { return m_search_request_epoch.current(); }
+    bool is_current_search_request(std::uint64_t ticket) const noexcept { return m_search_request_epoch.matches(ticket); }
+    std::uint64_t current_filter_request() const noexcept { return m_filter_request_epoch.current(); }
+    bool is_current_filter_request(std::uint64_t ticket) const noexcept { return m_filter_request_epoch.matches(ticket); }
 
 	bool GetCustomQueryTF(pfc::string8& frm_custom_tf);
 
@@ -225,7 +236,7 @@ private:
 
 	std::function<bool()>stdf_conditioned_invalidation = [this]() {
 
-		return  is_wine_light_theme;
+		return m_is_wine_light_theme;
 	};
 
 
@@ -330,14 +341,16 @@ private:
 				else {
 					t_size fld_size = tmpField.get_length();
 					tmpField << in.subString(dwEnd);
-					buffer = in.subString(0, dwStart) << " & " << tmpField;
+					buffer = in.subString(0, dwStart);
+					buffer << " & " << tmpField;
 					ins_pos = dwStart + fld_size + 3;
 				}
 			}
 			else {
 				pfc::string8 join = "";
 				if (dwStart) join = " & ";
-				buffer = in.subString(0, dwStart) << join << tmpField << " " << in.subString(dwEnd, in.get_length());
+				buffer = in.subString(0, dwStart);
+					buffer << join << tmpField << " " << in.subString(dwEnd, in.get_length());
 				ins_pos = dwStart + tmpField.get_length() + join.get_length();
 			}
 		}
@@ -428,7 +441,7 @@ private:
 			std::vector<pfc::string8> vsplit_title;
 			split(m_frm_album, "-", 0, vsplit_title);
 			tmp_artist << (m_frm_album_artist.get_length() ?
-				m_frm_album_artist : m_frm_artist.get_length() ? m_frm_artist : vsplit_title.size() > 1 ? vsplit_title[0] : "");
+				m_frm_album_artist : m_frm_artist.get_length() ? m_frm_artist : vsplit_title.size() > 1 ? vsplit_title[0] : pfc::string8());
 
 			//title
 			tmp_title << (vsplit_title.size() > 1 ? vsplit_title[1] : m_frm_album);
@@ -438,7 +451,7 @@ private:
 			split(m_frm_track_title, "-", 0, vsplit_title);
 
 			if (vsplit_title.size()) {
-				if (tmp_artist.equals(vsplit_title[0])) {
+				if (vsplit_title.size() > 1 && tmp_artist.equals(vsplit_title[0])) {
 					tmp_track = trim(vsplit_title[1]);
 				}
 				else {
@@ -559,7 +572,27 @@ private:
 	// artist get/search service callbacks
 
 	void on_get_artist_done(cupdRelSrc updsrc, Artist_ptr& artist);
-	void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap = std::pair<size_t, size_t>(0,0));
+	void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap);
+    bool on_search_artist_done_if_current(std::uint64_t ticket,
+        const pfc::array_t<Artist_ptr>& exact, const pfc::array_t<Artist_ptr>& other,
+        bool append, std::pair<size_t, size_t>& cap);
+    bool on_search_artist_done_if_current(std::uint64_t ticket,
+        const pfc::array_t<Artist_ptr>& exact, const pfc::array_t<Artist_ptr>& other,
+        bool append) {
+        std::pair<size_t, size_t> cap{0, 0};
+        return on_search_artist_done_if_current(ticket, exact, other, append, cap);
+    }
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+public:
+    // TEST-ONLY: available solely in the isolated runner component.
+    std::pair<size_t, size_t> runner_qa_populated_search_rows();
+    std::array<size_t, 3> runner_qa_live_search_probe(const char* expected_release_id);
+private:
+#endif
+    void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append) {
+		std::pair<size_t, size_t> unused_va_cap{0, 0};
+		on_search_artist_done(p_artist_exact_matches, p_artist_other_matches, append, unused_va_cap);
+	}
 
 	// route artist search
 	void route_artist_search(pfc::string8 artistname, bool dlgbutton, bool idded);
@@ -567,7 +600,7 @@ private:
 	// release service callbacks
 
 	void call_expand_master_service(MasterRelease_ptr& master_release, int pos); //serves tree
-	void on_expand_master_release_done(const MasterRelease_ptr& master_release, int pos, threaded_process_status& p_status, abort_callback& p_abort);
+	void on_expand_master_release_done(const MasterRelease_ptr& master_release, int pos, threaded_process_status& p_status, abort_callback& p_abort, const MasterRelease_ptr& staged_master = nullptr);
 
 	// spawns get_artist_process_callback
 
@@ -629,6 +662,8 @@ private:
 	pfc::string8 m_search_artist;
 	pfc::string8 m_search_expression;
 
+    discogger_async::search_request_epoch m_search_request_epoch;
+    discogger_async::search_request_epoch m_filter_request_epoch;
 	size_t m_query_mode = SearchMode::DEFAULT_SEARCH;
 	QueryDefMap m_qdm_search_query = {};
 

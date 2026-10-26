@@ -1,28 +1,297 @@
 name: Discogger modernization validation
 
-# Default-branch registration only. The fully qualified native Win32/x64,
-# foobar host and disposable media tests live in the draft branch's file
-# at this exact path. GitHub exposes "Run workflow" only if a file with
-# workflow_dispatch exists on the default branch. The user must select
-# work/portable-build-properties-20261018 in the branch selector.
-# Never merge the draft product branch to enable a test. No secrets, binary
-# artifacts, audio writes or release steps are defined in this bootstrap.
+# Validate the active draft branch even when GitHub's pull ref lags.
+# Deduplicate automatic push/PR builds per branch. Keep manual acceptance
+# runs in a separate concurrency group: delayed push notifications for older
+# commits must never cancel an explicitly dispatched current-HEAD host test.
 on:
+  push:
+    branches:
+      - master
+      - work/portable-build-properties-20261018
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 permissions:
   contents: read
 
-jobs:
-  default-branch-is-not-a-component-test:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Require the Discogger draft work branch
-        shell: bash
-        run: |
-          echo "::error::This master-only bootstrap cannot qualify Discogger."
-          echo "::error::Open Run workflow again and select work/portable-build-properties-20261018."
-          exit 1
+concurrency:
+  group: discogger-validation-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
+jobs:
+  portable-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Source contract regression checks
+        run: python3 tests/source_contracts.py
+      - name: Validate 252 named HTML entities and malformed numeric guard
+        run: python3 tests/html_entities_test.py
+      - name: Compile and run portable Unicode numeric entity guard
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/html_numeric_entity_test.cpp -o /tmp/discogger-html-numeric && /tmp/discogger-html-numeric
+      - name: Selftest physical ID3v2 TXXX UTF-8 and UTF-16 verifier
+        run: python3 tests/verify-runner-physical-tags.py --selftest
+      - name: Compile and run portable query-history CRC32 regression
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/crc32_test.cpp -o /tmp/discogger-crc32-test && /tmp/discogger-crc32-test
+      - name: Compile and run mapping lifetime regression
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/mapping_snapshot_test.cpp -o /tmp/discogger-mappings-test && /tmp/discogger-mappings-test
+      - name: Compile HTTP status parser in C++17
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/http_status_parser_test.cpp -o /tmp/discogger-http-test
+      - name: Run HTTP status regression tests
+        run: /tmp/discogger-http-test
+      - name: Compile and run abort-responsive network wait regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/interruptible_wait_test.cpp -o /tmp/discogger-wait-test && /tmp/discogger-wait-test
+      - name: Compile collaboration search fallback helper
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collaboration_fallback_test.cpp -o /tmp/discogger-search-test
+      - name: Run collaboration search fallback tests
+        run: /tmp/discogger-search-test
+      - name: Atomic master-version pagination positive negative and cancellation
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/master_page_transaction_test.cpp -o /tmp/discogger-master-pages && /tmp/discogger-master-pages
+      - name: Compile and run exact-filter fallback visibility tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_visibility_test.cpp -o /tmp/discogger-search-visibility && /tmp/discogger-search-visibility
+      - name: Compile and run same-dialog stale search request regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_request_epoch_test.cpp -o /tmp/discogger-search-epoch && /tmp/discogger-search-epoch
+      - name: Compile and run artist double-click selection regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_activation_test.cpp -o /tmp/discogger-artist-activate && /tmp/discogger-artist-activate
+      - name: Reject stale enabled-track approval and collapsed-value alignment
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/result_alignment_test.cpp -o /tmp/discogger-result-alignment && /tmp/discogger-result-alignment
+      - name: Reject ambiguous or already claimed duration matches
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/duration_match_test.cpp -o /tmp/discogger-duration-match && /tmp/discogger-duration-match
+      - name: Compile and run empty/shortened tag preview selection regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/preview_selection_test.cpp -o /tmp/discogger-preview-selection && /tmp/discogger-preview-selection
+      - name: Guard original-to-leading-tag preview restoration
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/preview_restore_test.cpp -o /tmp/discogger-preview-restore && /tmp/discogger-preview-restore
+      - name: Compile and run bounded cached thumbnail regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/thumbnail_bounds_test.cpp -o /tmp/discogger-thumbnail-test && /tmp/discogger-thumbnail-test
+      - name: Compile and run stale release-tree snapshot regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/release_tree_snapshot_test.cpp -o /tmp/discogger-release-tree && /tmp/discogger-release-tree
+      - name: Compile and run strict direct release ID validation
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/release_id_test.cpp -o /tmp/discogger-release-id && /tmp/discogger-release-id
+      - name: Compile and run multi-value field token regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/multivalue_fields_test.cpp -o /tmp/discogger-multivalue-test && /tmp/discogger-multivalue-test
+      - name: Compile and run LRU cache exception regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/cache_lru_test.cpp -o /tmp/discogger-cache-test && /tmp/discogger-cache-test
+      - name: Compile and run online artist-refresh concurrency and retry tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/artist_refresh_test.cpp -o /tmp/discogger-artist-refresh && /tmp/discogger-artist-refresh
+      - name: Compile and run multi-artist in-flight ownership regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_load_ownership_test.cpp -o /tmp/discogger-artist-owned && /tmp/discogger-artist-owned
+      - name: Compile and run disk-cache TTL boundary regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cache_expiry_test.cpp -o /tmp/discogger-cache-expiry && /tmp/discogger-cache-expiry
+      - name: Compile and run disk-cache page integrity regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cache_pages_test.cpp -o /tmp/discogger-cache-pages && /tmp/discogger-cache-pages
+      - name: Compile and run directory cache rollback and recovery regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/directory_cache_transaction_test.cpp -o /tmp/discogger-cache-directory && /tmp/discogger-cache-directory
+      - name: Compile and run configuration snapshot migrations
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/cfg_snapshot_ops_test.cpp -o /tmp/discogger-cfg-test && /tmp/discogger-cfg-test
+      - name: Verify private SQLite namespace mapping across all linker imports
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/sqlite_symbol_namespace_test.cpp -o /tmp/discogger-sqlite-namespace-test && /tmp/discogger-sqlite-namespace-test
+      - name: Compile and run async write ownership tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/async_write_lease_test.cpp -o /tmp/discogger-write-lease && /tmp/discogger-write-lease
+      - name: Compile and run artwork no-op plus bounded-read regressions
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 -pthread tests/artwork_noop_test.cpp -o /tmp/discogger-artwork-noop && /tmp/discogger-artwork-noop
+      - name: Test physical tag deletion previews and CUESHEET preservation
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/tag_deletion_preflight_test.cpp -o /tmp/discogger-tag-deletions && /tmp/discogger-tag-deletions
+      - name: Compile physical/subsong write-safety preflight tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/write_safety_test.cpp -o /tmp/discogger-write-safety-test
+      - name: Run physical/subsong write-safety regression tests
+        run: /tmp/discogger-write-safety-test
+
+  windows-baseline:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Check source contracts on Windows
+        shell: pwsh
+        run: python tests/source_contracts.py
+      - name: Parse strict PowerShell DLL build script before costly native compilation
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          foreach ($scriptFile in @('scripts/build-component-dll.ps1', 'scripts/normalize-native-bitmaps.ps1', 'tests/native-bitmap-resource-test.ps1', 'scripts/host-discogger-gui.ps1', 'scripts/private-readonly-acceptance.ps1', 'tests/private-readonly-acceptance-test.ps1')) {
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) $scriptFile), [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
+          }
+      - name: Test legacy resource image formats and fail-closed conversion
+        shell: pwsh
+        run: ./tests/native-bitmap-resource-test.ps1
+      - name: Verify private copied-media baseline and negative read-only audit
+        shell: pwsh
+        run: ./tests/private-readonly-acceptance-test.ps1
+      - name: Record Visual Studio availability
+        shell: pwsh
+        run: |
+          msbuild -version -nologo
+          Write-Host 'NOTE: This checks MSBuild availability, NOT a full component build.'
+          Write-Host 'A full build needs staged foobar SDK, WTL, libPPUI, Jansson, OAuth, SQLite and zlib dependencies.'
+
+  windows-native-unit:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and execute portable C++17 unit tests using MSVC
+        shell: pwsh
+        run: ./scripts/run-msvc-unit-tests.ps1 -Architecture '${{ matrix.architecture }}'
+
+  official-sdk-probe:
+    # Fail cheap/static and native unit gates before launching the costly SDK
+    # provenance and two complete Win32/x64 component link operations.
+    needs: [portable-core, windows-baseline, windows-native-unit]
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Checkout exact owner SDK source 2026-10-01 without direct vendor downloads
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - name: Verify pinned official SDK 2026-10-01 Git source on Windows
+        shell: pwsh
+        run: ./scripts/probe-official-sdk.ps1
+      - name: Compile official SDK core libraries for Win32 and x64 (not Discogger DLL)
+        shell: pwsh
+        run: ./scripts/build-official-sdk-libs.ps1
+      - name: Stage pinned first-party and third-party dependencies for hard DLL build
+        shell: pwsh
+        run: ./scripts/diagnose-component-compile.ps1 -StageOnly
+      - name: HARD GATE - full Win32 x64 Discogger DLL build and link
+        shell: pwsh
+        env:
+          # This macro exists ONLY in the disposable runner's local DLL build.
+          # It is never added to the project, source properties or releases.
+          CL: /DDISCOGGER_RUNNER_MEDIA_QA
+        run: ./scripts/build-component-dll.ps1
+      - name: HARD GATE - real foobar2000 Win32 component host load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: Win32
+          component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll
+      - name: HARD GATE - real foobar2000 x64 component host load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: x64
+          component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll
+      - name: Stage exact shared synthetic FLAC fixture generator
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 35369054c56f4c6ccb2f802944e9675852fd35ec
+          path: external/discogger-rich-fixtures
+          persist-credentials: false
+      - name: HARD GATE - Discogger first-run SQLite configuration and Win32 native GUI
+        shell: pwsh
+        run: ./scripts/host-discogger-gui.ps1 -Architecture Win32 -ComponentDll "$env:RUNNER_TEMP/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll"
+      - name: HARD GATE - Discogger first-run SQLite configuration and x64 native GUI
+        shell: pwsh
+        run: ./scripts/host-discogger-gui.ps1 -Architecture x64 -ComponentDll "$env:RUNNER_TEMP/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll"
+      # The preceding DLLs contain runner-only synthetic QA commands.
+      # After every native GUI/media gate, force a full no-QA rebuild from
+      # the same checked-out source and recheck PE, hashes and QA marker
+      # absence. Keep both DLLs exclusively in ephemeral runner temp.
+      - name: HARD GATE - clean non-QA Win32 x64 DLL rebuild (no artifacts)
+        shell: pwsh
+        run: ./scripts/build-component-dll.ps1 -CleanNonQa
+      - name: HARD GATE - clean non-QA Win32 original foobar host load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: Win32
+          component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/Win32/Release/foo_discogger.dll
+      - name: HARD GATE - clean non-QA x64 original foobar host load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: x64
+          component-dll: ${{ runner.temp }}/discogger-sdk-probe/foobar2000/foo_discogger/x64/Release/foo_discogger.dll
+
+  # Explicit manual dispatch only; no secrets for public PR/push builds.
+  authorized-discogs-live:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/work/portable-build-properties-20261018'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - name: Probe known Discogs releases (official HTTPS, no response logging)
+        shell: bash
+        env:
+          DISCOGS_QA_AUTH: ${{ secrets.FB2K_DISCOGS_QA_TOKEN || secrets.DISCOGS_QA_TOKEN || secrets.DISCOGS_TOKEN || secrets.DISCOGS_API_TOKEN || secrets.DISCOGS_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import http.client, json, os, re
+          from urllib.parse import urlencode
+          if (os.getenv('GITHUB_EVENT_NAME') != 'workflow_dispatch' or
+              os.getenv('GITHUB_REPOSITORY') != 'lxsdd/foo_discogger' or
+              os.getenv('GITHUB_REF') != 'refs/heads/work/portable-build-properties-20261018'):
+              raise SystemExit('DISCOGS_LIVE=BLOCKED: unauthorized runner context')
+          token = os.getenv('DISCOGS_QA_AUTH', '')
+          if not re.fullmatch(r'[A-Za-z0-9_-]{8,256}', token):
+              raise SystemExit('DISCOGS_LIVE=BLOCKED: no eligible Actions secret; no token printed')
+          releases = [
+              ('38012673','Estiva','Via Balearia',None),
+              ('37332711','Kyau & Albert x Maywave','1000 Years','Maywave'),
+              ('36397609','Matt Fax','Only You',None),
+              ('36819730','Matt Fax','Till You Let Go',None),
+              ('35534398','Quivver','Consciousness EP',None),
+          ]
+          headers = {
+              'User-Agent':'Discogger-Draft-ReadOnly-QA/1.0',
+              'Authorization':'Discogs token=' + token,
+              'Accept':'application/vnd.discogs.v2+json',
+          }
+          def fetch(path):
+              # Fixed official TLS host; http.client never follows redirects.
+              conn = http.client.HTTPSConnection('api.discogs.com', timeout=18)
+              try:
+                  conn.request('GET', path, headers=headers)
+                  response = conn.getresponse()
+                  data = response.read(1000001)
+                  if len(data) > 1000000:
+                      raise RuntimeError('Discogs payload too large')
+                  if response.status != 200:
+                      raise RuntimeError('Discogs HTTP status ' + str(response.status))
+                  return json.loads(data)
+              finally:
+                  conn.close()
+          def results(params):
+              query = '/database/search?' + urlencode(dict(params, type='release', per_page=100, page=1))
+              data = fetch(query)
+              return {str(x.get('id')) for x in data.get('results', []) if x.get('type') == 'release'}
+          found = 0
+          for release_id, artist, title, partner in releases:
+              release = fetch('/releases/' + release_id)
+              if str(release.get('id')) != release_id:
+                  raise RuntimeError('Incorrect release identity ' + release_id)
+              if title.casefold() not in str(release.get('title', '')).casefold():
+                  raise RuntimeError('Incorrect release title ' + release_id)
+              if not release.get('tracklist') or not release.get('artists'):
+                  raise RuntimeError('Missing public release tracklist ' + release_id)
+              print('DISCOGS_DIRECT_' + release_id + '=PASS')
+              if release_id in results({'artist':artist,'title':title}):
+                  print('DISCOGS_SEARCH_' + release_id + '=EXACT')
+              elif partner and release_id in results({'q':'"' + partner + '"','title':title}):
+                  print('DISCOGS_SEARCH_' + release_id + '=PARTNER_REVIEW_REQUIRED')
+              elif release_id in results({'q':'"' + title + '"'}):
+                  print('DISCOGS_SEARCH_' + release_id + '=TITLE_REVIEW_REQUIRED')
+              else:
+                  print('DISCOGS_SEARCH_' + release_id + '=MISSING_BOUNDED_RESULTS')
+                  continue
+              found += 1
+          if found != len(releases):
+              raise SystemExit('DISCOGS_LIVE_DISCOVERY=FAIL: one or more releases absent')
+          print('DISCOGS_LIVE_DISCOVERY=PASS: 5/5 (fallback requires identity review)')
+          PY

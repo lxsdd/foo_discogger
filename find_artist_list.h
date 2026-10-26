@@ -18,7 +18,11 @@ public:
 	// serves dlg->expand_master_release, convey
 	const Artist_ptr Get_Artist() { return m_find_release_artist; }
 	pfc::array_t<Artist_ptr> Get_Artists() const { return m_find_release_artists; }
-	const pfc::string8 Get_Selected_Id () { auto p = get_selected_artist(); return p ? p->id : ""; }
+	// The visible list may hide alternatives; async filter decisions must
+	// use cumulative source buckets, not only the latest worker delta.
+	size_t Get_Exact_Artist_Count() const { return count_valid_artists(m_artist_exact_matches); }
+	size_t Get_Other_Artist_Count() const { return count_valid_artists(m_artist_other_matches); }
+	const pfc::string8 Get_Selected_Id () { auto p = get_selected_artist(); return p ? p->id : pfc::string8(); }
 
 	// serves dlg
 	void ShowArtistProfile();
@@ -73,6 +77,12 @@ public:
 	bool OnDisplayCellImage(int item, int subitem, int& result) const;
 
 private:
+    static size_t count_valid_artists(const pfc::array_t<Artist_ptr>& artists) {
+        size_t count = 0;
+        for (const auto& artist : artists)
+            if (artist) ++count;
+        return count;
+    }
 
 	size_t get_size();
 	size_t get_next_role_pos();

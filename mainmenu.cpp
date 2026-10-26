@@ -103,7 +103,7 @@ public:
 		PFC_ASSERT(p_index >= 0 && p_index < get_num_items());
 		get_item_name(p_index, p_out);
 
-		if (!g_discogs) {
+		if (!g_discogs || p_data.get_count() == 0) {
 			//exit
 			p_displayflags = FLAG_GRAYED;
 			return true;
@@ -265,6 +265,9 @@ public:
 		switch (p_index) {
 		case WriteTags:
 		case WriteTagsAlt: {
+			// Empty /context_command selections must not reach m_items[0]
+			// in CFindReleaseDialog::OnInitDialog (including CLI calls).
+			if (p_data.get_count() == 0) return;
 			//lo former, hi current
 			awt_update_mod_flag(/*fromFlag*/false);
 			bool bchanged = CONF.awt_set_alt_mode(p_index == WriteTagsAlt);
@@ -313,6 +316,7 @@ public:
 		case WriteTags:
 		case WriteTagsAlt:
 			p_displayflags =
+			p_data.get_count() != 0 &&
 			!g_discogs->locked_operation &&
 			//todo: rev acquiring lock to remove !find_release_dialog req. 
 			!g_discogs->find_release_dialog &&
@@ -436,7 +440,7 @@ public:
 		PFC_ASSERT(p_index >= 0 && p_index < get_num_items());
 		get_item_name(p_index, p_out);
 
-		if (!g_discogs) {
+		if (!g_discogs || p_data.get_count() == 0) {
 			//exit
 			p_displayflags = FLAG_GRAYED;
 			return true;

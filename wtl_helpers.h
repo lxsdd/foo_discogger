@@ -8,16 +8,16 @@ class MyCDialogImpl : public CDialogImpl<T>, public ErrorManager
 {
 public:
 	virtual void show() {
-		ShowWindow(SW_SHOW);
+		this->ShowWindow(SW_SHOW);
 	}
 
 	virtual void hide() {
-		ShowWindow(SW_HIDE);
+		this->ShowWindow(SW_HIDE);
 	}
 
 	virtual void destroy() {
-		if (::IsWindow(m_hWnd)) {
-			DestroyWindow();
+		if (::IsWindow(this->m_hWnd)) {
+			this->DestroyWindow();
 		}
 		else {
 			delete this;

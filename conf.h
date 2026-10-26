@@ -17,6 +17,7 @@
 #define SKIP_RELEASE_DLG_IDED                  1 << 1
 #define SKIP_PREVIEW_DLG                       1 << 2
 #define SKIP_BRAINZ_ID_FETCH                   1 << 5
+#define SKIP_RELEASE_DLG_VA_AUTO_LOAD          (1 << 6)
 
 //CFG_ON_INIT_QUERY_FLAG/on_init_query
 #define ON_INIT_QUERY_FLG_ENABLED              1 << 0
@@ -188,6 +189,7 @@
 #define CFG_ON_INIT_QUERY_DEF                       2149
 //v213 (1.0.22 beta 15)
 #define CFG_QUERY_MAX                               2150
+#define CFG_ARTIST_RELEASE_CACHE_HOURS              2151
 
 // STRINGS -------------------------------------
 
@@ -308,7 +310,7 @@ const struct vspec {
 		}
 	}
 
-	inline bool operator==(const vspec& rhs) {
+	inline bool operator==(const vspec& rhs) const {
 		return (this->boolvals == rhs.boolvals &&
 			this->intvals == rhs.intvals &&
 			this->stringvals == rhs.stringvals);
@@ -320,9 +322,9 @@ const struct vspec {
 
 		vec_spec_t* vec = rhs.vspecs;
 		auto itrhs = std::find_if(vec->begin(), vec->end(),
-			[rhs](auto e) {return e == rhs; });
+			[rhs](auto e) {return e.operator==(rhs); });
 		auto itthis = std::find_if(vec->begin(), vec->end(),
-			[=](auto e) {return e == *this; });
+			[=](auto e) {return e.operator==(*this); });
 		return ((itthis != vec->end()) && itthis < itrhs);
 	}
 	inline bool operator>(const vspec& rhs)
@@ -331,9 +333,9 @@ const struct vspec {
 		PFC_ASSERT(rhs.vspecs != nullptr);
 		vec_spec_t* vec = rhs.vspecs;
 		auto itrhs = std::find_if(vec->begin(), vec->end(),
-			[rhs](auto e) {return e == rhs; });
+			[rhs](auto e) {return e.operator==(rhs); });
 		auto itthis = std::find_if(vec->begin(), vec->end(),
-			[=](auto e) {return e == *this; });
+			[=](auto e) {return e.operator==(*this); });
 
 		return (itthis == vec->end() || itthis > itrhs);
 	}
@@ -361,7 +363,7 @@ public:
 	}
 
 	// shallow copy
-	CConf::CConf(CConf const& other) {
+	CConf(CConf const& other) {
 
 		*this = other;
 	}
@@ -472,6 +474,7 @@ public:
 		{ asi(cfgFilter::CONF), CFG_MULTIVALUE_FIELDS},
 		//v210
 		{ asi(cfgFilter::CONF), CFG_DISK_CACHE_EXP},
+        { asi(cfgFilter::CONF), CFG_ARTIST_RELEASE_CACHE_HOURS},
 		//v211
 		{ asi(cfgFilter::CONF), CFG_VA_PREFIXES},
 		//v212
@@ -741,6 +744,7 @@ public:
 	int alt_write_flags = 0;
 	//v210 (1.0.21)
 	int disk_cache_exp = 30; //hi flags, lo days
+    int artist_release_cache_hours = 24; // separate artist-release TTL
 	//v211
 	pfc::string8 various_prefixes = "Various, VA";
 	//v212

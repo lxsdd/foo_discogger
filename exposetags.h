@@ -43,7 +43,7 @@ using ExposedMap = std::map<const char*, std::pair<string_encoded_array(T::*)()c
 
 template <class T>
 string_encoded_array ExposedTags<T>::get_data(pfc::string8 &tag_name, threaded_process_status &p_status, abort_callback &p_abort) {
-	auto &it = exposed_tags.find(tag_name.get_ptr());
+	auto it = exposed_tags.find(tag_name.get_ptr());
 	if (it != exposed_tags.cend()) {
 		auto pair = it->second;
 		auto x = std::bind(pair.first, ((T*)this));
@@ -53,8 +53,8 @@ string_encoded_array ExposedTags<T>::get_data(pfc::string8 &tag_name, threaded_p
 			load_func();
 		}
 
-		pfc::string8 out = x();
-		return out;
+		// Preserve encoded multivalue tag data.
+		return x();
 	}
 	else {
 		return get_sub_data(tag_name, p_status, p_abort);

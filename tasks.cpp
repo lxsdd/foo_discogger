@@ -1,5 +1,9 @@
 #include "stdafx.h"
 #include <unordered_set>
+#include <functional>
+#include <set>
+#include <string>
+#include <utility>
 #include "discogs_interface.h"
 
 #include "tags.h"
@@ -8,11 +12,24 @@
 #include "configuration_dialog.h"
 #include "crc.h"
 #include "tasks.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
+#include "discogger_preview_selection.h"
+#include "discogger_artist_load_ownership.h"
+#include "discogger_write_safety.h"
+#include "discogger_task_completion.h"
+#include "discogger_physical_targets.h"
 
 void foo_discogs_threaded_process_callback::run(threaded_process_status &p_status, abort_callback &p_abort) {
 	try {
 		safe_run(p_status, p_abort);
 	}
+    catch (const exception_aborted&) {
+        // Cancellation is a normal SDK control signal, not a fatal error.
+        // Let threaded_process mark the worker as aborted and invoke on_abort.
+        throw;
+    }
 	catch (foo_discogs_exception &e) {
 		add_error(e, true);
 	}
@@ -29,14 +46,14 @@ void foo_discogs_threaded_process_callback::on_done(HWND p_wnd, bool p_was_abort
 	}
 	else {
 		if (!fatal_error) {
-			try {
-				on_success(p_wnd);
-			}
-			catch (foo_discogs_exception &e) {
-				add_error(e, true);
-			}
+			discogger_async::run_success_with_error_boundary(
+				[&]() { on_success(p_wnd); },
+				[&](const char* message) { add_error(message, true); });
 		}
 		if (errors.get_count()) {
+			if (fatal_error) {
+				if (const char* context = fatal_failure_context()) add_error(context, true);
+			}
 			display_errors();
 			if (fatal_error) {
 				on_error(p_wnd);
@@ -64,7 +81,41 @@ generate_tags_task::~generate_tags_task() {
 	//..
 }
 
+// No stale, destroyed, or replaced dialog may receive an old generation
+// callback or authorize a tag write for its prior file selection.
+bool generate_tags_task::origin_is_current() const {
+    if (!m_owner_window || !g_discogs || !::IsWindow(m_owner_window))
+        return false;
+    if (m_preview_dialog)
+        return g_discogs->preview_tags_dialog == m_preview_dialog &&
+               g_discogs->preview_tags_dialog->m_hWnd == m_owner_window;
+    if (m_track_matching_dialog)
+        return g_discogs->track_matching_dialog == m_track_matching_dialog &&
+               g_discogs->track_matching_dialog->m_hWnd == m_owner_window;
+    // Legacy credit-dialog worker only exposes an opaque dialog pointer here.
+    // Require that the original credit instance is still current; do not
+    // dereference an incomplete or potentially freed CTagCreditDialog.
+    if (m_credits_dialog)
+        return g_discogs->tag_credit_dialog == m_credits_dialog &&
+               m_owner_window == core_api::get_main_window();
+    return false;
+}
+
 void generate_tags_task::start() {
+    // Start() is invoked from the originating dialog's UI thread.
+    if (g_discogs) {
+        if (m_preview_dialog && g_discogs->preview_tags_dialog == m_preview_dialog)
+            m_owner_window = m_preview_dialog->m_hWnd;
+        else if (m_track_matching_dialog &&
+                 g_discogs->track_matching_dialog == m_track_matching_dialog)
+            m_owner_window = m_track_matching_dialog->m_hWnd;
+        else if (m_credits_dialog && g_discogs->tag_credit_dialog == m_credits_dialog)
+            m_owner_window = core_api::get_main_window();
+    }
+    if (!origin_is_current()) {
+        log_msg("Tag generation refused: originating dialog is not live.");
+        return;
+    }
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_abort |
@@ -78,6 +129,11 @@ void generate_tags_task::start() {
 
 void generate_tags_task::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
 
+    // Dialogs can close after the modeless task is launched.
+    if (!origin_is_current()) {
+        m_quick_abort = true; // No generation mutex has been acquired.
+        return;
+    }
 	{
 		std::lock_guard<std::mutex> guard(g_discogs->locked_tag_generation_rw_mutex);
 		if (g_discogs->locked_tag_generation) {
@@ -90,12 +146,10 @@ void generate_tags_task::safe_run(threaded_process_status& p_status, abort_callb
 		}
 	}
 
-	if (m_track_matching_dialog) {
-		m_track_matching_dialog->enable(false);
-	}
-	else if (m_preview_dialog)  {
-		m_preview_dialog->enable(false, true);
-	}
+    if (m_track_matching_dialog && origin_is_current())
+        g_discogs->track_matching_dialog->enable(false);
+    else if (m_preview_dialog && origin_is_current())
+        g_discogs->preview_tags_dialog->enable(false, true);
 
 	m_tag_writer->generate_tags(m_alt_mappings, p_status, p_abort);
 }
@@ -105,13 +159,18 @@ void generate_tags_task::on_success(HWND p_wnd) {
 	if (m_quick_abort) {
 		return;
 	}
+    // A completed task must not silently fall through from a closed preview
+    // into the legacy "write tags" branch targeting another matching dialog.
+    if (!origin_is_current()) {
+        on_error(p_wnd); // Drop in-memory changes; revoke the generation lock.
+        return;
+    }
 
 	if (m_preview_dialog && m_preview_dialog->IsWindow()) {
 
 		m_preview_dialog->Enabled(true);
 
-		tag_mapping_list_type* ptags = &TAGS;
-		size_t debug = ptags->get_count();
+		const size_t debug = TAGS.get_count();
 		size_t new_res_count = m_tag_writer->tag_results.get_count();
 
 
@@ -125,36 +184,30 @@ void generate_tags_task::on_success(HWND p_wnd) {
 		CPreviewLeadingTagDialog* preview_modal_tag_dialog = g_discogs->preview_modal_tag_dialog;
 		if (preview_modal_tag_dialog && IsWindow(preview_modal_tag_dialog->m_hWnd)) {
 
-			tag_result_ptr detailed_res;
-			size_t new_sel = 0;
-			size_t curr_sel = preview_modal_tag_dialog->GetResult(detailed_res);
-
-			bool bmovetoprev = false;
-			if (new_res_count <= curr_sel) {
-				bmovetoprev = true;
-			}
-			else {
-
-				bool new_enabled = m_tag_writer->tag_results[curr_sel]->tag_entry->enable_write || m_tag_writer->tag_results[curr_sel]->tag_entry->enable_update;
-				if (!new_enabled) {
-					bmovetoprev = true;
-				}
-			}
-
-			if (bmovetoprev) {
-				if (curr_sel - 1 < new_res_count)
-					new_sel = curr_sel - 1 < 0 ? 0 : curr_sel - 1;
-				else
-					new_sel = new_res_count - 1;
-			}
-			else {
-				new_sel = curr_sel;
-			}
-
-			const auto new_res_tag_entry = m_tag_writer->tag_results[new_sel]->tag_entry;
-			preview_modal_tag_dialog->SetTagWriter(m_tag_writer);
-
-			preview_modal_tag_dialog->ReloadItem(core_api::get_main_window(), new_sel, /*use current modal preview view mode*/PreView::Undef);
+            // Regeneration can legitimately produce zero tags (all rejected
+            // or no matching tracks). Do not access [size-1] in that case.
+            if (new_res_count == 0) {
+                ::DestroyWindow(preview_modal_tag_dialog->m_hWnd);
+            } else {
+                tag_result_ptr detailed_res;
+                const size_t curr_sel = preview_modal_tag_dialog->GetResult(detailed_res);
+                bool selected_enabled = false;
+                if (curr_sel < new_res_count) {
+                    const auto& current = m_tag_writer->tag_results[curr_sel];
+                    selected_enabled = current && current->tag_entry &&
+                        (current->tag_entry->enable_write || current->tag_entry->enable_update);
+                }
+                const auto next = discogger_ui::choose_preview_detail(
+                    curr_sel, new_res_count, selected_enabled);
+                const auto& next_result = m_tag_writer->tag_results[next.index];
+                if (!next_result || !next_result->tag_entry) {
+                    ::DestroyWindow(preview_modal_tag_dialog->m_hWnd);
+                } else {
+                    preview_modal_tag_dialog->SetTagWriter(m_tag_writer);
+                    preview_modal_tag_dialog->ReloadItem(
+                        core_api::get_main_window(), next.index, PreView::Undef);
+                }
+            }
 
 		}
 
@@ -247,12 +300,12 @@ void generate_tags_task::on_error(HWND p_wnd) {
 	m_tag_writer->ResetMask();
 	//orphan $prompt modal dialog closed?
 	//todo: global mutexes form global dialogs
-	if (m_preview_dialog && m_preview_dialog->IsWindow()) {
+	if (origin_is_current() && m_preview_dialog) {
 
 		m_preview_dialog->enable(true, true);
 	}
 	else {
-		if (m_track_matching_dialog && m_track_matching_dialog->IsWindow()) {
+		if (origin_is_current() && m_track_matching_dialog) {
 			m_track_matching_dialog->enable(true);
 			m_track_matching_dialog->show();
 		}
@@ -273,14 +326,74 @@ void write_tags_task::start() {
 
 void write_tags_task::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 
+    // The worker only prepares tags; the physical SDK writer is scheduled by
+    // on_success on the UI thread. Preparation can be non-interruptible, so
+    // check cancellation both before and after it. A cancelled task must not
+    // be promoted into a physical metadata/artwork write.
+    p_abort.check();
+    // A virtual/subsong projection, empty path, missing handle or duplicate
+    // physical file must never reach the generic metadata tag writer.
+    discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);
+    p_abort.check();
 	m_tag_writer->write_tags();
+    p_abort.check();
 
 }
 
 void write_tags_task::on_success(HWND p_wnd) {
+    // Revalidate on UI thread before destructive-change approval or artwork.
+    discogger_require_physical_targets(m_tag_writer->m_finfo_manager->items);
 
-	m_tag_writer->m_finfo_manager->write_infos();
+    // Explicit user approval is required for any deletion, including a
+    // reduction in the number of values of a multivalue field. This runs on
+    // the UI callback thread before ANY asynchronous SDK write is scheduled.
+    std::size_t removed_fields = 0, removed_values = 0;
+    std::set<std::string> removed_names;
+    const auto& finfo = m_tag_writer->m_finfo_manager;
+    for (size_t index = 0; index < finfo->info_wrappers.get_count(); ++index) {
+        const auto& wrapper = finfo->info_wrappers[index];
+        if (!wrapper || !wrapper->mask || !wrapper->original_captured) continue;
+        const auto report = discogger_write_safety::inspect_tag_deletions(
+            wrapper->original_info, wrapper->info, [&](const char* name) {
+                if (removed_names.size() >= 16 || !name) return;
+                std::string safe;
+                for (size_t c = 0; name[c] && c < 64; ++c) {
+                    const unsigned char ch = static_cast<unsigned char>(name[c]);
+                    safe.push_back(ch >= 32 && ch <= 126 ? static_cast<char>(ch) : '?');
+                }
+                removed_names.insert(std::move(safe));
+            });
+        if (report.cuesheet_modified) {
+            finfo->discard_pending_changes();
+            m_tag_writer->ResetMask();
+            throw foo_discogs_exception("Writing cancelled: CUESHEET changes require a dedicated, tested cue editor. Original physical tags were not submitted.");
+        }
+        removed_fields += report.removed_fields;
+        removed_values += report.removed_values;
+    }
+    bool tag_deletions_approved = false;
+    if (removed_fields || removed_values) {
+        pfc::string8 warning;
+        warning << "Discogger is about to REMOVE " << removed_fields
+                << " metadata field(s) and " << removed_values
+                << " multivalue entry/entries from physical files.\n\nAffected fields:";
+        for (const auto& name : removed_names) warning << "\n - " << name.c_str();
+        if (removed_names.size() >= 16) warning << "\n - (additional fields may be affected)";
+        warning << "\n\nThese removals cannot be undone automatically after a partial disk write."
+                << "\nContinue with this destructive operation?";
+        if (uMessageBox(p_wnd ? p_wnd : core_api::get_main_window(), warning.get_ptr(),
+            "Discogger: confirm metadata removals",
+            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_APPLMODAL) != IDYES) {
+            finfo->discard_pending_changes();
+            m_tag_writer->ResetMask();
+            return;
+        }
+        tag_deletions_approved = true;
+    }
 
+	// Prepare optional artwork, but never launch it until the physical tag
+	// writer reports success. The previous code launched it immediately.
+	std::function<void()> artwork_after_tags;
 	if (!m_tag_writer->tag_results_mask.size()) {
 
 		int lpskip = CONF.album_art_skip_default_cust;
@@ -294,11 +407,17 @@ void write_tags_task::on_success(HWND p_wnd) {
 		bool bfile_match = CONF_MULTI_ARTWORK.file_match;
 
 		if (!bskip_art && (bconf_art_save || bcustom_art_save)) {
-			service_ptr_t<download_art_task> task =
-				new service_impl_t<download_art_task>(m_tag_writer->GetRelease()->id, m_tag_writer->m_finfo_manager->items, bfile_match);
-			task->start();
+            const pfc::string8 release_id = m_tag_writer->GetRelease()->id;
+            const metadb_handle_list physical_items = m_tag_writer->m_finfo_manager->items;
+            const auto artwork_lease = m_write_lease;
+            artwork_after_tags = [release_id, physical_items, bfile_match, artwork_lease]() {
+                service_ptr_t<download_art_task> task =
+                    new service_impl_t<download_art_task>(release_id, physical_items, bfile_match, artwork_lease);
+                task->start();
+            };
 		}
 	}
+    m_tag_writer->m_finfo_manager->write_infos(std::move(artwork_after_tags), m_write_lease, tag_deletions_approved);
 
 	if (g_discogs->preview_tags_dialog && ::IsWindow(g_discogs->preview_tags_dialog->m_hWnd)) {
 
@@ -320,12 +439,21 @@ void write_tags_task::on_success(HWND p_wnd) {
 }
 
 void write_tags_task::on_abort(HWND p_wnd) {
-	m_tag_writer->ResetMask();
-	on_error(p_wnd);
+    // A cancelled modeless task must revoke both independent preview states.
+    on_error(p_wnd);
 }
 
 void write_tags_task::on_error(HWND p_wnd) {
-	m_tag_writer->ResetMask();
+    // A metadata restoration may itself throw (for example on allocation).
+    // Always attempt the selection reset as well; never let cleanup escape
+    // the SDK's on_done/on_abort callback and crash the foobar UI thread.
+    const unsigned cleanup_failures = discogger_write_safety::cleanup_failed_preview(
+        [this]() { m_tag_writer->m_finfo_manager->discard_pending_changes(); },
+        [this]() { m_tag_writer->ResetMask(); });
+    if (cleanup_failures) {
+        add_error("Tagging stopped: preview cleanup was incomplete. Reload the physical tags and regenerate the preview before retrying.", true);
+        display_errors();
+    }
 }
 
 
@@ -355,8 +483,24 @@ public:
 	};
 };
 
-download_art_task::download_art_task(pfc::string8 release_id, metadb_handle_list items, bool file_match) :
-		release_id(release_id), items(items), m_file_match(file_match) {
+download_art_task::download_art_task(pfc::string8 release_id, metadb_handle_list items, bool file_match,
+    discogger_write_safety::async_write_gate::lease write_lease) :
+    release_id(release_id), items(items), m_file_match(file_match),
+    m_write_lease(write_lease ? std::move(write_lease) : discogger_write_safety::acquire_physical_write_lease()) {
+    if (!m_write_lease) throw locked_task_exception("Another Discogger tag/artwork write is active");
+}
+
+const char* download_art_task::fatal_failure_context() const {
+    return "Artwork did not complete. Earlier sidecar or embedded images may already have changed; "
+           "any preceding tag commit is not rolled back. Inspect affected physical files before retrying.";
+}
+
+void download_art_task::on_abort(HWND) {
+    // The host reports cancellation without a fatal error. Sequential artwork
+    // operations may already have committed; never imply an all-or-nothing abort.
+    add_error("Artwork cancelled. Earlier sidecar or embedded images may already have changed; "
+              "any preceding tag commit is not rolled back. Inspect affected physical files before retrying.", true);
+    display_errors();
 }
 
 void download_art_task::start() {
@@ -372,6 +516,8 @@ void download_art_task::start() {
 }
 
 void download_art_task::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
+    // The direct and chained artwork paths require the same physical target gate.
+    discogger_require_physical_targets(items);
 
 	size_t lkey = encode_mr(0, release_id);
 	Release_ptr release = discogs_interface->get_release(lkey, p_status, p_abort);
@@ -500,11 +646,19 @@ void download_art_task::safe_run(threaded_process_status& p_status, abort_callba
 download_art_paths_task::download_art_paths_task(CTrackMatchingDialog* m_dialog, pfc::string8 release_id, 
 	metadb_handle_list items, pfc::array_t<GUID> album_art_ids, bool to_path_only, bool file_match) :
 	m_dialog(m_dialog), m_release_id(release_id), m_items(items),
-	m_album_art_ids(album_art_ids), m_to_path_only(to_path_only), m_file_match(file_match) {
+	m_album_art_ids(album_art_ids), m_to_path_only(to_path_only), m_file_match(file_match),
+    m_write_lease(to_path_only ? discogger_write_safety::async_write_gate::lease{}
+                               : discogger_write_safety::acquire_physical_write_lease()) {
 
 }
 
 void download_art_paths_task::start() {
+    // Record the live initiating window on the UI thread, before modeless IO.
+    if (m_dialog && g_discogs && g_discogs->track_matching_dialog == m_dialog &&
+        ::IsWindow(m_dialog->m_hWnd))
+        m_owner_window = m_dialog->m_hWnd;
+    else
+        m_owner_window = nullptr;
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_abort |
@@ -517,6 +671,16 @@ void download_art_paths_task::start() {
 }
 
 void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
+    if (!m_to_path_only) {
+        if (!m_write_lease) {
+            throw locked_task_exception("Another Discogger physical tag/artwork write is still active.");
+        }
+        discogger_require_physical_targets(m_items);
+    } else if (discogger_inspect_file_targets(m_items, false) != discogger_write_safety::target_batch_decision::ready) {
+        // Previews may include CUE subsongs and multiple tracks per file;
+        // reject only unusable handles/paths, never perform a physical write.
+        throw foo_discogs_exception("Artwork preview stopped: invalid or empty file target.");
+    }
 
 	size_t lkey = encode_mr(0, m_release_id);
 	Release_ptr release = discogs_interface->get_release(lkey, p_status, p_abort);
@@ -575,7 +739,7 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 
 			if (bconf_album_save_or_embed && !bcust_album_save_or_embed) {
 
-				ada_mod = art_download_attribs(CONF.save_album_art, CONF.embed_album_art, CONF.album_art_overwrite, CONF.album_art_fetch_all, false, {}, bfile_match, bcust_album_save_or_embed);
+				ada_mod = art_download_attribs(CONF.save_album_art, CONF.embed_album_art, CONF.album_art_overwrite, CONF.album_art_fetch_all, m_to_path_only, {}, bfile_match, bcust_album_save_or_embed);
 				becall = true;
 			}
 			else {
@@ -586,7 +750,7 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 				bool bitem_fetch_all = true;
 
 				if (bitem_write || bitem_embed) {
-					ada_mod = art_download_attribs(bitem_write, bitem_embed, bitem_overwrite, true /*always true to image loop*/, false, {}, bfile_match, bcust_album_save_or_embed);
+					ada_mod = art_download_attribs(bitem_write, bitem_embed, bitem_overwrite, true /*always true to image loop*/, m_to_path_only, {}, bfile_match, bcust_album_save_or_embed);
 					becall = true;
 				}
 			}
@@ -615,7 +779,7 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 
 			if (bconf_artist_save_or_embed && !bcust_artist_save_or_embed) {
 
-				ada_mod = art_download_attribs(CONF.save_artist_art, CONF.embed_artist_art, CONF.artist_art_overwrite, CONF.artist_art_fetch_all, false, {}, bfile_match, bcust_artist_save_or_embed);
+				ada_mod = art_download_attribs(CONF.save_artist_art, CONF.embed_artist_art, CONF.artist_art_overwrite, CONF.artist_art_fetch_all, m_to_path_only, {}, bfile_match, bcust_artist_save_or_embed);
 				bcall = true;
 			}
 			else {
@@ -627,7 +791,7 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 
 				if (bitem_write || bitem_embed) {
 
-					ada_mod = art_download_attribs(bitem_write, bitem_embed, bitem_overwrite, bitem_fetch_all /*always true to loop all images*/, false, {}, bfile_match, bcust_artist_save_or_embed);
+					ada_mod = art_download_attribs(bitem_write, bitem_embed, bitem_overwrite, bitem_fetch_all /*always true to loop all images*/, m_to_path_only, {}, bfile_match, bcust_artist_save_or_embed);
 					bcall = true;
 				}
 			}
@@ -644,6 +808,19 @@ void download_art_paths_task::safe_run(threaded_process_status& p_status, abort_
 	}
 }
 
+const char* download_art_paths_task::fatal_failure_context() const {
+    if (m_to_path_only) return nullptr; // A preview cannot write physical art.
+    return "Artwork did not complete. Earlier sidecar or embedded images may already have changed. "
+           "Inspect affected physical files before retrying.";
+}
+
+void download_art_paths_task::on_abort(HWND) {
+    if (m_to_path_only) return;
+    add_error("Artwork cancelled. Earlier sidecar or embedded images may already have changed. "
+              "Inspect affected physical files before retrying.", true);
+    display_errors();
+}
+
 void download_art_paths_task::on_success(HWND p_wnd) {
 
 	std::shared_ptr<std::vector<std::pair<pfc::string8, bit_array_bittable>>> vpaths = std::make_shared<std::vector<std::pair<pfc::string8, bit_array_bittable>>>(m_vres);
@@ -658,9 +835,15 @@ void download_art_paths_task::on_success(HWND p_wnd) {
 	}
 #endif
 
-	if (IsWindow(m_dialog->m_hWnd)) {
-		m_dialog->process_download_art_paths_done(m_release_id, vpaths, m_album_art_ids);
-	}
+    // Never dereference a dialog that may have been destroyed or replaced
+    // while the artwork query was running in the background.
+    if (!m_owner_window || !::IsWindow(m_owner_window) || !g_discogs ||
+        !g_discogs->track_matching_dialog ||
+        g_discogs->track_matching_dialog != m_dialog ||
+        g_discogs->track_matching_dialog->m_hWnd != m_owner_window)
+        return;
+    g_discogs->track_matching_dialog->process_download_art_paths_done(
+        m_release_id, vpaths, m_album_art_ids);
 }
 
 
@@ -832,6 +1015,11 @@ void find_releases_not_in_collection_task::finish() {
 
 
 void get_artist_process_callback::start(HWND parent) {
+    m_owner_window = parent;
+    // The owner dialog is accessed only on the GUI thread, never by safe_run.
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 	pfc::string8 msg;
 	msg << "Loading artist id " << m_artist_id << ": " << m_artist_name;
 
@@ -861,6 +1049,7 @@ bool get_artist_process_callback::check_in() {
 }
 
 void get_artist_process_callback::check_out() {
+	if (!m_artist_load_registered) return;
 	std::lock_guard lg(g_discogs->mx_vArtistLoadReleasesTasks);
 	auto found_it =
 		std::find_if(g_discogs->vArtistLoadReleasesTasks.begin(), g_discogs->vArtistLoadReleasesTasks.end(), [&](const pfc::string8& e) {
@@ -869,21 +1058,28 @@ void get_artist_process_callback::check_out() {
 	if (found) {
 		g_discogs->vArtistLoadReleasesTasks.erase(found_it);
 	}
+	m_artist_load_registered = false;
 }
 
 void get_artist_process_callback::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 
 	if (m_bload_releases) {
-		if (!check_in()) {
+		m_artist_load_registered = check_in();
+		if (!m_artist_load_registered) {
 			return;
 		}
 	}
 
-	bool bsimple_list_sel = (m_cupdsrc == updRelSrc::ArtistProfile) && !bload_releases && !m_cupdsrc.oninit;
+	bool bsimple_list_sel = (m_cupdsrc == updRelSrc::ArtistProfile) && !m_bload_releases && !m_cupdsrc.oninit;
 
-	m_artist = discogs_interface->get_artist(m_artist_id, bload_releases, p_status, p_abort,
+	m_artist = discogs_interface->get_artist(m_artist_id, m_bload_releases, p_status, p_abort,
 		false, false, m_cupdsrc != updRelSrc::ArtistProfile, bsimple_list_sel);
 
+    // A failed/empty provider result must not dereference a null artist.
+    if (!m_artist) {
+        p_status.set_item("artist details are not available.");
+        return;
+    }
 
 	pfc::string8 status_msg;
 	if (!(m_artist->loaded_preview || m_artist->loaded)) {
@@ -901,17 +1097,36 @@ void get_artist_process_callback::safe_run(threaded_process_status &p_status, ab
 
 void get_artist_process_callback::on_success(HWND p_wnd) {
 
+	// Release our marker even if the SDK returned a null artist. A duplicate
+	// task never acquired the marker and must not cancel the real owner's load.
+	if (m_bload_releases) {
+		check_out();
+	}
+
 	if (m_artist) {
 
-		if (m_bload_releases) {
-			check_out();
-		}
+        // Honor a request made while an earlier artist load was running.
+        const bool retry_refresh = m_bload_releases && m_artist->release_refresh.pending();
+
+        // A finished network task must not target a closed/replaced dialog.
+        if (!m_owner_window || !::IsWindow(m_owner_window) ||
+            !g_discogs || !g_discogs->find_release_dialog ||
+            g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+            return;
 
 		//artist history
 		//todo: only using search button
 		if (m_cupdsrc != updRelSrc::ArtistProfile) {
 			g_discogs->find_release_dialog->add_history(oplog_type::artist, kHistoryGetArtist, "", "", m_artist->id, m_artist->name);
 		}
+
+		// History may dispatch synchronous UI messages or close the dialog.
+        if (!::IsWindow(m_owner_window) || !g_discogs ||
+            !g_discogs->find_release_dialog ||
+            g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+            !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+            return;
 
 		try {
 
@@ -924,6 +1139,18 @@ void get_artist_process_callback::on_success(HWND p_wnd) {
 		{
 			log_msg(e.what());
 		}
+        if (retry_refresh && m_owner_window && ::IsWindow(m_owner_window) &&
+            g_discogs && g_discogs->find_release_dialog &&
+            g_discogs->find_release_dialog->m_hWnd == m_owner_window &&
+            g_discogs->find_release_dialog->is_current_search_request(m_search_ticket)) {
+            CFindReleaseDialog* dlg = g_discogs->find_release_dialog;
+            if (::IsWindow(dlg->m_hWnd) &&
+                dlg->m_alist.Get_Selected_Id().equals(m_artist->id)) {
+                cupdRelSrc refresh(updRelSrc::ArtistList);
+                refresh.extended = true;
+                dlg->convey_artist_list_selection(refresh);
+            }
+        }
 	}
 }
 
@@ -941,7 +1168,11 @@ void get_artist_process_callback::on_error(HWND p_wnd) {
 
 
 void get_multi_artists_process_callback::start(HWND parent) {
-
+    m_owner_window = parent;
+    // The owner dialog is accessed only on the GUI thread, never by safe_run.
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 	pfc::string8 msg;
 	std::string msg_ids;
 	for (const auto& artist_id : m_artist_ids) msg_ids += (std::to_string(artist_id) + " ");
@@ -975,33 +1206,28 @@ bool get_multi_artists_process_callback::check_in() {
 			g_discogs->vArtistLoadReleasesTasks.emplace_back(std::move(walk_str_id));
 		}
 	}
-	return true;
+	return !m_checked_in_artist_ids.empty();
 }
 
 void get_multi_artists_process_callback::check_out() {
-	std::lock_guard lg(g_discogs->mx_vArtistLoadReleasesTasks);
-	for (auto artist_id : m_artist_ids) {
-
-		pfc::string8 walk_str_id; walk_str_id << artist_id;
-		auto found_it = std::find_if(g_discogs->vArtistLoadReleasesTasks.begin(), g_discogs->vArtistLoadReleasesTasks.end(), [&](const pfc::string8& e) {
-				return e.equals(walk_str_id); });
-		auto found_local_it = std::find_if(m_checked_in_artist_ids.begin(), m_checked_in_artist_ids.end(), [&](const pfc::string8& e) {
-                return e.equals(walk_str_id/*str_artist_id*/); });
-		bool found = found_it != std::end(g_discogs->vArtistLoadReleasesTasks);
-		found &= found_local_it != std::end(m_checked_in_artist_ids);
-		if (found) {
-			g_discogs->vArtistLoadReleasesTasks.erase(found_it);
-		}
-	}
+    // A completion and a later abort/error may both arrive. Only remove
+    // markers this particular task still owns, and consume that ownership
+    // exactly once while the shared registry mutex is held.
+    std::lock_guard lg(g_discogs->mx_vArtistLoadReleasesTasks);
+    discogger_async::release_owned_ids(
+        m_checked_in_artist_ids, g_discogs->vArtistLoadReleasesTasks,
+        [](const pfc::string8& owned, const pfc::string8& registered) {
+            return owned.equals(registered);
+        });
 }
 
 void get_multi_artists_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
 
-	if (m_bload_releases) {
-		if (!check_in()) {
-			return;
-		}
-	}
+    // When every ID is owned by another worker, check_in() returns false.
+    // Still enumerate the selected artists for the UI; the per-ID ownership
+    // gate below suppresses every duplicate *release* download. Returning
+    // here used to publish an empty artist preview for a valid selection.
+    if (m_bload_releases) check_in();
 
 	size_t count = 0;
 	for (auto artist_id : m_artist_ids) {
@@ -1009,9 +1235,23 @@ void get_multi_artists_process_callback::safe_run(threaded_process_status& p_sta
 		pfc::string8 status_title("Get multi-artists... ");
 		status_title << (PFC_string_formatter() << count + 1 << " of " << m_artist_ids.size()).c_str();
 		p_status.set_title(status_title);
-		//load releases on first artist
-		Artist_ptr artist = discogs_interface->get_artist(std::to_string(artist_id).c_str(), !count++ ? m_cupdsrc.extended : m_bload_releases, p_status, p_abort,
-			false, false, m_cupdsrc != updRelSrc::ArtistProfile && m_bload_releases);
+        // Preserve every artist in the selection, but do not launch a second
+        // release download for an ID already owned by another worker.
+        // check_in() registered only IDs present in m_checked_in_artist_ids.
+        pfc::string8 registry_id;
+        registry_id << artist_id;
+        const bool owns_release_id = !m_bload_releases ||
+            discogger_async::owns_id(m_checked_in_artist_ids, registry_id,
+                [](const pfc::string8& owned, const pfc::string8& wanted) {
+                    return owned.equals(wanted);
+                });
+        const bool first = count++ == 0;
+        const bool release_requested = first ? m_cupdsrc.extended : m_bload_releases;
+        const bool fetch_releases = discogger_async::should_load_owned_releases(
+            release_requested, owns_release_id);
+        Artist_ptr artist = discogs_interface->get_artist(
+            std::to_string(artist_id).c_str(), fetch_releases, p_status, p_abort,
+            false, false, m_cupdsrc != updRelSrc::ArtistProfile && m_bload_releases);
 
 		m_artists.add_item(std::move(artist));
 	}
@@ -1024,6 +1264,11 @@ void get_multi_artists_process_callback::on_success(HWND p_wnd) {
 	if (m_bload_releases) {
 		check_out();
 	}
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+        return;
 
 	if (m_artists.get_count()) {
 		m_cupdsrc.oninit = true;
@@ -1035,7 +1280,11 @@ void get_multi_artists_process_callback::on_success(HWND p_wnd) {
 				ti.swap(m_artists[c++]);
 			}
 			m_artists.force_reset();
-			g_discogs->find_release_dialog->on_search_artist_done(tail, pfc::array_t<Artist_ptr>(), true);
+            // The first callback may have closed the modeless window.
+            if (::IsWindow(m_owner_window) && g_discogs &&
+                g_discogs->find_release_dialog &&
+                g_discogs->find_release_dialog->m_hWnd == m_owner_window)
+                g_discogs->find_release_dialog->on_search_artist_done_if_current(m_search_ticket, tail, pfc::array_t<Artist_ptr>(), true);
 		}
 	}
 }
@@ -1049,7 +1298,12 @@ void get_multi_artists_process_callback::on_error(HWND p_wnd) {
 	pfc::array_t<Artist_ptr>tail;
 
 	m_artists.force_reset();
-	g_discogs->find_release_dialog->on_search_artist_done(pfc::array_t<Artist_ptr>(), pfc::array_t<Artist_ptr>(), true);
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+        return;
+	g_discogs->find_release_dialog->on_search_artist_done_if_current(m_search_ticket, pfc::array_t<Artist_ptr>(), pfc::array_t<Artist_ptr>(), true);
 
 }
 
@@ -1071,6 +1325,11 @@ search_artist_process_callback::~search_artist_process_callback() {
 }
 
 void search_artist_process_callback::start(HWND parent) {
+    m_owner_window = parent;
+    // The owner dialog is accessed only on the GUI thread, never by safe_run.
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 
 	pfc::string8 pop_title;
 	if (m_va) {
@@ -1092,12 +1351,19 @@ void search_artist_process_callback::start(HWND parent) {
 
 void search_artist_process_callback::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    // This is the actual worker entry, not just a button or task scheduling.
+    discogger_live_search_qa::worker_started.fetch_add(1);
+#endif
 	pfc::string8 msg;
 
 	msg << "fetching online artist list...";
 
  	if (m_va & SearchMode::AT) {
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+        discogger_live_search_qa::worker_advanced.fetch_add(1);
+#endif
 		m_res_searchquery = 
 				discogs_interface->search_amt_artist(m_search, m_qdm_search_query, m_artist_exact_matches, m_artist_other_matches, p_status, p_abort);
 	}
@@ -1117,8 +1383,19 @@ void search_artist_process_callback::safe_run(threaded_process_status &p_status,
 }
 
 void search_artist_process_callback::on_success(HWND p_wnd) {
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    // Completed callback means the worker finished, even if the window closed.
+    discogger_live_search_qa::worker_success.fetch_add(1);
+#endif
+    PFC_ASSERT(core_api::is_main_thread());
+    // The modeless search can finish after the dialog was closed or replaced.
+    // Never update a new window with an obsolete search's cached results.
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+        return;
+    CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
 
 	try {
 
@@ -1143,7 +1420,7 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
 				std::string const  s = exp_pair.first;
 				pfc::string8 scrc;
 				std::ostringstream os;
-				os << std::hex << std::setw(8) << std::setfill('0') << crc(s.begin(), s.end());
+				os << std::hex << std::setw(8) << std::setfill('0') << discogger_crc::crc32(s.begin(), s.end());
 				scrc = os.str().c_str();
 
 				find_dlg->add_history(oplog_type::query, kHistorySearchQuery, "", "",
@@ -1177,11 +1454,18 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
 			}
 		}
 
+        // History and search-mode updates can dispatch synchronous Win32
+        // messages. Recheck the original owner before scheduling presentation.
+        if (!::IsWindow(m_owner_window) || !g_discogs ||
+            !g_discogs->find_release_dialog ||
+            g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+            return;
 		service_ptr_t<on_search_artist_done_process_callback> task =
 			new service_impl_t<on_search_artist_done_process_callback>(m_artist_exact_matches, m_artist_other_matches, false,
-				res_cap);
+				res_cap, m_search_ticket);
 
-		task->start(find_dlg->m_hWnd);
+        task->start(m_owner_window);
 	}
 	catch (locked_task_exception e)
 	{
@@ -1191,14 +1475,43 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
 }
 
 void search_artist_process_callback::on_abort(HWND p_wnd) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_abort.fetch_add(1);
+#endif
 	//..
 }
 
 void search_artist_process_callback::on_error(HWND p_wnd) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_error.fetch_add(1);
+#endif
 	//..
 }
 
 void expand_master_release_process_callback::start(HWND parent) {
+    m_owner_window = parent;
+    // Snapshot on the UI thread: a worker must not mutate the master
+    // whose sub_releases are currently rendered by the TreeView.
+    m_staged_master.reset();
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent) {
+        CFindReleaseDialog* dialog = g_discogs->find_release_dialog;
+        if (m_master_release) {
+            m_staged_master = std::make_shared<MasterRelease>(m_master_release->id.get_ptr());
+            // Copy each child object, not just its shared_ptr. The background
+            // parser updates preview fields and must never mutate a visible
+            // partial child before the UI accepts this search/filter ticket.
+            for (const Release_ptr& child : m_master_release->sub_releases) {
+                m_staged_master->sub_releases.append_single(
+                    child ? std::make_shared<Release>(*child) : Release_ptr());
+            }
+            m_staged_master->loaded_releases = m_master_release->loaded_releases;
+        }
+        m_search_ticket = dialog->current_search_request();
+        m_filter_ticket = dialog->current_filter_request();
+        if (::IsWindow(dialog->m_edit_filter))
+            m_filter_text = trim(uGetWindowText(dialog->m_edit_filter));
+    }
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1210,19 +1523,35 @@ void expand_master_release_process_callback::start(HWND parent) {
 }
 
 void expand_master_release_process_callback::safe_run(threaded_process_status &p_status, abort_callback &p_abort) {
-	p_status.set_item("expanding master release...");
-
-	if (!m_master_release->loaded_releases && !m_master_release->sub_releases.get_count()) {
-		m_master_release->load_releases(p_status, p_abort, false, m_offlineArtist_id, get_dbfetcher(), m_query_mode);
-	}
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-
-	find_dlg->on_expand_master_release_done(m_master_release, m_pos, p_status, p_abort);
+    // Worker-only: load versions without touching Win32 tree controls.
+    p_abort.check();
+    p_status.set_item("expanding master release...");
+    if (!m_staged_master) return;
+    // Partial AT results do not mean versions are complete.
+    if (!m_staged_master->loaded_releases) {
+        m_staged_master->load_releases(p_status, p_abort, false, m_offlineArtist_id, get_dbfetcher(), m_query_mode, true);
+    }
+    p_abort.check();
 }
 
 void expand_master_release_process_callback::on_success(HWND p_wnd) {
-	//todo: re-enable tree resfresh?
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_master_release || !m_staged_master || !m_staged_master->loaded_releases ||
+        !m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket) ||
+        !g_discogs->find_release_dialog->is_current_filter_request(m_filter_ticket) ||
+        g_discogs->find_release_dialog->GetSearchMode() != static_cast<size_t>(m_query_mode) ||
+        !::IsWindow(g_discogs->find_release_dialog->m_edit_filter) ||
+        !trim(uGetWindowText(g_discogs->find_release_dialog->m_edit_filter)).equals(m_filter_text))
+        return;
+    // The active tree checks the master ID against its current artist before
+    // expanding; a stale background load must not touch the old dialog.
+    fake_threaded_process_status status;
+    abort_callback_dummy abort;
+    g_discogs->find_release_dialog->on_expand_master_release_done(
+        m_master_release, m_pos, status, abort, m_staged_master);
 }
 
 void expand_master_release_process_callback::on_abort(HWND p_wnd) {
@@ -1235,6 +1564,13 @@ void expand_master_release_process_callback::on_error(HWND p_wnd) {
 
 
 void tree_apply_filter_process_callback::start(HWND parent) {
+    // A worker must not operate on a Win32 TreeView or an obsolete dialog.
+    m_owner_window = parent;
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent) {
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
+        m_filter_ticket = g_discogs->find_release_dialog->current_filter_request();
+    }
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1246,30 +1582,50 @@ void tree_apply_filter_process_callback::start(HWND parent) {
 }
 
 void tree_apply_filter_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
+    // The tree cache, EnableDispInfo and TreeView are UI-owned. Do not
+    // call CFindReleaseDialog::apply_filter from a threaded_process worker.
+    p_abort.check();
 	p_status.set_item(!m_strFilter.get_length() ? "show all" : PFC_string_formatter() << "filter: " << m_strFilter);
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	try {
-		find_dlg->apply_filter(m_strFilter, m_force_redraw, m_force_rebuild, p_status, p_abort);
-	}
-	catch (foo_discogs_exception e) {
-		//..
-	}
 }
 
 void tree_apply_filter_process_callback::on_success(HWND p_wnd) {
-	//todo
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	::ShowWindow(find_dlg->m_release_tree, SW_SHOW);
-	::InvalidateRect(g_discogs->find_release_dialog->m_release_tree, NULL, TRUE);
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket) ||
+        !g_discogs->find_release_dialog->is_current_filter_request(m_filter_ticket))
+        return;
 
+    CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
+    // A delayed filter completion must not replace a newer edit or search.
+    if (find_dlg->GetSearchMode() != static_cast<size_t>(m_query_mode) ||
+        !trim(uGetWindowText(find_dlg->m_edit_filter)).equals(m_strFilter))
+        return;
+
+    fake_threaded_process_status status;
+    abort_callback_dummy abort;
+    try {
+        find_dlg->apply_filter(m_strFilter, m_force_redraw, m_force_rebuild, status, abort);
+    }
+    catch (const foo_discogs_exception& e) {
+        log_msg(e.what());
+    }
+    // apply_filter may have changed the active dialog; validate it again.
+    on_abort(p_wnd);
 }
 
 void tree_apply_filter_process_callback::on_abort(HWND p_wnd) {
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	::ShowWindow(find_dlg->m_release_tree, SW_SHOW);
-	::InvalidateRect(g_discogs->find_release_dialog->m_release_tree, NULL, TRUE);
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket) ||
+        !g_discogs->find_release_dialog->is_current_filter_request(m_filter_ticket))
+        return;
+    CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
+    ::ShowWindow(find_dlg->m_release_tree, SW_SHOW);
+    ::InvalidateRect(find_dlg->m_release_tree, NULL, TRUE);
 }
 
 void tree_apply_filter_process_callback::on_error(HWND p_wnd) {
@@ -1279,6 +1635,7 @@ void tree_apply_filter_process_callback::on_error(HWND p_wnd) {
 
 
 void on_search_artist_done_process_callback::start(HWND parent) {
+    m_owner_window = parent;
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1290,23 +1647,30 @@ void on_search_artist_done_process_callback::start(HWND parent) {
 }
 
 void on_search_artist_done_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
-	p_status.set_item(PFC_string_formatter() << m_p_artist_exact_matches.get_count() << " exact, " << m_p_artist_other_matches.get_count() << "other matches");
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	try {
-		find_dlg->on_search_artist_done(m_p_artist_exact_matches, m_p_artist_other_matches, m_append, m_out_va_cap);
-	}
-	catch (foo_discogs_exception e) {
-		//..
-	}
+    // No HWND/list/tree access is permitted on the threaded_process worker.
+    p_abort.check();
+    p_status.set_item(PFC_string_formatter() << m_p_artist_exact_matches.get_count()
+        << " exact, " << m_p_artist_other_matches.get_count() << " other matches");
 }
 
 void on_search_artist_done_process_callback::on_success(HWND p_wnd) {
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-
-	find_dlg->ilo_get_uilist()->Invalidate(true);
-	init_scroolbars(find_dlg->ilo_get_uilist()->m_hWnd);
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+        return;
+    CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
+    find_dlg->on_search_artist_done_if_current(m_search_ticket, 
+        m_p_artist_exact_matches, m_p_artist_other_matches, m_append, m_out_va_cap);
+    // A synchronous display update can close or replace the modeless window.
+    if (!::IsWindow(m_owner_window) || !g_discogs ||
+        !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+        return;
+    find_dlg->ilo_get_uilist()->Invalidate(true);
+    init_scroolbars(find_dlg->ilo_get_uilist()->m_hWnd);
 }
 
 void on_search_artist_done_process_callback::on_abort(HWND p_wnd) {
@@ -1318,6 +1682,11 @@ void on_search_artist_done_process_callback::on_error(HWND p_wnd) {
 }
 
 void on_get_artist_done_process_callback::start(HWND parent) {
+    m_owner_window = parent;
+    // The owner dialog is accessed only on the GUI thread, never by safe_run.
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1329,19 +1698,19 @@ void on_get_artist_done_process_callback::start(HWND parent) {
 }
 
 void on_get_artist_done_process_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
-	p_status.set_item(m_artist.get() ? m_artist->name : "");
-
-	CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-	try {
-		find_dlg->on_get_artist_done(m_updsrc, m_artist);
-	}
-	catch (foo_discogs_exception e) {
-		//..
-	}
+    // Only prepare non-UI progress on the worker; all tree updates are UI-thread.
+    p_abort.check();
+    p_status.set_item(m_artist.get() ? m_artist->name.get_ptr() : "");
 }
 
 void on_get_artist_done_process_callback::on_success(HWND p_wnd) {
-	//..
+    PFC_ASSERT(core_api::is_main_thread());
+    if (!m_artist || !m_owner_window || !::IsWindow(m_owner_window) ||
+        !g_discogs || !g_discogs->find_release_dialog ||
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+        return;
+    g_discogs->find_release_dialog->on_get_artist_done(m_updsrc, m_artist);
 }
 
 void on_get_artist_done_process_callback::on_abort(HWND p_wnd) {
@@ -1362,12 +1731,26 @@ process_release_callback::process_release_callback(CFindReleaseDialog *dialog, c
 }
 
 void process_release_callback::start(HWND parent) {
+    m_owner_window = parent;
+    // Only capture the UI request ticket on the UI thread. The worker must
+    // never touch CFindReleaseDialog or its HWND.
+    if (g_discogs && g_discogs->find_release_dialog == m_dialog &&
+        m_dialog && m_dialog->m_hWnd == parent)
+        m_search_ticket = m_dialog->current_search_request();
 	threaded_process::g_run_modeless(this,
 		threaded_process::flag_show_item |
 		threaded_process::flag_show_delayed |
 		threaded_process::flag_show_abort,
 		parent,
 		"Processing release...");
+}
+
+bool process_release_callback::owner_is_current() const {
+    PFC_ASSERT(core_api::is_main_thread());
+    return m_owner_window && ::IsWindow(m_owner_window) &&
+        g_discogs && g_discogs->find_release_dialog == m_dialog &&
+        m_dialog && m_dialog->m_hWnd == m_owner_window &&
+        m_dialog->is_current_search_request(m_search_ticket);
 }
 
 void process_release_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
@@ -1431,9 +1814,8 @@ void process_release_callback::safe_run(threaded_process_status& p_status, abort
 		throw;
 	}
 
-	// hide find release dlg
-
-	m_dialog->hide();
+	// Win32 dialog visibility is UI-thread-owned. Do not hide or dereference
+    // the originating dialog from this network/metadata worker.
 
 #ifdef SIM_VA_MA_BETA
 	bool bva_as_ma = CONF.find_release_dlg_flags & CFindReleaseDialog::FLG_VA_AS_MA;
@@ -1565,7 +1947,12 @@ void process_release_callback::generate_track_mapping(TagWriter& tagwriter, cons
 }
 
 void process_release_callback::on_success(HWND p_wnd) {
+    PFC_ASSERT(core_api::is_main_thread());
+    // A newer search/release, closed dialog or replaced HWND must never
+    // receive this old release's history or track-matching preview.
+    if (!owner_is_current() || !m_tag_writer) return;
 	auto tw_release = m_tag_writer->GetRelease();
+    if (!tw_release) return;
 	if (tw_release) {
 		rppair row = std::pair(std::pair(tw_release->id, tw_release->title),
 			std::pair("", ""));
@@ -1574,6 +1961,10 @@ void process_release_callback::on_success(HWND p_wnd) {
 		m_dialog->add_history(oplog_type::release, kHistoryProccessRelease, row);
 	}
 
+    // add_history may synchronously dispatch Win32 messages and close the
+    // dialog. Revalidate before hiding it or opening the preview.
+    if (!owner_is_current()) return;
+    m_dialog->hide();
 	{
 		//todo: trace race condition
 		std::lock_guard<std::mutex> ul(g_discogs->create_match_tracking_mutex);
@@ -1585,11 +1976,13 @@ void process_release_callback::on_success(HWND p_wnd) {
 }
 
 void process_release_callback::on_abort(HWND p_wnd) {
-	m_dialog->show();
+    PFC_ASSERT(core_api::is_main_thread());
+    if (owner_is_current()) m_dialog->show();
 }
 
 void process_release_callback::on_error(HWND p_wnd) {
-	m_dialog->show();
+    PFC_ASSERT(core_api::is_main_thread());
+    if (owner_is_current()) m_dialog->show();
 }
 
 process_artwork_preview_callback::process_artwork_preview_callback(CTrackMatchingDialog* dialog, const Release_ptr& release, const size_t img_ndx, const bool bartist, bool onlycache, bool get_mibs) :

@@ -4,6 +4,29 @@
 #include "multiformat.h"
 
 #include "tag_writer.h"
+#include "tag_deletion_preflight.h"
+#include "discogger_duration_match.h"
+#include "discogger_result_alignment.h"
+#include "discogger_number_match.h"
+#include "discogger_match_policy.h"
+#include <set>
+
+
+namespace {
+// Guard release/track dereferences during both preview generation and commit.
+// Old UI mappings may outlive the release tree they originally referred to.
+bool valid_enabled_track_mapping(const Release_ptr& release,
+    const track_mapping& mapping, size_t file_count) {
+    if (!release || mapping.file_index >= file_count ||
+        mapping.discogs_disc < 0 ||
+        static_cast<size_t>(mapping.discogs_disc) >= release->discs.get_count()) return false;
+    const auto& disc = release->discs[mapping.discogs_disc];
+    return disc && discogger_result_alignment::valid_track_location(
+        mapping.discogs_disc, mapping.discogs_track,
+        release->discs.get_count(), disc->tracks.get_count()) &&
+        static_cast<bool>(disc->tracks[mapping.discogs_track]);
+}
+} // namespace
 
 TagWriter::TagWriter(file_info_manager_ptr finfo_manager, Release_ptr release) : m_finfo_manager(finfo_manager), release(release), tag_results_mask_mode(PreView::Undef) {
 
@@ -51,11 +74,10 @@ bool TagWriter::Staging_Results() {
 		}
 	}
 	for (const tag_result_ptr wr : tag_results) {
-		bool usr_app = wr->r_usr_approved.find_first(true, 0, wr->r_usr_approved.size() < wr->r_usr_approved.size());
-		if (usr_app) {
-			return true;
-		}
-	}
+        if (discogger_write_safety::has_any_user_approval(wr->r_usr_approved)) {
+            return true;
+        }
+    }
 
 	return false;
 }
@@ -73,28 +95,32 @@ const std::vector<int(TagWriter::*)(track_mappings_list_type &)> TagWriter::m_ma
 };
 
 void TagWriter::match_tracks() {
-	m_match_status = route_discogs_track_order(m_track_mappings);
-	if (m_match_status != MATCH_SUCCESS) {
-		const size_t citems = m_finfo_manager->items.get_count();
-		size_t ctracks = 0;
-		for (size_t i = 0; i < release->discs.get_count(); i++) {
-			for (size_t j = 0; j < release->discs[i]->tracks.get_count(); j++) {
-				if (ctracks < citems) {					
-					track_mapping& tm = m_track_mappings[ctracks];
-					tm.enabled = true;
-					tm.discogs_disc = i;
-					tm.discogs_track = j;
+    m_match_status = route_discogs_track_order(m_track_mappings);
+    const auto action = discogger_match_policy::for_status(
+        m_match_status, MATCH_SUCCESS, MATCH_ASSUME);
+    if (action == discogger_match_policy::action::preserve) return;
+    if (action == discogger_match_policy::action::disable) {
+        // A failed number/duration match, ambiguous remix, or mismatched
+        // selection must never become an enabled list-order assignment.
+        // Clear even partial approvals left by an earlier successful matcher.
+        for (size_t i = 0; i < m_track_mappings.get_count(); ++i)
+            m_track_mappings[i].enabled = false;
+        return;
+    }
 
-					ctracks++;
-				}
-				else {
-					//run out of files to match
-					return;
-				}
-				
-			}
-		}
-	}
+    // MATCH_ASSUME is the sole route allowed to use list-order mapping.
+    const size_t citems = m_finfo_manager->items.get_count();
+    size_t ctracks = 0;
+    for (size_t i = 0; i < release->discs.get_count(); ++i) {
+        for (size_t j = 0; j < release->discs[i]->tracks.get_count(); ++j) {
+            if (ctracks >= citems) return;
+            track_mapping& tm = m_track_mappings[ctracks];
+            tm.enabled = true;
+            tm.discogs_disc = i;
+            tm.discogs_track = j;
+            ++ctracks;
+        }
+    }
 }
 
 int TagWriter::route_discogs_track_order(track_mappings_list_type &mappings) {
@@ -181,152 +207,117 @@ void copy(size_t **s, size_t **d, size_t n) {
 }
 
 int TagWriter::order_tracks_by_duration(track_mappings_list_type &mappings) {
-	if (!CONF.match_tracks_using_duration) {
-		return MATCH_NA;
-	}
+    if (!CONF.match_tracks_using_duration) return MATCH_NA;
+    if (!release || !release->has_tracklengths()) return MATCH_NA;
 
-	const size_t citems = m_finfo_manager->items.get_count();
-	// first try to match tracks on nearest track length if the release has lengths
-	metadb_handle_ptr item;
+    const size_t citems = m_finfo_manager->items.get_count();
+    const size_t ctracks = release->get_total_track_count();
+    if (citems == 0 || citems != ctracks) return MATCH_FAIL;
+    const size_t max_delta = citems * 5;
+    size_t total_delta = 0;
+    std::vector<bool> claimed(ctracks, false);
 
-	if (release && release->has_tracklengths()) {
-		// max delta of 5 seconds per track
-		const unsigned MAX_DELTA = citems * 5;
-		unsigned total_delta = 0;
-
-		// for every selected item,
-		// find the discogs track that most closely matches its duration
-		// 
-
-		std::map<int, bool> used_indexes;
-
-		for (size_t i = 0; i < citems; i++) {
-			item = m_finfo_manager->items.get_item(i);
-			int min_delta = 0xFFFFFF;
-			int bad_min_delta = 0xFFFFFF;
-
-			int min_delta_index = 0;
-			int min_delta_disc = 0;
-			int min_delta_track = 0;
-
-			int cnum = 0;
-			for (size_t d = 0; d < release->discs.get_size(); d++) {
-				ReleaseDisc_ptr &disc = release->discs[d];
-				for (size_t j = 0; j < disc->tracks.get_size(); j++) {
-					ReleaseTrack_ptr &track = disc->tracks[j];
-					int file_length = (int)round(item->get_length());
-					int discogs_length = track->discogs_duration_seconds + track->discogs_hidden_duration_seconds;
-					int delta = abs(file_length - discogs_length);
-					if (delta < min_delta) {
-						if (used_indexes[cnum]) {
-							bad_min_delta = delta;
-						}
-						else {
-							min_delta = delta;
-							min_delta_index = cnum;
-							min_delta_disc = d;
-							min_delta_track = j;
-						}
-					}
-					cnum++;
-				}
-			}
-
-			// give up if the same track is the best match twice
-			if (bad_min_delta < min_delta) {
-				return MATCH_FAIL;
-			}
-			total_delta += min_delta;
-			if (total_delta > MAX_DELTA) {
-				return MATCH_FAIL;
-			}
-			used_indexes[min_delta_index] = true;
-			mappings[i].enabled = true;
-			mappings[i].discogs_disc = min_delta_disc;
-			mappings[i].discogs_track = min_delta_track;
-		}
-	}
-	else {
-		return MATCH_NA;
-	}
-	return MATCH_SUCCESS;
+    for (size_t i = 0; i < citems; ++i) {
+        const metadb_handle_ptr item = m_finfo_manager->items.get_item(i);
+        if (!item) return MATCH_FAIL;
+        const int file_length = static_cast<int>(round(item->get_length()));
+        std::vector<int> deltas;
+        std::vector<std::pair<size_t, size_t>> positions;
+        deltas.reserve(ctracks);
+        positions.reserve(ctracks);
+        for (size_t d = 0; d < release->discs.get_size(); ++d) {
+            const ReleaseDisc_ptr& disc = release->discs[d];
+            if (!disc) return MATCH_FAIL;
+            for (size_t j = 0; j < disc->tracks.get_size(); ++j) {
+                const ReleaseTrack_ptr& track = disc->tracks[j];
+                if (!track) return MATCH_FAIL;
+                const int discogs_length = track->discogs_duration_seconds +
+                    track->discogs_hidden_duration_seconds;
+                deltas.push_back(abs(file_length - discogs_length));
+                positions.emplace_back(d, j);
+            }
+        }
+        const size_t selected = discogger_matching::unique_nearest_unclaimed(deltas, claimed);
+        // Equal durations, an already claimed equally good candidate, or
+        // malformed/missing tracks must never be auto-assigned by list order.
+        if (selected == static_cast<size_t>(-1) || selected >= positions.size())
+            return MATCH_FAIL;
+        total_delta += static_cast<size_t>(deltas[selected]);
+        if (total_delta > max_delta) return MATCH_FAIL;
+        claimed[selected] = true;
+        mappings[i].enabled = true;
+        mappings[i].discogs_disc = positions[selected].first;
+        mappings[i].discogs_track = positions[selected].second;
+    }
+    return MATCH_SUCCESS;
 }
 
 int TagWriter::order_tracks_by_number(track_mappings_list_type &mappings) {
-	if (!CONF.match_tracks_using_number) {
-		return MATCH_NA;
-	}
+    if (!CONF.match_tracks_using_number) return MATCH_NA;
+    if (!release || !m_finfo_manager) return MATCH_FAIL;
 
-	const size_t citems = m_finfo_manager->items.get_count();
-	int missing = 0;
-	metadb_handle_ptr item;
+    const size_t citems = m_finfo_manager->items.get_count();
+    int missing = 0;
+    pfc::array_t<std::pair<size_t, size_t>> used;
+    file_info_impl finfo;
 
-	pfc::array_t<std::pair<size_t, size_t>> used;
+    for (size_t i = 0; i < citems; ++i) {
+        const metadb_handle_ptr item = m_finfo_manager->items.get_item(i);
+        if (!item) return MATCH_FAIL;
+        item->get_info(finfo);
 
-	file_info_impl finfo;
-	for (size_t i = 0; i < citems; i++) {
-		item = m_finfo_manager->items.get_item(i);
-		item->get_info(finfo);
+        const char* disc_number_s = finfo.meta_get("DISCNUMBER", 0);
+        const char* track_number_s = finfo.meta_get("TRACKNUMBER", 0);
+        int disc_number = 0, track_number = 0;
+        try {
+            if (disc_number_s != nullptr) disc_number = std::stoi(disc_number_s);
+            if (track_number_s == nullptr) {
+                ++missing;
+                continue;
+            }
+            track_number = std::stoi(track_number_s);
+        } catch (const std::exception&) {
+            ++missing;
+            continue;
+        }
 
-		const char * disc_number_s = finfo.meta_get("DISCNUMBER", 0);
-		const char * track_number_s = finfo.meta_get("TRACKNUMBER", 0);
-		int disc_number, track_number;
-		try {
-			if (disc_number_s != nullptr) {
-				disc_number = std::stoi(disc_number_s);
-			}
-			else {
-				disc_number = 0;
-			}
-			if (track_number_s != nullptr) {
-				track_number = std::stoi(track_number_s);
-			}
-			else {
-				missing++;
-				continue;
-			}
-		}
-		catch (std::exception) {
-			missing++;
-			continue;
-		}
+        discogger_number_matching::unique_number_match match;
+        size_t absolute_track_number = 0;
+        for (size_t d = 0; d < release->discs.get_size(); ++d) {
+            const ReleaseDisc_ptr& disc = release->discs[d];
+            if (!disc) return MATCH_FAIL;
+            for (size_t j = 0; j < disc->tracks.get_size(); ++j) {
+                const ReleaseTrack_ptr& track = disc->tracks[j];
+                if (!track) return MATCH_FAIL;
+                ++absolute_track_number;
+                match.consider(disc_number, track_number, disc->disc_number,
+                    track->track_number, track->disc_track_number,
+                    absolute_track_number, d, j);
+            }
+        }
 
-		int total_num = 0;
-		bool found = false;
-		for (size_t d = 0; d < release->discs.get_size() && !found; d++) {
-			ReleaseDisc_ptr &disc = release->discs[d];
-			for (size_t j = 0; j < disc->tracks.get_size(); j++) {
-				total_num++;
-				ReleaseTrack_ptr &track = disc->tracks[j];
-				bool match;
-				match = (!disc_number || disc_number == disc->disc_number) && (track->track_number == track_number || track->disc_track_number == track_number);
-				match = match || (!disc_number && track_number == total_num);
-				if (match) {
-					for (size_t k = 0; k < used.get_count(); k++) {
-						if (used[k].first == d && used[k].second == j) {
-							return MATCH_FAIL;
-						}
-					}
-					mappings[i].enabled = true;
-					mappings[i].discogs_disc = d;
-					mappings[i].discogs_track = j;
-					found = true;
-					used.append_single(std::pair<size_t, size_t>(d, j));
-					break;
-				}
-			}
-		}
-		if (!found) {
-			missing++;
-		}
-	}
-	if (missing == citems) {
-		return MATCH_NA;
-	}
-	else if (missing) {
-		return MATCH_FAIL;
-	}
-	return MATCH_SUCCESS;
+        // A first-match choice could tag the wrong disc/remix. Crucially,
+        // ambiguity is MATCH_FAIL, not MATCH_NA: never fall back to assumed
+        // list order when numbered tracks disagree.
+        if (match.ambiguous()) return MATCH_FAIL;
+        if (!match.unique()) {
+            ++missing;
+            continue;
+        }
+        const size_t disc_index = match.disc_index();
+        const size_t track_index = match.track_index();
+        for (size_t k = 0; k < used.get_count(); ++k) {
+            if (used[k].first == disc_index && used[k].second == track_index)
+                return MATCH_FAIL;
+        }
+        mappings[i].enabled = true;
+        mappings[i].discogs_disc = disc_index;
+        mappings[i].discogs_track = track_index;
+        used.append_single(std::pair<size_t, size_t>(disc_index, track_index));
+    }
+    if (missing == citems) return MATCH_NA;
+    if (missing) return MATCH_FAIL;
+    return MATCH_SUCCESS;
 }
 
 int TagWriter::order_tracks_by_assumption(track_mappings_list_type &mappings) {
@@ -347,15 +338,17 @@ bool check_multiple_results(pfc::array_t<string_encoded_array> where, string_enc
 
 void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_process_status& p_status, abort_callback& p_abort) {
 
-	tag_mapping_list_type* ptags;
-	if (alt_mappings) {
-		ptags = alt_mappings;
-	}
-	else {
-		ptags = &TAGS;
-	}
-
 	atm_tag_results_ready = false;
+    if (!m_finfo_manager || !release)
+        throw foo_discogs_exception("Tag generation stopped: missing release or file context.");
+    // Check every enabled mapping before evaluating a formatting script.
+    // A partial preview must never silently shift approvals to other tracks.
+    for (size_t i = 0; i < m_track_mappings.get_count(); ++i) {
+        const auto& mapping = m_track_mappings[i];
+        if (mapping.enabled && !valid_enabled_track_mapping(
+                release, mapping, m_finfo_manager->get_item_count()))
+            throw foo_discogs_exception("Tag generation stopped: stale or invalid Discogs track mapping.");
+    }
 
 	auto masksize = tag_results_mask.size();
 
@@ -391,12 +384,17 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 
 	persistent_store prompt_store;
 
+    // Own complete mapping values until preview approval and physical commit finish.
+    // The active cfg_objList returns values, not stable references.
+    if (alt_mappings) m_mapping_snapshot.from_list(*alt_mappings);
+    else m_mapping_snapshot.from_config(TAGS);
+
 	size_t lkey = encode_mr(0, release ? atoi(release->master_id): 0);
 	MasterRelease_ptr master = discogs_interface->get_master_release(lkey);
 
-	for (size_t wtags = 0; wtags < ptags->get_size(); wtags++) {
+	for (size_t wtags = 0; wtags < m_mapping_snapshot.size(); wtags++) {
 
-		const tag_mapping_entry& entry = ptags->get_item_ref(wtags);
+		const tag_mapping_entry& entry = m_mapping_snapshot.at(wtags);
 
 		if ((entry.enable_write) || (entry.enable_update)) {
 
@@ -447,19 +445,17 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 				metadb_handle_ptr item = nullptr;
 
 				try {
-					if (file_index < m_finfo_manager->get_item_count()) {
-
-						item = m_finfo_manager->get_item_handle(file_index);
-
-					}
-					else {
-						break;
-					}
-				}
-				catch (std::exception e) {
-					std::string dbexception(e.what());
-					continue;
-				}
+                    // Failed lookups must abort generation, not silently omit
+                    // a row and allow approvals to shift to the next file.
+                    item = m_finfo_manager->get_item_handle(file_index);
+                }
+                catch (const std::exception& e) {
+                    foo_discogs_exception ex;
+                    ex << "Tag generation stopped: cannot load selected file [" << e.what() << "]";
+                    throw ex;
+                }
+                if (!item)
+                    throw foo_discogs_exception("Tag generation stopped: missing selected file handle.");
 				file_info& info = m_finfo_manager->get_item(file_index);
 
 				const ReleaseDisc_ptr& disc = release->discs[disc_index];
@@ -483,11 +479,12 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 					}
 					result->value.append_single(value);
 				}
-				catch (http_404_exception) {
-					log_msg("error runing...");
-				}
+				catch (http_404_exception&) {
+                    // Never append approval rows for a tag whose value failed
+                    // to generate: truncated rows could target the wrong file.
+                    throw foo_discogs_exception("Tag generation stopped: Discogs resource missing (HTTP 404).");
+                }
 				catch (foo_discogs_exception& e) {
-					atm_tag_results_ready = true;
 					foo_discogs_exception ex;
 					ex << "Error generating tag " << entry.tag_name << " [" << e.what() << "] for file " << item->get_path();
 					throw ex;
@@ -552,7 +549,6 @@ void TagWriter::generate_tags(tag_mapping_list_type* alt_mappings, threaded_proc
 					result->result_approved |= result->r_approved[result->r_approved.get_count() - 1];
 				}
 				catch (std::exception& e) {
-					atm_tag_results_ready = true;
 					foo_discogs_exception ex;
 					ex << "Error reading tag " << entry.tag_name << " [" << e.what() << "] for file " << item->get_path();
 					throw ex;
@@ -713,14 +709,54 @@ void process_result(const metadb_handle_ptr item, file_info* info, size_t ndx_tr
 }
 
 void TagWriter::write_tags() {
+    // Failed or cancelled tag generation must not reuse earlier preview rows,
+    // even if the caller bypasses the preview dialog's disabled Write button.
+    if (!m_finfo_manager || !ResultsReady())
+        throw foo_discogs_exception("Tagging stopped: no complete, current tag preview.");
+    // Generator approval rows are indexed only by enabled track mappings.
+    // A stale preview, missing result, duplicate physical target, or out-of-
+    // range file index must be rejected BEFORE touching any working file_info.
+    const size_t file_count = m_finfo_manager->get_item_count();
+    size_t enabled_count = 0;
+    std::set<size_t> used_file_indices;
+    for (size_t i = 0; i < m_track_mappings.get_count(); ++i) {
+        const auto& mapping = m_track_mappings[i];
+        if (!mapping.enabled) continue;
+        if (!valid_enabled_track_mapping(release, mapping, file_count) ||
+            !used_file_indices.insert(mapping.file_index).second)
+            throw foo_discogs_exception("Tagging stopped: invalid, stale or duplicate track mapping.");
+        ++enabled_count;
+    }
+    if (enabled_count == 0)
+        throw foo_discogs_exception("Tagging stopped: no enabled track mappings.");
+    if (tag_results_mask.size() > tag_results.get_count())
+        throw foo_discogs_exception("Tagging stopped: stale preview selection mask.");
+    for (size_t i = 0; i < tag_results.get_count(); ++i) {
+        const auto& result = tag_results[i];
+        if (!result || !result->tag_entry ||
+            !discogger_result_alignment::valid_result_shape(
+                enabled_count, result->r_approved.get_count(),
+                result->value.get_count(), result->old_value.get_count()))
+            throw foo_discogs_exception("Tagging stopped: stale or incomplete tag preview rows.");
+    }
 
+    // Fail closed if any later row, mapping or tag operation throws after
+    // earlier rows have been mutated. No disk write occurs in this stage.
+    discogger_write_safety::staging_rollback_guard stage_guard(
+        [manager = m_finfo_manager]() {
+            try { manager->discard_pending_changes(); }
+            catch (...) { manager->begin_physical_read(); }
+        });
 	m_finfo_manager->invalidate_all();
 
 	bit_array_bittable info_man_validate_mask(bit_array_false(), m_finfo_manager->items.get_count());
+    // Snapshot once per physical write; preserve all original fields by default.
+    const auto active_mappings = TAGS.get();
 
 	bool bhasmask = tag_results_mask.size();
 
 	//tracks
+    size_t enabled_result_index = 0;
 	for (size_t i = 0; i < m_track_mappings.get_count(); i++) {
 
 		const track_mapping &mapping = m_track_mappings[i];
@@ -728,12 +764,13 @@ void TagWriter::write_tags() {
 		if (!mapping.enabled) {
 			continue;
 		}
+        const size_t approval_row = enabled_result_index++;
 
 		size_t file_index = mapping.file_index;
 
 		if (file_index >= m_finfo_manager.get()->get_item_count()) {
-			//run out of tracks... skip unmatched files
-			break;
+			// Stale mapping: fail closed rather than submitting a partial batch.
+            throw foo_discogs_exception("Tagging stopped: mapping is outside the selected files.");
 		}
 		metadb_handle_ptr item = m_finfo_manager->get_item_handle(file_index);
 		file_info &info = m_finfo_manager->get_item(file_index);
@@ -756,7 +793,7 @@ void TagWriter::write_tags() {
 
 				bool bvalidate = false;
 				write_tag_nfo out_write_info = { 0 };
-				process_result(item, &info, i /*ndx_track_mappings*/, result, bhasmask, tag_results_mask_force_wu, false, bvalidate, out_write_info);
+				process_result(item, &info, approval_row /*enabled result row*/, result, bhasmask, tag_results_mask_force_wu, false, bvalidate, out_write_info);
 
 				if (out_write_info.item.get_ptr()) {
 					if (out_write_info.tag_values_array.get_count()) {
@@ -786,7 +823,7 @@ void TagWriter::write_tags() {
 
 				bool bvalidate = false;
 				write_tag_nfo out_write_info = { 0 };
-				process_result(item, &info, i, result, bhasmask, tag_results_mask_force_wu, mask_size, bvalidate, out_write_info);
+				process_result(item, &info, approval_row, result, bhasmask, tag_results_mask_force_wu, mask_size, bvalidate, out_write_info);
 
 				if (out_write_info.item.get_ptr()) {
 					if (out_write_info.tag_values_array.get_count()) {
@@ -817,9 +854,8 @@ void TagWriter::write_tags() {
 				const char * tag_name = info.meta_enum_name(j);
 
 				//do not remove current map tags
-				for (size_t k = 0; k < TAGS.get_size(); k++) {
-					const auto &tag = TAGS.get_item_ref(k);
-					bool match = !pfc::stringCompareCaseInsensitive(tag_name, tag.tag_name);
+				for (const auto& tag : active_mappings) {
+                    bool match = stricmp_utf8(tag_name, tag.tag_name.get_ptr()) == 0;
 					if (match) {
 						delete_mask.set(j, false);
 						break;
@@ -850,6 +886,7 @@ void TagWriter::write_tags() {
 		}
 
 	}//end tracks loop
+    stage_guard.disarm();
 }
 
 // single vals
@@ -869,11 +906,14 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 		else {
 			logtrack = "";
 		}
-		logmsg << logtrack << "T < single-val: " << entry.tag_name << " < " << (tag_value.get_length()? tag_value : "(empty)");
+		logmsg << logtrack << "T < single-val: " << entry.tag_name << " < " << (tag_value.get_length()? tag_value.get_ptr() : "(empty)");
 		log_msg(logmsg); logmsg = "";
 	} //..log
 
 	size_t cexist = info.meta_get_count_by_name(entry.tag_name);
+    if (discogger_write_safety::unchanged_single_value(
+            cexist, cexist ? info.meta_get(entry.tag_name, 0) : nullptr,
+            tag_value.get_ptr())) return;
 
 	if (cexist > 1 && tag_value.get_length()) {
 
@@ -890,7 +930,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 	if (tag_value.get_length()) {
 		//log
 		if (blog) {
-			logmsg << logtrack << "Tw < set " << entry.tag_name << " = " << (tag_value.get_length() ? tag_value : "(empty)");
+			logmsg << logtrack << "Tw < set " << entry.tag_name << " = " << (tag_value.get_length() ? tag_value.get_ptr() : "(empty)");
 			log_msg(logmsg); logmsg = "";
 		}	//..log
 		try {
@@ -926,7 +966,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 
 		if (bauto_add_mfield) {
 
-			if (is_multivalue_meta(entry.tag_name)) {
+			if (discogger_is_multivalue_meta(entry.tag_name)) {
 				bauto_fresh_mfield = true;
 			}
 			else {
@@ -972,7 +1012,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 			dbgflat << tag_values[ws].get_pure_cvalue();
 		}
 		logmsg << logtrack << "T < multi-value (array " << tag_values.get_size() << ") < " << (!entry.is_multival_meta && !bauto_fresh_mfield ? "not " : "") << "multi-val "
-			<< entry.tag_name << " < " << (tag_values.get_size() ? dbgflat : "(empty)");
+			<< entry.tag_name << " < " << (tag_values.get_size() ? dbgflat.get_ptr() : "(empty)");
 		log_msg(logmsg); logmsg = "";
 	}//..log
 
@@ -1034,7 +1074,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 					//log
 					if (blog) {
 						pfc::string8 dbgflat(setval);
-						logmsg << logtrack << "TW < sets " << entry.tag_name << " = " << (setval.get_length() ? setval : "(empty)");
+						logmsg << logtrack << "TW < sets " << entry.tag_name << " = " << (setval.get_length() ? setval.get_ptr() : "(empty)");
 						log_msg(logmsg); logmsg = "";
 					}//..log
 
@@ -1051,7 +1091,7 @@ void TagWriter::write_tag(metadb_handle_ptr item, file_info &info, const tag_map
 					//log
 					if (blog) {
 						pfc::string8 dbgflat = tag_values[i].get_pure_cvalue();
-						logmsg << logtrack << "TW < adds " << entry.tag_name << " + " << (dbgflat.get_length() ? dbgflat : "(empty)");
+						logmsg << logtrack << "TW < adds " << entry.tag_name << " + " << (dbgflat.get_length() ? dbgflat.get_ptr() : "(empty)");
 						log_msg(logmsg); logmsg = "";
 					}//..log
 

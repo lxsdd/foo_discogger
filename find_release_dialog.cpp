@@ -1,4 +1,6 @@
 #include "stdafx.h"
+#include <cstdlib>
+#include <cstring>
 #include "configuration_dialog.h"
 #include "tasks.h"
 
@@ -8,8 +10,70 @@
 
 #include "tag_mappings_dialog.h"
 #include "find_release_dialog.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
+#include "discogger_release_id.h"
+#include "discogger_artist_activation.h"
+#include "discogger_artist_refresh.h"
+#include "discogs_interface.h"
+#include "discogger_search_visibility.h"
+#include "discogger_search_fallback.h"
+#include <unordered_set>
+#include <iterator>
 
 namespace ol = Offline;
+
+namespace {
+// Advanced Discogs searches can match releases under several artist identities.
+// The search tree is a preview, not an artist selection or a tagging decision.
+// Keep the original artist list for explicit selection while displaying every
+// already fetched result (once per Discogs ID) without another API request.
+Artist_ptr combined_advanced_search_preview(const pfc::array_t<Artist_ptr>& artists) {
+    Artist_ptr preview = std::make_shared<Artist>("0"); // existing search preview sentinel
+    preview->name = "Search results across artists";
+    preview->loaded_preview = true;
+    // A search response is partial; do not advertise an authoritative artist catalog.
+    preview->loaded_releases = false;
+    std::unordered_set<std::string> seen_masters, seen_releases;
+    auto append_master = [&](const MasterRelease_ptr& master) {
+        if (master && seen_masters.emplace(master->id.get_ptr()).second) {
+            preview->master_releases.append_single(master);
+            preview->search_order_master.append_single(true);
+        }
+    };
+    auto append_release = [&](const Release_ptr& release) {
+        if (release && seen_releases.emplace(release->id.get_ptr()).second) {
+            preview->releases.append_single(release);
+            preview->search_order_master.append_single(false);
+        }
+    };
+
+    for (size_t i = 0; i < artists.get_count(); ++i) {
+        const Artist_ptr& artist = artists[i];
+        if (!artist) continue;
+        size_t master_idx = 0, release_idx = 0;
+        for (size_t order = 0; order < artist->search_order_master.get_count(); ++order) {
+            if (artist->search_order_master[order]) {
+                if (master_idx < artist->master_releases.get_count())
+                    append_master(artist->master_releases[master_idx]);
+                ++master_idx;
+            } else {
+                if (release_idx < artist->releases.get_count())
+                    append_release(artist->releases[release_idx]);
+                ++release_idx;
+            }
+        }
+        // Defensive: an incomplete upstream order array must not hide results.
+        while (master_idx < artist->master_releases.get_count())
+            append_master(artist->master_releases[master_idx++]);
+        while (release_idx < artist->releases.get_count())
+            append_release(artist->releases[release_idx++]);
+    }
+    return preview;
+}
+} // namespace
+
 
 // find release
 // {F924481B-17A0-423F-B1A6-07293DC46810}
@@ -239,8 +303,8 @@ void CFindReleaseDialog::init_cfged_dialog_controls() {
 		print_root_stats(m_row_stats, false, true, CONF.awt_get_alt_mode());
 	}
 	else {
-		pfc::string8 artist_name = m_alist.Get_Artist() ? m_alist.Get_Artist()->name : "";
-		pfc::string8 artist_id = m_alist.Get_Artist() ? m_alist.Get_Artist()->id : "";
+		pfc::string8 artist_name = m_alist.Get_Artist() ? m_alist.Get_Artist()->name : pfc::string8();
+		pfc::string8 artist_id = m_alist.Get_Artist() ? m_alist.Get_Artist()->id : pfc::string8();
 		rppair row_stats{ std::pair("",""), std::pair(artist_name, artist_id) };
 
 		print_root_stats(row_stats, /*overwrite*/ !m_row_stats.second.first.get_length());
@@ -261,6 +325,27 @@ LRESULT CFindReleaseDialog::OnButtonNext(WORD /*wNotifyCode*/, WORD wID, HWND /*
 	}
 
 	return TRUE;
+}
+
+// Open the selected artist's releases on a genuine list-row double-click,
+// using the same path as Enter. The notification is sent to this dialog,
+// not to the list's own WTL message map.
+LRESULT CFindReleaseDialog::OnArtistListDoubleClick(
+    int /*idCtrl*/, LPNMHDR hdr, BOOL& bHandled) {
+    bHandled = FALSE;
+    if (hdr == nullptr || hdr->hwndFrom != m_artist_list ||
+        hdr->code != NM_DBLCLK)
+        return 0;
+
+    const auto* item = reinterpret_cast<const NMITEMACTIVATE*>(hdr);
+    if (!discogger_ui::should_load_artist_on_double_click(
+            item->iItem, m_alist.GetFirstSelected(),
+            m_alist.Get_Artists().get_count()))
+        return 0;
+
+    bHandled = TRUE;
+    m_alist.Default_Action();
+    return 0;
 }
 
 //from Enter key hook
@@ -286,6 +371,18 @@ bool CFindReleaseDialog::ForwardVKReturn()
 }
 
 bool OAuthCheck(const foo_conf& conf) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	// The protected Windows QA runner injects all four values in memory. The
+	// disposable GUI may search without persisting tokens to Discogger config.
+	const char* runner = std::getenv("GITHUB_ACTIONS");
+	const char* key = std::getenv("DISCOGS_OAUTH_CONSUMER_KEY");
+	const char* secret = std::getenv("DISCOGS_OAUTH_CONSUMER_SECRET");
+	const char* access = std::getenv("DISCOGS_OAUTH_ACCESS_TOKEN");
+	const char* access_secret = std::getenv("DISCOGS_OAUTH_TOKEN_SECRET");
+	if (runner && std::strcmp(runner, "true") == 0 &&
+		key && *key && secret && *secret && access && *access &&
+		access_secret && *access_secret) return true;
+#endif
 
 	if (!g_discogs->gave_oauth_warning && (!conf.oauth_token.get_length() || !conf.oauth_token_secret.get_length())) {
 
@@ -345,9 +442,12 @@ void CFindReleaseDialog::SetSearchModeText(const pfc::string8 msg, bool mode_pre
 		buffer = msg;
 	}
 
-	fb2k::inMainThread([this, buffer] {
-		uSetWindowText(m_static_search_msg, buffer);
-		});
+    const HWND status_window = m_static_search_msg;
+    fb2k::inMainThread([status_window, buffer] {
+        if (::IsWindow(status_window) &&
+            ::GetDlgCtrlID(status_window) == IDC_STATIC_FIND_REL_SEARCH_STATS)
+            uSetWindowText(status_window, buffer);
+    });
 }
 
 pfc::string8 CFindReleaseDialog::GetSearchModeMsg() {
@@ -391,7 +491,7 @@ bool CFindReleaseDialog::GetCustomQueryTF(pfc::string8& frm_custom_tf) {
 		//
 
 		try {
-			m_query_custom_fs->run_hook(m_items[0]->get_location(), &info, &hook, custom_tf, nullptr);
+			m_query_custom_script->run_hook(m_items[0]->get_location(), &info, &hook, custom_tf, nullptr);
 		}
 		catch (...) {
 			pfc::string8 msg("Error running custom search query title-format: ");
@@ -491,6 +591,9 @@ void CFindReleaseDialog::GetCurrentSearchArtist(pfc::string8& out) {
 
 
 LRESULT CFindReleaseDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::reset(); // New native dialog, not each search invocation.
+#endif
 
 	SetIcon(g_discogs->icon);
 
@@ -629,7 +732,7 @@ LRESULT CFindReleaseDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARA
 
 		if (bres) {
 
-			if (b_is_various && !test_no_artists_artist_in_title && !cfg_on_init_query_custom_tf_enabled) {
+			if (b_is_various && !cfg_on_init_query_custom_tf_enabled) {
 				if (m_qdm_search_query.at("artist=").first.size()) {
 
 					QueryDefMap qdm_temp;
@@ -724,7 +827,7 @@ LRESULT CFindReleaseDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARA
 		}
 	}
 	// set dlg title
-	uSetWindowText( m_hWnd, bk_frm_album.get_length() ? bk_frm_album : "Find releases");
+	uSetWindowText( m_hWnd, bk_frm_album.get_length() ? bk_frm_album.get_ptr() : "Find releases");
 
 	if (cfg_on_init_query_enabled && m_query_mode & SearchMode::AT) {
 		search_query::MapToText(m_qdm_search_query, exp_pair, false);
@@ -920,6 +1023,14 @@ LRESULT CFindReleaseDialog::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /
 }
 
 LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::button.fetch_add(1);
+	const HWND live_edit = ::GetDlgItem(m_hWnd, IDC_EDIT_SEARCH);
+	discogger_live_search_qa::input_member_valid.store(::IsWindow(m_edit_artist) ? 1u : 0u);
+	discogger_live_search_qa::input_hwnd_match.store(live_edit == m_edit_artist ? 1u : 0u);
+	discogger_live_search_qa::input_member_length.store(static_cast<unsigned>(::GetWindowTextLengthW(m_edit_artist)));
+	discogger_live_search_qa::input_live_length.store(static_cast<unsigned>(::GetWindowTextLengthW(live_edit)));
+#endif
 
 	for (const std::string fld : kv_query_fields_ordered) {
 
@@ -929,12 +1040,20 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 	//todo: move search query related 
 	pfc::string8 trot_text = trim(uGetWindowText(m_edit_artist));
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::input_nonempty.store(trot_text.get_length() ? 1u : 0u);
+	if (trot_text.get_length()) discogger_live_search_qa::input_nonempty_calls.fetch_add(1);
+	else discogger_live_search_qa::input_empty_calls.fetch_add(1);
+#endif
 
 	bool bva_in_artist = false;
 	bva_in_artist |= pfc::stringLite::g_equalsCaseInsensitive(trot_text, "various");
 	bva_in_artist |= pfc::stringLite::g_equalsCaseInsensitive(trot_text, "various artists");
 
 	if (!trot_text.get_length()) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(1);
+#endif
 		//..
 		return FALSE;
 		//..
@@ -952,6 +1071,12 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	m_qdm_search_query = {};
 	bool bquery = search_query::TextToMap(trot_text, m_qdm_search_query);
 	bquery &= search_query::IsMinimal(m_qdm_search_query);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	discogger_live_search_qa::parsed_fields.store(static_cast<unsigned>(search_query::CountAvailableFields(m_qdm_search_query)));
+	discogger_live_search_qa::query_minimal.store(search_query::IsMinimal(m_qdm_search_query) ? 1u : 0u);
+	discogger_live_search_qa::query_detected.store(bquery ? 1u : 0u);
+	discogger_live_search_qa::alt_mode.store(CONF.awt_get_alt_mode() ? 1u : 0u);
+#endif
 
 	bool bquery_type_uncompleted = search_query::CountAvailableFields(m_qdm_search_query) >= 1 && !search_query::IsMinimal(m_qdm_search_query);
 
@@ -959,6 +1084,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		pfc::string8 hint = search_query::IsMinimalHint(m_qdm_search_query);
 		SetSearchModeText(hint, false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(2);
+#endif
 
 		//..
 
@@ -977,6 +1105,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	if (bva_in_artist && !bqdm_various) {
 
 		SetSearchModeText("Use query syntax 'artist= various && title= ...' or enter an individual artist / appearance.", false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(3);
+#endif
 
 		//..
 		return FALSE;
@@ -994,20 +1125,24 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (!exp_pair.first.compare(m_search_expression)) {
 
-			log_msg("Query loaded.");
-			//..
-			return FALSE;
-			//..
+			log_msg("Query explicitly retried.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+			discogger_live_search_qa::repeat_query.store(1);
+#endif
 		}
 
 		if (bres) {
 
-			search_query::MapToText(m_qdm_search_query, exp_pair, true, false);
+			// The API has no need for the GUI-only default type=all filter.
+			search_query::MapToText(m_qdm_search_query, exp_pair, false, false);
 			pfc::string8 artist_meta_scaped = exp_pair.second.c_str();
 
 			trot_text = artist_meta_scaped;
 
 			if (CONF.awt_get_alt_mode()) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+				discogger_live_search_qa::early_exit.store(5);
+#endif
 
 				//..
 
@@ -1021,10 +1156,10 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 		if (trot_text.equals(m_search_artist)) {
 
-			log_msg("Artist search loaded.");
-			//..
-			return FALSE;
-			//..
+			log_msg("Artist search explicitly retried.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+			discogger_live_search_qa::repeat_query.store(1);
+#endif
 		}
 
 		m_search_expression = "";
@@ -1037,12 +1172,18 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 		// hint display the preffix 'Query results'
 		SetSearchModeText("");
 
+		#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::routed.store(1);
+		#endif
 		route_artist_search(trot_text, true, bid);
 
 	}
 	else {
 
 		SetSearchModeText("to check syntax, right click on this message for examples.");
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+		discogger_live_search_qa::early_exit.store(7);
+#endif
 
 	}
 	return FALSE;
@@ -1105,10 +1246,14 @@ pfc::string8 search_query_run_message(const QueryDefMap qdm_search_query, const 
 		if (!out_va_cap.first && !out_va_cap.second) {
 			msg = "no entries found.";
 			if (m_query_mode & SearchMode::AT) {
-				pfc::string8 lwc = qdm_search_query.at("artist=").first.c_str();
-				if (lwc.toLower().equals("various artists")) {
-					msg << " Hint: use'artist= various' for VA compilations.";
-				}
+                // Restored/interrupted queries may not have a complete field map.
+                // Rendering "no entries found" must never throw a map exception.
+                const auto artist_field = qdm_search_query.find("artist=");
+                if (artist_field != qdm_search_query.end()) {
+                    pfc::string8 lwc = artist_field->second.first.c_str();
+                    if (lwc.toLower().equals("various artists"))
+                        msg << " Hint: use 'artist= various' for VA compilations.";
+                }
 			}
 		}
 		else if (out_va_cap.first < (SIZE_MAX - 100) && out_va_cap.second < (SIZE_MAX - 100)) {
@@ -1123,10 +1268,10 @@ pfc::string8 search_query_run_message(const QueryDefMap qdm_search_query, const 
 		else if (out_va_cap.first < HIWORD(CONF.query_max)/*kmax_items_q_results*/ || out_va_cap.second < HIWORD(CONF.query_max)/*kmax_items_q_results*/) {
 
 			//todo: rev stats
-			size_t sv = sizeof(out_va_cap.first);
-			size_t max_cap = static_cast<size_t>(pow(2, sv));
-
-			if (out_va_cap.first < (max_cap - 100) && out_va_cap.second < (max_cap - 100)) {
+            // sizeof(size_t) counts bytes, not the numeric maximum.
+            // SIZE_MAX is the caller's uncapped-result sentinel.
+            constexpr size_t uncapped_threshold = SIZE_MAX - 100;
+            if (out_va_cap.first < uncapped_threshold && out_va_cap.second < uncapped_threshold) {
 				//limitted results
 				msg = "max reached.";
 			}
@@ -1141,44 +1286,86 @@ pfc::string8 search_query_run_message(const QueryDefMap qdm_search_query, const 
 	return msg;
 }
 
+bool CFindReleaseDialog::on_search_artist_done_if_current(
+    std::uint64_t ticket, const pfc::array_t<Artist_ptr>& exact,
+    const pfc::array_t<Artist_ptr>& other, bool append,
+    std::pair<size_t, size_t>& cap) {
+    if (!is_current_search_request(ticket)) return false;
+    on_search_artist_done(exact, other, append, cap);
+    return true;
+}
+
 void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap) {
 
-	bool b_chk_exact_matches = IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) == BST_CHECKED;
-	
-	bool no_matches = !(p_artist_exact_matches.get_count() || p_artist_other_matches.get_count());
-	pfc::string8 msg = search_query_run_message(m_qdm_search_query, m_query_mode, out_va_cap, no_matches);
+    // Search providers may return an allocated artist with an empty ID.
+    // It is not a selectable Discogs identity: counting it as an exact hit
+    // hides real alternative results and exposes a bogus artist row. Filter
+    // only this incoming delta, preserving cumulative valid prior buckets.
+    const auto valid_rows = [](const pfc::array_t<Artist_ptr>& rows) {
+        pfc::array_t<Artist_ptr> result;
+        for (const auto& artist : rows)
+            if (artist && artist->id.get_length())
+                result.append_single(artist);
+        return result;
+    };
+    const auto valid_exact = valid_rows(p_artist_exact_matches);
+    const auto valid_other = valid_rows(p_artist_other_matches);
+    const bool exact_only_requested =
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) == BST_CHECKED;
+    // Append callbacks carry only a delta, not the entire result set.
+    // Resolve exact-only visibility and the no-match message against the
+    // cumulative buckets, otherwise a late alternative silently unchecks
+    // an exact-only filter even while exact matches are still present.
+    const auto valid_count = [](const pfc::array_t<Artist_ptr>& artists) {
+        size_t count = 0;
+        for (const auto& artist : artists)
+            if (artist) ++count;
+        return count;
+    };
+    const size_t incoming_exact = valid_count(valid_exact);
+    const size_t incoming_other = valid_count(valid_other);
+    const size_t total_exact = incoming_exact +
+        (append ? m_alist.Get_Exact_Artist_Count() : 0);
+    const size_t total_other = incoming_other +
+        (append ? m_alist.Get_Other_Artist_Count() : 0);
+    const auto decision = discogger_search::resolve_result_filter(
+        exact_only_requested, total_exact, total_other);
+    const bool b_chk_exact_matches = decision.exact_only;
+    if (decision.show_alternatives && exact_only_requested) {
+        // The effective list filter must match the visible checkbox.
+        CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);
+    }
 
-	SetSearchModeText(msg);
-
-	if (!p_artist_exact_matches.get_count() && p_artist_other_matches.get_count()) {
-		//todo
-		CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, false);
-	}
+    const bool no_matches = !(total_exact || total_other);
+    pfc::string8 msg = search_query_run_message(
+        m_qdm_search_query, m_query_mode, out_va_cap, no_matches);
+    if (decision.show_alternatives)
+        msg << " No exact artist match; alternative releases require review.";
+    SetSearchModeText(msg);
 
 	{
 		std::lock_guard<std::mutex> guard(g_discogs->tree_locked_mutex);
 		m_dctree.EnableDispInfo(true);
 		//todo:
-		fb2k::inMainThread([this] {
-			::InvalidateRect(m_release_tree, {0}, TRUE);
-			});
+        const HWND tree_window = m_release_tree;
+        fb2k::inMainThread([tree_window] {
+            if (::IsWindow(tree_window) &&
+                ::GetDlgCtrlID(tree_window) == IDC_RELEASE_TREE)
+                ::InvalidateRect(tree_window, nullptr, TRUE);
+        });
 	}
 
 	if (m_tracer.is_multi_artist()) {
-		m_alist.set_artists(b_chk_exact_matches, append, nullptr, p_artist_exact_matches, p_artist_other_matches);
+		m_alist.set_artists(b_chk_exact_matches, append, nullptr, valid_exact, valid_other);
 	}
 	else {
-		m_alist.set_artists(b_chk_exact_matches, append, nullptr, p_artist_exact_matches, p_artist_other_matches);
+		m_alist.set_artists(b_chk_exact_matches, append, nullptr, valid_exact, valid_other);
 	}
 
 	//may spawn on list item selection
 
+	// The old debug_ok branch was permanently disabled and had no declaration.
 	updRelSrc updrelsrc = updRelSrc::ArtistSearch;
-	debug_ok = false;
-	if (debug_ok && m_query_mode & SearchMode::AT) {
-
-		updrelsrc = updRelSrc::ArtistSearchAT;
-	}
 
 	if (!append) {
 		m_alist.fill_artist_list(b_chk_exact_matches, m_tracer.has_amr(), updrelsrc/*updRelSrc::ArtistSearch*/);
@@ -1191,11 +1378,34 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 		}
 	}
 
+    // Late advanced-search pages must also appear in the release tree
+    // without a second artist click. Never replace a tree that the user
+    // explicitly opened by selecting an artist while the worker was active.
+    // Empty append notifications are no-ops for the preview.
+    const bool incoming_results = incoming_exact || incoming_other;
+    const bool update_preview = (m_query_mode & SearchMode::AT) &&
+        (!append || (incoming_results && !m_alist.Get_Selected_Id().get_length()));
+    if (update_preview) {
+        const auto artists = m_alist.Get_Artists();
+        if (artists.get_count() == 1) {
+            const Artist_ptr& only = artists[0];
+            if (only && (only->releases.get_count() || only->master_releases.get_count()))
+                ShowArtistSearchResults(only);
+        } else if (artists.get_count() > 1) {
+            Artist_ptr preview = combined_advanced_search_preview(artists);
+            if (preview->releases.get_count() || preview->master_releases.get_count())
+                ShowArtistSearchResults(preview);
+        }
+    }
+
 	std::lock_guard<std::mutex> guard(g_discogs->tree_locked_mutex);
 	m_dctree.EnableDispInfo(true);
-	fb2k::inMainThread([this] {
-		::InvalidateRect(m_release_tree, NULL, TRUE);
-		});
+    const HWND tree_window = m_release_tree;
+    fb2k::inMainThread([tree_window] {
+        if (::IsWindow(tree_window) &&
+            ::GetDlgCtrlID(tree_window) == IDC_RELEASE_TREE)
+            ::InvalidateRect(tree_window, nullptr, TRUE);
+    });
 }
 
 void CFindReleaseDialog::OnTypeFilterTimer(WPARAM id) {
@@ -1267,6 +1477,8 @@ void CFindReleaseDialog::apply_filter(pfc::string8 strFilter, bool force_redraw,
 LRESULT CFindReleaseDialog::OnEditFilter(WORD wNotifyCode, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
 
 	if (is_filter_box_event_enabled() && wNotifyCode == EN_CHANGE) {
+        // Invalidate queued filters on EVERY edit, not just after the timer.
+        m_filter_request_epoch.begin();
 
 		//supress auto-fill filter box on user interaction
 
@@ -1323,6 +1535,9 @@ LRESULT CFindReleaseDialog::OnCheckboxOnlyExactMatches(WORD /*wNotifyCode*/, WOR
 }
 
 LRESULT CFindReleaseDialog::OnCheckboxFindReleaseFilterFlags(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+
+    if (wID == IDC_CHK_FIND_RELEASE_FILTER_ROLEMAIN || wID == IDC_CHK_FIND_RELEASE_FILTER_VERS)
+        m_filter_request_epoch.begin(); // Changed filtering semantics supersede queued results.
 
 	bool force_refresh, force_rebuild;
 
@@ -1400,7 +1615,7 @@ LRESULT CFindReleaseDialog::OnButtonConfigure(WORD /*wNotifyCode*/, WORD wID, HW
 
 //todo: rev
 void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
-	if (!std::atoi(release_id)) {
+	if (!discogger_search::valid_release_id(release_id.c_str())) {
 		uMessageBox(m_hWnd, "Empty or invalid Release ID.", "foo_discogger: Error", MB_APPLMODAL | MB_ICONASTERISK);
 		return;
 
@@ -1436,6 +1651,9 @@ void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
 
 	try {
 		service_ptr_t<process_release_callback> task = new service_impl_t<process_release_callback>(this, release_id, offline_artist_id, "", m_items);
+        // A new release selection supersedes any pending search or release
+        // completion, even when the original dialog HWND is still alive.
+        m_search_request_epoch.begin();
 		task->start(m_hWnd);
 	}
 	catch (locked_task_exception e)
@@ -1446,11 +1664,11 @@ void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
 
 // expand_master_release_process_done
 
-void CFindReleaseDialog::on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort) {
+void CFindReleaseDialog::on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort, const MasterRelease_ptr& staged_master) {
 
 	// forward to tree
 
-	m_dctree.on_expand_master_release_done(master_release, list_index, p_status, p_abort);
+	m_dctree.on_expand_master_release_done(master_release, list_index, p_status, p_abort, staged_master);
 }
 
 void CFindReleaseDialog::call_expand_master_service(MasterRelease_ptr& release, int pos) {
@@ -1490,13 +1708,26 @@ void CFindReleaseDialog::convey_artist_list_selection(cupdRelSrc cupdsrc) {
 		return;
 	}
 
-	Artist_ptr artist = m_alist.Get_Artists()[pos];
+    const auto current_artists = m_alist.Get_Artists();
+    if (pos >= current_artists.get_count() || !current_artists[pos]) return;
+	Artist_ptr artist = current_artists[pos];
 
 	bool need_releases = cupdsrc == updRelSrc::ArtistList && !artist->loaded_releases;
 
 	bool need_data = !(artist->loaded_preview || artist->loaded);
 
 	need_data |= need_releases;
+
+    // Search rows can contain partial results, while the canonical artist
+    // has a pending explicit refresh. Force its worker path before the AT
+    // display-only shortcut, without requiring another artist click.
+    if (cupdsrc == updRelSrc::ArtistList) {
+        const auto canonical_artist = discogs_interface
+            ? discogs_interface->get_artist(artist->id) : nullptr;
+        need_data = discogger_cache::should_fetch_artist(
+            need_data, true,
+            canonical_artist && canonical_artist->release_refresh.pending());
+    }
 
 	if (cupdsrc == updRelSrc::ArtistProfile && conf.auto_load_releases_on_select_ready()) {
 		need_data = true;
@@ -1643,19 +1874,22 @@ void CFindReleaseDialog::route_artist_search(pfc::string8 artistname, bool dlgbu
 				service_ptr_t<get_multi_artists_process_callback> task =
 					new service_impl_t<get_multi_artists_process_callback>(cupdsrc, m_query_mode, m_tracer.get_vartist_ids());
 
+				m_search_request_epoch.begin();
 				task->start(m_hWnd);
 		}
 			else {
 				service_ptr_t<get_artist_process_callback> task =
 					new service_impl_t<get_artist_process_callback>(cupdsrc, artist_id, artistname);
 
+				m_search_request_epoch.begin();
 				task->start(m_hWnd);
 			}
 		}
 		else if (by_name && !CONF.awt_get_alt_mode() && !(by_id && b_skipping_idded)) {
 			service_ptr_t<search_artist_process_callback> task =
 				new service_impl_t<search_artist_process_callback>(artistname.get_ptr(), dlgbutton, m_query_mode, m_qdm_search_query, 0);
-			task->start(m_hWnd);
+			m_search_request_epoch.begin();
+				task->start(m_hWnd);
 		}
 	}
 }
@@ -1853,6 +2087,885 @@ void CFindReleaseDialog::UpdateArtistProfile(Artist_ptr artist) {
 			});
 	}
 }
+
+
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+// Production search-preview parser is a free function in discogs.cpp.
+// This fixture runs that parser and the real master page parser in the
+// original Win32/x64 foobar hosts; no network, cache or user-media I/O.
+void parse_release_search_fields(json_t*, Release_ptr);
+static void runner_qa_native_search_preview_fields() {
+    json_error_t error = {};
+    auto parse = [&](const char* value) -> json_t* {
+        json_t* root = json_loads(value, JSON_DECODE_ANY, &error);
+        if (!root) throw std::runtime_error("Native search-preview fixture JSON invalid.");
+        return root;
+    };
+    Release_ptr release = std::make_shared<Release>("410994");
+    json_t* root = parse(R"({"id":"410994","title":"Preview","role":"Main","formats":[{"name":"Vinyl","qty":"2","descriptions":["12 inch",null,"EP","EP",42]},{"name":null,"descriptions":["Invalid"]}]})");
+    parse_release_search_fields(root, release);
+    json_decref(root);
+    if (!release->search_role.equals("Main") ||
+        release->search_roles.get_count() != 1 ||
+        release->search_major_formats.get_count() != 1 ||
+        !release->search_major_formats[0].equals("2xVinyl") ||
+        !release->search_formats.equals("12 inch, EP"))
+        throw std::runtime_error("Native preview lost Main role or mishandled malformed/duplicate format descriptions.");
+    root = parse(R"({"id":"410994","role":"Other","formats":[null,{},{"name":null},{"name":"Digital","descriptions":[false,"Stereo"]}]})");
+    parse_release_search_fields(root, release);
+    json_decref(root);
+    if (!release->search_role.equals("Main") ||
+        release->search_roles.get_count() != 2 ||
+        release->search_major_formats.get_count() != 1 ||
+        !release->search_major_formats[0].equals("Digital") ||
+        !release->search_formats.equals("Stereo"))
+        throw std::runtime_error("Native duplicate release demoted Main or accepted invalid formats.");
+    root = parse(R"({"id":"410994","role":"Other"})");
+    parse_release_search_fields(root, release);
+    json_decref(root);
+    if (!release->search_role.equals("Main") || release->search_roles.get_count() != 2)
+        throw std::runtime_error("Native repeated release duplicated search role.");
+    Release_ptr promoted = std::make_shared<Release>("410995");
+    root = parse(R"({"id":"410995","role":"Other"})");
+    parse_release_search_fields(root, promoted);
+    json_decref(root);
+    root = parse(R"({"id":"410995","role":"Main"})");
+    parse_release_search_fields(root, promoted);
+    json_decref(root);
+    if (!promoted->search_role.equals("Main") || promoted->search_roles.get_count() != 2)
+        throw std::runtime_error("Native later Main role failed to promote release.");
+    Artist_ptr artist = std::make_shared<Artist>("991992");
+    MasterRelease_ptr master = std::make_shared<MasterRelease>("991993");
+    std::map<std::string, MasterRelease_ptr> masters;
+    masters.emplace("991993", master);
+    root = parse(R"({"results":[{"type":"master","id":"991993","title":"Master","role":"Main"},{"type":"master","id":"991993","title":"Master","role":"Other"},{"type":"master","id":"991993","title":"Master","role":"Other"}]})");
+    try {
+        Discogs::parseArtistReleases(root, artist.get(), SearchMode::AT, masters);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (artist->master_releases.get_count() != 1 ||
+        !artist->master_releases[0]->search_role.equals("Main") ||
+        artist->master_releases[0]->search_roles.get_count() != 2)
+        throw std::runtime_error("Native master duplicate demoted Main or duplicated visible role.");
+    // Exercise the actual Jansson search parser with a differently titled
+    // master and a matching release-version child. The original structured
+    // hit must suppress unnecessary fallback even if the parent title does
+    // not contain the requested track/release title.
+    Artist_ptr grouped_artist = std::make_shared<Artist>("991994");
+    std::map<std::string, MasterRelease_ptr> grouped_masters;
+    root = parse(R"GROUP({"results":[{"type":"master","id":"991995","title":"Compilation","role":"Other"},{"type":"release","id":"991996","title":"A New Day (Extended Mix)","master_id":"991995","role":"Other"}]})GROUP");
+    try {
+        Discogs::parseArtistReleases(root, grouped_artist.get(), SearchMode::AT, grouped_masters);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (grouped_artist->master_releases.get_count() != 1 ||
+        grouped_artist->master_releases[0]->sub_releases.get_count() != 1)
+        throw std::runtime_error("Native structured search lost grouped release version.");
+    const auto& grouped_master = grouped_artist->master_releases[0];
+    auto grouped_title = [](const Release_ptr& child) -> std::string_view {
+        return child ? std::string_view(child->title.c_str()) : std::string_view{};
+    };
+    if (!discogger_search::plausible_release_group_title(
+            "A New Day", grouped_master->title.c_str(),
+            grouped_master->sub_releases, grouped_title) ||
+        discogger_search::plausible_release_group_title(
+            "Only You", grouped_master->title.c_str(),
+            grouped_master->sub_releases, grouped_title))
+        throw std::runtime_error("Native grouped version original-result fallback gate failed.");
+    log_msg("DISCOGGER_NATIVE_SEARCH_PREVIEW_FIELDS_QA=PASS");
+}
+#endif
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+// Actual Jansson + directory-recovery integration, exercised inside both
+// original Win32/x64 foobar hosts on disposable TEMP cache files only.
+static void runner_qa_native_cache_json_rollback() {
+    namespace fs = std::filesystem;
+    const fs::path active = fs::temp_directory_path() /
+        ("discogger-json-rollback-qa-" + std::to_string(GetCurrentProcessId()) +
+         "-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const fs::path backup = discogger_cache::cache_backup_path(active);
+    struct temp_cleanup {
+        fs::path active, backup;
+        ~temp_cleanup() {
+            std::error_code ec;
+            fs::remove_all(active, ec);
+            ec.clear();
+            fs::remove_all(backup, ec);
+        }
+    } cleanup{active, backup};
+    auto write = [](const fs::path& path, const char* data) {
+        fs::create_directories(path.parent_path());
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) throw std::runtime_error("Native JSON rollback QA fixture open failed.");
+        out << data;
+        out.close();
+        if (!out.good()) throw std::runtime_error("Native JSON rollback QA fixture write failed.");
+    };
+    auto read = [](const fs::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) throw std::runtime_error("Native JSON rollback QA fixture read failed.");
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    };
+    const fs::path payload = active / "page-0" / "root.json";
+    write(payload, R"({"backup":true})");
+    write(active / "taskreg.txt", "");
+    if (!ol::cache_payload_is_valid_json(payload))
+        throw std::runtime_error("Native Jansson rejected valid JSON.");
+    // Test both Jansson's parser and the production reader in the actual
+    // foobar host, not just a synthetic callback or source-level contract.
+    json_error_t literal_error = {};
+    json_t* literal = json_loads(R"({"backup":true})", JSON_DECODE_ANY, &literal_error);
+    if (!literal || !json_is_object(literal)) {
+        if (literal) json_decref(literal);
+        throw std::runtime_error("Native Jansson rejected valid in-memory literal.");
+    }
+    json_decref(literal);
+    ol::ol_cache real_reader;
+    const auto payload_u8 = payload.u8string();
+    const std::string payload_utf8(payload_u8.begin(), payload_u8.end());
+    json_t* from_disk = real_reader.Read_JSON(payload_utf8.c_str());
+    const bool disk_valid = from_disk && json_is_object(from_disk);
+    if (from_disk) json_decref(from_disk);
+    if (!disk_valid)
+        throw std::runtime_error("Native offline cache reader rejected valid JSON.");
+    // Exercise the production atomic JSON serializer on disposable data.
+    json_t* generated = json_object();
+    if (!generated || json_object_set_new(generated, "generated", json_true()) != 0) {
+        if (generated) json_decref(generated);
+        throw std::runtime_error("Native Jansson QA could not create object.");
+    }
+    const fs::path serialized = active / "serialized-qa.json";
+    const auto serialized_u8 = serialized.u8string();
+    const std::string serialized_utf8(serialized_u8.begin(), serialized_u8.end());
+    const bool dump_ok = real_reader.Dump_JSON(serialized_utf8.c_str(), generated);
+    json_decref(generated);
+    if (!dump_ok || !ol::cache_payload_is_valid_json(serialized))
+        throw std::runtime_error("Native atomic JSON serializer did not roundtrip.");
+
+    fs::copy(active, backup, fs::copy_options::recursive);
+    write(payload, R"({"broken":)");
+    json_t* corrupt_read = real_reader.Read_JSON(payload_utf8.c_str());
+    const bool corrupt_rejected = corrupt_read && json_is_array(corrupt_read);
+    if (corrupt_read) json_decref(corrupt_read);
+    if (!corrupt_rejected)
+        throw std::runtime_error("Native offline reader accepted truncated JSON.");
+    if (ol::cache_payload_is_valid_json(payload) ||
+        !discogger_cache::cache_has_marker(active) ||
+        discogger_cache::recover_cache_directory(active) ||
+        !fs::exists(backup) || read(payload) != R"({"broken":)")
+        throw std::runtime_error("Native malformed active JSON did not preserve rollback.");
+    if (!discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
+        read(payload) != R"({"backup":true})" || fs::exists(backup))
+        throw std::runtime_error("Native Jansson did not restore valid rollback.");
+    fs::copy(active, backup, fs::copy_options::recursive);
+    write(backup / "page-0" / "root.json", R"({"broken":)");
+    if (discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
+        !fs::exists(backup) || read(payload) != R"({"backup":true})")
+        throw std::runtime_error("Native malformed backup was promoted or discarded.");
+    write(backup / "page-0" / "root.json", R"({"backup":true})");
+    if (!discogger_cache::recover_cache_directory(active, ol::cache_payload_is_valid_json) ||
+        fs::exists(backup))
+        throw std::runtime_error("Native valid JSON rollback cleanup failed.");
+    // The actual native cache publisher must use this same Jansson
+    // decoder on STAGED files, not only during interrupted-run recovery.
+    // Both branches operate solely on this unique disposable TEMP fixture.
+    {
+        discogger_cache::directory_cache_transaction tx(
+            active, ol::cache_payload_is_valid_json);
+        if (!tx.ready()) throw std::runtime_error("Native JSON stage guard could not start.");
+        write(tx.staging_directory() / "page-0" / "root.json", R"({"broken":)");
+        if (tx.publish("invalid"))
+            throw std::runtime_error("Native Jansson published malformed staged JSON.");
+    }
+    if (read(payload) != R"({"backup":true})" || fs::exists(backup))
+        throw std::runtime_error("Native malformed staged JSON changed valid active cache.");
+    {
+        discogger_cache::directory_cache_transaction tx(
+            active, ol::cache_payload_is_valid_json);
+        if (!tx.ready()) throw std::runtime_error("Native valid JSON stage could not start.");
+        write(tx.staging_directory() / "page-0" / "root.json", R"({"fresh":true})");
+        if (!tx.publish("fresh"))
+            throw std::runtime_error("Native Jansson rejected valid staged JSON.");
+    }
+    if (read(payload) != R"({"fresh":true})" || fs::exists(backup))
+        throw std::runtime_error("Native valid staged JSON publication did not preserve cache.");
+    log_msg("DISCOGGER_NATIVE_JSON_ROLLBACK_QA=PASS");
+}
+#endif
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+// Run the real Jansson master-version parser inside both original foobar
+// hosts. All objects and JSON are synthetic; no provider or user-media I/O.
+// Real Jansson positive/negative page-2 and abort transaction coverage.
+ // The production stage function is used by the real MasterRelease loader.
+static void runner_qa_native_master_page_transaction() {
+    json_error_t error = {};
+    json_t* first = json_loads(
+        R"({"versions":[{"id":"410996","title":"Updated partial"},{"id":"410997","title":"Second version"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* second = json_loads(
+        R"({"versions":[{"id":"410998","title":"Third version"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* invalid = json_loads(
+        R"({"versions":[{"id":"not-an-id","title":"Invalid page two"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* duplicateAcross = json_loads(
+        R"({"versions":[{"id":"410997","title":"Repeated from page one"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* duplicateWithin = json_loads(
+        R"({"versions":[{"id":"410999"},{"id":"410999"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* missingArray = json_loads(
+        R"({"versions":null})",
+        JSON_DECODE_ANY, &error);
+    const std::vector<json_t*> fixtures{
+        first, second, invalid, duplicateAcross, duplicateWithin, missingArray};
+    if (!first || !second || !invalid || !duplicateAcross ||
+        !duplicateWithin || !missingArray) {
+        for (json_t* fixture : fixtures) if (fixture) json_decref(fixture);
+        throw std::runtime_error("Native master page-transaction JSON fixture failed.");
+    }
+    try {
+        MasterRelease original("901996");
+        Release_ptr visible_child = std::make_shared<Release>("410996");
+        visible_child->title = "Visible before page one";
+        original.sub_releases.append_single(visible_child);
+        const std::vector<json_t*> good{first, second};
+        MasterRelease_ptr staged = Discogs::stageMasterVersionPages(
+            original, good, 0, []() {});
+        if (original.loaded_releases || original.sub_releases.get_count() != 1 ||
+            original.sub_releases[0] != visible_child ||
+            visible_child->title != "Visible before page one" ||
+            staged->sub_releases.get_count() != 3 ||
+            staged->sub_releases[0] == visible_child ||
+            staged->sub_releases[0]->title != "Updated partial" ||
+            staged->sub_releases[1]->id != "410997" ||
+            staged->sub_releases[2]->id != "410998")
+            throw std::runtime_error("Native master version stage mutated visible child or lost page two.");
+
+        // AT partial mode must update the matching preloaded child only,
+        // excluding unrelated versions even when later pages contain them.
+        MasterRelease_ptr partial = Discogs::stageMasterVersionPages(
+            original, good, SearchMode::AT, []() {});
+        if (partial->sub_releases.get_count() != 1 ||
+            partial->sub_releases[0] == visible_child ||
+            partial->sub_releases[0]->title != "Updated partial" ||
+            visible_child->title != "Visible before page one")
+            throw std::runtime_error("Native partial master selection leaked a full-version child.");
+
+        bool rejected = false;
+        try {
+            const std::vector<json_t*> bad{first, invalid};
+            (void)Discogs::stageMasterVersionPages(original, bad, 0, []() {});
+        } catch (const foo_discogs_exception&) { rejected = true; }
+        if (!rejected || original.sub_releases.get_count() != 1 ||
+            visible_child->title != "Visible before page one")
+            throw std::runtime_error("Native invalid master page two leaked partial data.");
+
+        // A duplicate identity on a later page or within one page is
+        // ambiguous even if the parser would normally deduplicate it.
+        // Neither form may overwrite the last visible child snapshot.
+        const std::vector<std::vector<json_t*>> malformedPages{
+            {first, duplicateAcross}, {duplicateWithin}, {first, missingArray}};
+        for (const auto& badPages : malformedPages) {
+            rejected = false;
+            try {
+                (void)Discogs::stageMasterVersionPages(original, badPages, 0, []() {});
+            } catch (const foo_discogs_exception&) { rejected = true; }
+            if (!rejected || original.sub_releases.get_count() != 1 ||
+                original.sub_releases[0] != visible_child ||
+                visible_child->title != "Visible before page one")
+                throw std::runtime_error("Native duplicate/incomplete master page leaked partial data.");
+        }
+
+        for (int stop_at : {2, 3}) {
+            int checks = 0;
+            rejected = false;
+            try {
+                (void)Discogs::stageMasterVersionPages(original, good, 0, [&]() {
+                    if (++checks == stop_at) throw exception_aborted();
+                });
+            } catch (const exception_aborted&) { rejected = true; }
+            if (!rejected || original.sub_releases.get_count() != 1 ||
+                visible_child->title != "Visible before page one")
+                throw std::runtime_error("Native aborted master pagination leaked partial data.");
+        }
+        original.sub_releases = std::move(staged->sub_releases);
+        original.loaded_releases = true;
+        if (original.sub_releases.get_count() != 3 ||
+            original.sub_releases[0]->title != "Updated partial" ||
+            visible_child->title != "Visible before page one")
+            throw std::runtime_error("Native complete master page commit failed.");
+    } catch (...) {
+        for (json_t* fixture : fixtures) json_decref(fixture);
+        throw;
+    }
+    for (json_t* fixture : fixtures) json_decref(fixture);
+    log_msg("DISCOGGER_NATIVE_MASTER_PAGE_TRANSACTION_QA=PASS");
+}
+
+static void runner_qa_native_master_child_isolation() {
+    MasterRelease_ptr visible_master = std::make_shared<MasterRelease>("901991");
+    Release_ptr visible_child = std::make_shared<Release>("410991");
+    visible_child->title = "Visible partial before request";
+    visible_master->sub_releases.append_single(visible_child);
+    MasterRelease_ptr staged = std::make_shared<MasterRelease>(visible_master->id.get_ptr());
+    for (const Release_ptr& child : visible_master->sub_releases) {
+        staged->sub_releases.append_single(
+            child ? std::make_shared<Release>(*child) : Release_ptr());
+    }
+    if (staged->sub_releases[0] == visible_child)
+        throw std::runtime_error("Master child snapshot still aliases the visible Release.");
+    const char* partial_json = R"({"versions":[{"id":"410991","title":"Completed partial preview","label":"QA Label","format":"Digital","year":"2026"},{"id":"999999","title":"Unrelated version"}]})";
+    json_error_t error = {};
+    json_t* root = json_loads(partial_json, JSON_DECODE_ANY, &error);
+    if (!root) throw std::runtime_error("Native master partial JSON fixture did not parse.");
+    try {
+        Discogs::parseMasterVersions(root, staged.get(), SearchMode::AT, true);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (visible_child->title != "Visible partial before request" ||
+        visible_child->loaded_preview || visible_master->loaded_releases ||
+        visible_master->sub_releases.get_count() != 1 ||
+        staged->sub_releases.get_count() != 1 ||
+        staged->sub_releases[0] == visible_child ||
+        staged->sub_releases[0]->title != "Completed partial preview" ||
+        !staged->sub_releases[0]->loaded_preview ||
+        staged->sub_releases[0]->id != visible_child->id)
+        throw std::runtime_error("Native staged partial preview changed visible child or lost parsed fields.");
+    // Negative stale completion: a rejected stage has no path to mutate the
+    // visible child, even though its private preview was populated.
+    if (visible_child->title != "Visible partial before request")
+        throw std::runtime_error("Stale master child preview leaked before UI publication.");
+    // Positive current completion: publish exactly the isolated child once.
+    visible_master->sub_releases = staged->sub_releases;
+    visible_master->loaded_releases = true;
+    if (visible_master->sub_releases.get_count() != 1 ||
+        visible_master->sub_releases[0]->title != "Completed partial preview" ||
+        visible_child->title != "Visible partial before request")
+        throw std::runtime_error("Native master child publication lost preview or mutated old pointer.");
+
+    MasterRelease_ptr full = std::make_shared<MasterRelease>("901992");
+    const char* full_json = R"({"versions":[{"id":"410992","title":"First version"},{"id":"410992","title":"Duplicate version"},{"id":"410993","title":"Second version"}]})";
+    root = json_loads(full_json, JSON_DECODE_ANY, &error);
+    if (!root) throw std::runtime_error("Native master full JSON fixture did not parse.");
+    try {
+        Discogs::parseMasterVersions(root, full.get(), 0, true);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (full->sub_releases.get_count() != 2 ||
+        !full->sub_releases[0] || !full->sub_releases[1] ||
+        full->sub_releases[0]->id != "410992" ||
+        full->sub_releases[0]->title != "First version" ||
+        full->sub_releases[1]->id != "410993" ||
+        full->sub_releases[1]->title != "Second version" ||
+        !full->sub_releases[0]->loaded_preview ||
+        !full->sub_releases[1]->loaded_preview)
+        throw std::runtime_error("Native isolated master full versions duplicated or lost identity.");
+    log_msg("DISCOGGER_NATIVE_MASTER_CHILD_ISOLATION_QA=PASS");
+}
+#endif
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char* expected_release_id) {
+    if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
+        throw std::runtime_error("Live result inspection requires an open native Find Releases dialog.");
+    const auto artists = m_alist.Get_Artists();
+    size_t known_release_matches = 0;
+    for (size_t i = 0; i < artists.get_count(); ++i) {
+        const Artist_ptr& artist = artists[i];
+        if (!artist) continue;
+        for (size_t j = 0; j < artist->releases.get_count(); ++j) {
+            const Release_ptr& release = artist->releases[j];
+            if (release && release->id.equals(expected_release_id)) {
+                ++known_release_matches;
+            }
+        }
+        for (size_t j = 0; j < artist->master_releases.get_count(); ++j) {
+            const MasterRelease_ptr& master = artist->master_releases[j];
+            if (!master) continue;
+            if (master->main_release_id.equals(expected_release_id)) {
+                ++known_release_matches;
+            }
+            // Database-search releases may be grouped below a master even
+            // when the known release is not that master's main release.
+            for (const Release_ptr& subrelease : master->sub_releases) {
+                if (subrelease && subrelease->id.equals(expected_release_id)) {
+                    ++known_release_matches;
+                }
+            }
+        }
+    }
+    // Observe only. The real search must publish its own tree; the QA
+    // inspector must not call the presenter and mask a missing auto-display.
+    return {artists.get_count(), known_release_matches, m_dctree.Get_Size()};
+}
+
+std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() {
+    if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
+        throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
+    runner_qa_native_cache_json_rollback();
+    runner_qa_native_master_page_transaction();
+    runner_qa_native_master_child_isolation();
+    runner_qa_native_search_preview_fields();
+    // Exercise the same bounded fallback controller used by the real search
+    // inside each original Win32/x64 foobar host (no network or user media).
+    const auto fallback_plan = discogger_search::build_fallback_plan(
+        "Producer feat. Guest", "A New Day", "");
+    discogger_search::fallback_query_budget fallback_budget(fallback_plan.size());
+    if (fallback_plan.size() != 3 || !fallback_budget.begin())
+        throw std::runtime_error("Native fallback planner/budget failed.");
+    fallback_budget.observe(true); // nonempty but unrelated first phase
+    if (!fallback_budget.can_continue() || !fallback_budget.begin())
+        throw std::runtime_error("Native fallback stopped on an unrelated first result.");
+    fallback_budget.observe(false);
+    if (!fallback_budget.begin() || fallback_budget.can_continue())
+        throw std::runtime_error("Native fallback query bound or continuation failed.");
+    // The native original-host fixture exercises the production discovery
+    // gate, including a nonempty but irrelevant first-page title. Neither
+    // this heuristic nor fallback candidates authorize a metadata write.
+    if (!discogger_search::plausible_release_title(
+            "Sun & Moon", "Above & Beyond - Sun & Moon") ||
+        !discogger_search::plausible_release_title(
+            "Only You (Extended Mix)", "Matt Fax - Only You") ||
+        discogger_search::plausible_release_title(
+            "Sun & Moon", "Above & Beyond - Sun & Moonlight") ||
+        discogger_search::plausible_release_title(
+            "1000 Years", "Unrelated Artist - 2000 Years"))
+        throw std::runtime_error("Native structured-title fallback confidence gate failed.");
+    const size_t previous_mode = m_query_mode;
+    m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
+
+    // Preserve the five cross-provider identities from the original fixture.
+    Artist_ptr artist = std::make_shared<Artist>("0");
+    artist->name = "Discogger synthetic search results";
+    artist->loaded_preview = true;
+    artist->loaded_releases = true;
+    const std::pair<const char*, const char*> known[] = {
+        {"38012673", "Via Balearia"},
+        {"37332711", "1000 Years"},
+        {"36397609", "Only You"},
+        {"36819730", "Till You Let Go"},
+        {"35534398", "Consciousness EP"}
+    };
+    for (const auto& record : known) {
+        Release_ptr release = std::make_shared<Release>(record.first);
+        release->title = record.second;
+        release->loaded_preview = true;
+        artist->releases.append_single(release);
+        artist->search_order_master.append_single(false);
+    }
+    pfc::array_t<Artist_ptr> alternatives, exact;
+    alternatives.append_single(artist);
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(exact, alternatives, false);
+    if (m_alist.Get_Artists().get_count() != 1 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED)
+        throw std::runtime_error("Native populated alternative artist list/filter failed.");
+    // No manual ShowArtistSearchResults call: callback must populate the real tree.
+    const size_t initial_tree = m_dctree.Get_Size();
+    if (initial_tree != 5)
+        throw std::runtime_error("Native auto-preview did not publish five synthetic releases.");
+
+    // Model the actual native GUI's successive review-only fallback phases:
+    // an unrelated nonempty partner result, then a different relevant title
+    // result. Both remain selectable suggestions; neither auto-tags media.
+    Artist_ptr unrelated = std::make_shared<Artist>("201");
+    unrelated->name = "Unrelated partner result";
+    Release_ptr unrelated_release = std::make_shared<Release>("700001");
+    unrelated_release->title = "Wrong Title";
+    unrelated_release->loaded_preview = true;
+    unrelated->releases.append_single(unrelated_release);
+    unrelated->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> fallback_first;
+    fallback_first.append_single(unrelated);
+    on_search_artist_done(exact, fallback_first, false);
+    if (m_dctree.Get_Size() != 1 || m_alist.Get_Artists().get_count() != 1)
+        throw std::runtime_error("Native first nonempty fallback phase did not render.");
+    Artist_ptr relevant = std::make_shared<Artist>("202");
+    relevant->name = "Later title discovery";
+    Release_ptr relevant_release = std::make_shared<Release>("700002");
+    relevant_release->title = "A New Day";
+    relevant_release->loaded_preview = true;
+    relevant->releases.append_single(relevant_release);
+    relevant->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> fallback_second;
+    fallback_second.append_single(relevant);
+    on_search_artist_done(exact, fallback_second, true);
+    if (m_dctree.Get_Size() != 2 || m_alist.Get_Artists().get_count() != 2 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED)
+        throw std::runtime_error("Native later fallback phase lost a review-only result.");
+
+    // Multiple artist matches, mixed masters/releases, and duplicate IDs.
+    Artist_ptr first = std::make_shared<Artist>("101");
+    first->name = "First search match";
+    Release_ptr first_release = std::make_shared<Release>("2844");
+    first_release->title = "One More Time";
+    first_release->loaded_preview = true;
+    first->releases.append_single(first_release);
+    first->search_order_master.append_single(false);
+    MasterRelease_ptr first_master = std::make_shared<MasterRelease>("901");
+    first_master->title = "Synthetic master";
+    first_master->loaded_preview = true;
+    first->master_releases.append_single(first_master);
+    first->search_order_master.append_single(true);
+
+    Artist_ptr second = std::make_shared<Artist>("102");
+    second->name = "Second search match";
+    Release_ptr duplicate_release = std::make_shared<Release>("2844");
+    duplicate_release->title = "One More Time duplicate";
+    duplicate_release->loaded_preview = true;
+    second->releases.append_single(duplicate_release);
+    second->search_order_master.append_single(false);
+    Release_ptr second_release = std::make_shared<Release>("7809");
+    second_release->title = "Hey Boy Hey Girl";
+    second_release->loaded_preview = true;
+    second->releases.append_single(second_release);
+    second->search_order_master.append_single(false);
+    MasterRelease_ptr duplicate_master = std::make_shared<MasterRelease>("901");
+    duplicate_master->title = "Synthetic master duplicate";
+    duplicate_master->loaded_preview = true;
+    second->master_releases.append_single(duplicate_master);
+    second->search_order_master.append_single(true);
+
+    pfc::array_t<Artist_ptr> two_artists;
+    two_artists.append_single(first);
+    two_artists.append_single(second);
+    on_search_artist_done(two_artists, exact, false);
+    if (m_alist.Get_Artists().get_count() != 2 || m_dctree.Get_Size() != 3)
+        throw std::runtime_error("Multi-artist auto-preview did not deduplicate and display three releases/masters.");
+
+    // Two provider phases can return artist 101 with DISJOINT payloads.
+    // Both the automatic multi-artist tree and the manually chosen artist
+    // must retain the union without changing the original cached objects.
+    const size_t same_id_original_role =
+        m_alist.Get_Artists()[0]->search_role_list_pos;
+    Artist_ptr same_id_delta = std::make_shared<Artist>("101");
+    same_id_delta->name = "Same artist, later provider page";
+    Release_ptr same_id_release = std::make_shared<Release>("410001");
+    same_id_release->title = "Late same-ID release";
+    same_id_release->loaded_preview = true;
+    same_id_delta->releases.append_single(same_id_release);
+    same_id_delta->search_order_master.append_single(false);
+    MasterRelease_ptr same_id_master = std::make_shared<MasterRelease>("410002");
+    same_id_master->title = "Late same-ID master";
+    same_id_master->loaded_preview = true;
+    same_id_delta->master_releases.append_single(same_id_master);
+    same_id_delta->search_order_master.append_single(true);
+    pfc::array_t<Artist_ptr> same_id_delta_rows;
+    same_id_delta_rows.append_single(same_id_delta);
+    on_search_artist_done(same_id_delta_rows, exact, true);
+    auto merged_same_id_rows = m_alist.Get_Artists();
+    if (merged_same_id_rows.get_count() != 2 || m_dctree.Get_Size() != 5 ||
+        merged_same_id_rows[0]->releases.get_count() != 2 ||
+        merged_same_id_rows[0]->master_releases.get_count() != 2 ||
+        merged_same_id_rows[0]->search_role_list_pos != same_id_original_role ||
+        merged_same_id_rows[0]->loaded_releases ||
+        first->releases.get_count() != 1 || first->master_releases.get_count() != 1 ||
+        same_id_delta->releases.get_count() != 1 ||
+        same_id_delta->master_releases.get_count() != 1)
+        throw std::runtime_error("Native same-ID disjoint release/master union lost payload, role or cache isolation.");
+
+    // Negative: repeat identical phase and same-ID duplicate with only old
+    // IDs. Neither may add a tree node, change row identity, or grow arrays.
+    on_search_artist_done(same_id_delta_rows, exact, true);
+    Artist_ptr same_id_repeat = std::make_shared<Artist>("101");
+    same_id_repeat->releases.append_single(first_release);
+    same_id_repeat->search_order_master.append_single(false);
+    same_id_repeat->master_releases.append_single(first_master);
+    same_id_repeat->search_order_master.append_single(true);
+    pfc::array_t<Artist_ptr> same_id_repeat_rows;
+    same_id_repeat_rows.append_single(same_id_repeat);
+    on_search_artist_done(same_id_repeat_rows, exact, true);
+    merged_same_id_rows = m_alist.Get_Artists();
+    if (merged_same_id_rows.get_count() != 2 || m_dctree.Get_Size() != 5 ||
+        merged_same_id_rows[0]->releases.get_count() != 2 ||
+        merged_same_id_rows[0]->master_releases.get_count() != 2 ||
+        merged_same_id_rows[0]->search_role_list_pos != same_id_original_role)
+        throw std::runtime_error("Native repeated same-ID payload duplicated rows or releases.");
+
+    // Default_Action uses ShowArtistSearchResults on the selected partial
+    // artist. Exercise its actual projection, not just the combined tree.
+    ShowArtistSearchResults(merged_same_id_rows[0]);
+    if (m_dctree.Get_Size() != 4)
+        throw std::runtime_error("Native manually selected same-ID artist lost a late release or master.");
+
+    // Exact-only remains a distinct visible projection, including a late
+    // same-ID exact update, without introducing alternative-only artists.
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(two_artists, exact, false);
+    on_search_artist_done(same_id_delta_rows, exact, true);
+    if (m_alist.Get_Artists().get_count() != 2 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_CHECKED ||
+        m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native exact-only same-ID union lost visibility or release tree.");
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);
+    on_search_artist_done(two_artists, exact, false);
+    if (m_dctree.Get_Size() != 3)
+        throw std::runtime_error("Native new search did not reset previous same-ID union.");
+
+    // Native regression: asynchronous updates append cumulative exact/other
+    // buckets. Old code counted the visible alternatives as exact rows, lost
+    // the newly appended exact artist, then appended old alternatives twice.
+    Artist_ptr other_artist = std::make_shared<Artist>("105");
+    other_artist->name = "Initial alternative";
+    pfc::array_t<Artist_ptr> initial_others;
+    initial_others.append_single(other_artist);
+    on_search_artist_done(two_artists, initial_others, false);
+    const auto first_rows = m_alist.Get_Artists();
+    if (first_rows.get_count() != 3 || !first_rows[0] || !first_rows[1] ||
+        !first_rows[2] || !first_rows[0]->id.equals("101") ||
+        !first_rows[1]->id.equals("102") || !first_rows[2]->id.equals("105"))
+        throw std::runtime_error("Native initial exact/other artist rows were incorrectly ordered.");
+    const size_t original_first_role = first_rows[0]->search_role_list_pos;
+    const size_t original_second_role = first_rows[1]->search_role_list_pos;
+    const size_t original_other_role = first_rows[2]->search_role_list_pos;
+    if (!original_first_role || !original_second_role || !original_other_role)
+        throw std::runtime_error("Native initial artist rows have invalid search roles.");
+
+    Artist_ptr added_exact = std::make_shared<Artist>("106");
+    added_exact->name = "Late exact artist";
+    Release_ptr late_exact_release = std::make_shared<Release>("32559");
+    late_exact_release->title = "Joga (late exact)";
+    late_exact_release->loaded_preview = true;
+    added_exact->releases.append_single(late_exact_release);
+    added_exact->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> late_exact;
+    late_exact.append_single(added_exact);
+    on_search_artist_done(late_exact, exact, true);
+    auto appended_rows = m_alist.Get_Artists();
+    if (appended_rows.get_count() != 4 ||
+        !appended_rows[0]->id.equals("101") ||
+        !appended_rows[1]->id.equals("102") ||
+        !appended_rows[2]->id.equals("106") ||
+        !appended_rows[3]->id.equals("105") ||
+        appended_rows[0]->search_role_list_pos != original_first_role ||
+        appended_rows[1]->search_role_list_pos != original_second_role ||
+        appended_rows[3]->search_role_list_pos != original_other_role ||
+        !appended_rows[2]->search_role_list_pos)
+        throw std::runtime_error("Native append lost a new exact artist or changed an existing role.");
+    if (m_dctree.Get_Size() != 4)
+        throw std::runtime_error("Native late exact search results were not automatically added to the release tree.");
+
+    Artist_ptr added_other = std::make_shared<Artist>("107");
+    added_other->name = "Late alternative";
+    Release_ptr late_other_release = std::make_shared<Release>("78731");
+    late_other_release->title = "Late alternative release";
+    late_other_release->loaded_preview = true;
+    added_other->releases.append_single(late_other_release);
+    added_other->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> late_other;
+    late_other.append_single(added_other);
+    on_search_artist_done(exact, late_other, true);
+    on_search_artist_done(exact, pfc::array_t<Artist_ptr>(), true);
+    appended_rows = m_alist.Get_Artists();
+    if (appended_rows.get_count() != 5 ||
+        !appended_rows[0]->id.equals("101") ||
+        !appended_rows[1]->id.equals("102") ||
+        !appended_rows[2]->id.equals("106") ||
+        !appended_rows[3]->id.equals("105") ||
+        !appended_rows[4]->id.equals("107") ||
+        appended_rows[3]->search_role_list_pos != original_other_role ||
+        !appended_rows[4]->search_role_list_pos)
+        throw std::runtime_error("Native repeated append duplicated alternatives or lost artist roles.");
+    if (m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native late alternative results were not automatically added to the release tree.");
+
+    // Same IDs may be returned by two phases, and failed async lookups may
+    // contribute nulls. Neither may create a new visible row or change roles.
+    pfc::array_t<Artist_ptr> duplicate_exact, duplicate_other, null_exact;
+    duplicate_exact.append_single(added_exact);
+    duplicate_other.append_single(other_artist);
+    null_exact.append_single(Artist_ptr());
+    on_search_artist_done(duplicate_exact, duplicate_other, true);
+    on_search_artist_done(null_exact, exact, true);
+    appended_rows = m_alist.Get_Artists();
+    if (appended_rows.get_count() != 5 || m_dctree.Get_Size() != 5 ||
+        appended_rows[0]->search_role_list_pos != original_first_role ||
+        appended_rows[3]->search_role_list_pos != original_other_role)
+        throw std::runtime_error("Native duplicate/null search updates created rows or changed roles.");
+
+    // Exact-only is a separate visible projection: newly appended artist
+    // objects previously retained their default role zero, and later row
+    // selection could be confused with another search-result generation.
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(two_artists, exact, false);
+    auto exact_rows = m_alist.Get_Artists();
+    if (exact_rows.get_count() != 2 ||
+        !exact_rows[0]->id.equals("101") || !exact_rows[1]->id.equals("102") ||
+        !exact_rows[0]->search_role_list_pos || !exact_rows[1]->search_role_list_pos)
+        throw std::runtime_error("Native exact-only artist list initial projection failed.");
+    // An append containing alternatives but no *new* exact matches must
+    // not disable an exact-only filter while earlier exact matches exist.
+    on_search_artist_done(exact, late_other, true);
+    exact_rows = m_alist.Get_Artists();
+    if (exact_rows.get_count() != 2 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_CHECKED)
+        throw std::runtime_error("Native late alternatives disabled an existing exact-only filter.");
+    const size_t exact_role_one = exact_rows[0]->search_role_list_pos;
+    const size_t exact_role_two = exact_rows[1]->search_role_list_pos;
+    Artist_ptr exact_late_artist = std::make_shared<Artist>("108");
+    exact_late_artist->name = "Late exact-only artist";
+    pfc::array_t<Artist_ptr> exact_late;
+    exact_late.append_single(exact_late_artist);
+    on_search_artist_done(exact_late, exact, true);
+    on_search_artist_done(exact, pfc::array_t<Artist_ptr>(), true);
+    exact_rows = m_alist.Get_Artists();
+    if (exact_rows.get_count() != 3 ||
+        !exact_rows[0]->id.equals("101") ||
+        !exact_rows[1]->id.equals("102") ||
+        !exact_rows[2]->id.equals("108") ||
+        exact_rows[0]->search_role_list_pos != exact_role_one ||
+        exact_rows[1]->search_role_list_pos != exact_role_two ||
+        !exact_rows[2]->search_role_list_pos ||
+        exact_rows[2]->search_role_list_pos == exact_role_one ||
+        exact_rows[2]->search_role_list_pos == exact_role_two)
+        throw std::runtime_error("Native exact-only append lost or duplicated artist selection roles.");
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_UNCHECKED);
+
+    // Same ID 0 preview sentinel, a new query result: must replace stale tree.
+    Artist_ptr refreshed = std::make_shared<Artist>("103");
+    Release_ptr new_release = std::make_shared<Release>("32559");
+    new_release->title = "Joga";
+    new_release->loaded_preview = true;
+    refreshed->releases.append_single(new_release);
+    refreshed->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> changed_artists;
+    changed_artists.append_single(refreshed);
+    changed_artists.append_single(std::make_shared<Artist>("104"));
+    on_search_artist_done(changed_artists, exact, false);
+    if (m_dctree.Get_Size() != 1)
+        throw std::runtime_error("Repeated multi-artist search retained an obsolete preview tree.");
+
+    on_search_artist_done(exact, alternatives, false);
+    if (m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Returning to a single search bucket did not refresh results.");
+
+    // A failed async exact lookup may return a null Artist_ptr. It must
+    // never suppress real alternatives or masquerade as a valid exact hit.
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(null_exact, alternatives, false);
+    if (m_alist.Get_Artists().get_count() != 1 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED ||
+        m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native null-only exact result incorrectly hid valid alternatives.");
+    on_search_artist_done(null_exact, exact, false);
+    if (m_alist.Get_Artists().get_count() != 0 || m_dctree.Get_Size() != 0)
+        throw std::runtime_error("Native null-only search retained stale visible results.");
+
+    // An allocated-but-empty ID is as unusable as a null artist pointer.
+    // Exact-only must fall back to valid alternatives; late empty-ID
+    // notifications must neither add rows nor replace a correct preview.
+    pfc::array_t<Artist_ptr> empty_id_exact;
+    empty_id_exact.append_single(std::make_shared<Artist>(""));
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(empty_id_exact, alternatives, false);
+    if (m_alist.Get_Artists().get_count() != 1 ||
+        !m_alist.Get_Artists()[0]->id.equals("0") ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED ||
+        m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native empty-ID exact artist hid valid alternatives.");
+    on_search_artist_done(empty_id_exact, empty_id_exact, true);
+    if (m_alist.Get_Artists().get_count() != 1 || m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native empty-ID append polluted rows or preview.");
+    // A late modeless completion targeting the SAME HWND must not replace
+    // a newer search's rows or release tree. The accepted ticket must still
+    // use the real presentation path, not a synthetic state-only assertion.
+    const auto obsolete = m_search_request_epoch.begin();
+    const auto latest = m_search_request_epoch.begin();
+    std::pair<size_t, size_t> cap{0, 0};
+    if (on_search_artist_done_if_current(obsolete, changed_artists, exact, false, cap) ||
+        m_alist.Get_Artists().get_count() != 1 ||
+        !m_alist.Get_Artists()[0]->id.equals("0") ||
+        m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native stale search completion overwrote newer GUI results.");
+    if (!on_search_artist_done_if_current(latest, changed_artists, exact, false, cap) ||
+        m_dctree.Get_Size() != 1)
+        throw std::runtime_error("Native current search completion was incorrectly discarded.");
+    on_search_artist_done(exact, alternatives, false);
+    if (m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native search epoch QA failed to restore preview.");
+    // Real HWND + independent search/filter generations: a delayed filter
+    // or master expansion must not repaint a newer search with the same text.
+    const auto old_filter = m_filter_request_epoch.current();
+    const auto new_filter = m_filter_request_epoch.begin();
+    if (is_current_filter_request(old_filter) || !is_current_filter_request(new_filter) ||
+        !::IsWindow(m_hWnd) || !::IsWindow(m_edit_filter))
+        throw std::runtime_error("Native filter generation failed on live foobar controls.");
+    const auto old_master_search = m_search_request_epoch.current();
+    const auto new_master_search = m_search_request_epoch.begin();
+    if (is_current_search_request(old_master_search) || !is_current_search_request(new_master_search))
+        throw std::runtime_error("Native master expansion generation was not superseded.");
+    // A master expansion bound to the original filter must not update the
+    // same live HWND after the user edits the filter without changing artist.
+    const auto pending_master_search = m_search_request_epoch.current();
+    const auto pending_master_filter = m_filter_request_epoch.current();
+    if (!is_current_search_request(pending_master_search) ||
+        !is_current_filter_request(pending_master_filter))
+        throw std::runtime_error("Native master request was not initially current.");
+    const auto changed_master_filter = m_filter_request_epoch.begin();
+    if (!is_current_search_request(pending_master_search) ||
+        is_current_filter_request(pending_master_filter) ||
+        !is_current_filter_request(changed_master_filter))
+        throw std::runtime_error("Native master filter supersession failed.");
+    // Native original-host test: a partial advanced-search master must be
+    // completed on a staged object and published only to the exact live row.
+    on_search_artist_done(two_artists, exact, false);
+    if (m_dctree.Get_Size() != 3 || !m_dctree.runner_qa_staged_master_publication())
+        throw std::runtime_error("Native staged master publish/stale denial failed.");
+    on_search_artist_done(exact, alternatives, false);
+    if (m_dctree.Get_Size() != 5)
+        throw std::runtime_error("Native staged master QA did not restore the search tree.");
+    log_msg("DISCOGGER_NATIVE_MASTER_STAGED_PUBLICATION_QA=PASS");
+
+    // Native Jansson/Discogs parser: the matching partial version is at
+    // index 0 while the provider's page index is 1. Indexing the partial
+    // array by the page index was an out-of-bounds read.
+    MasterRelease partial_master("410077");
+    Release_ptr partial_match = std::make_shared<Release>("410087");
+    partial_master.sub_releases.append_single(partial_match);
+    json_error_t versions_error{};
+    json_t* versions_json = json_loads(
+        "{\"versions\":[{\"id\":\"410088\",\"title\":\"Other version\"},"
+        "{\"id\":\"410087\",\"title\":\"Matched synthetic version\"}]}",
+        0, &versions_error);
+    if (!versions_json)
+        throw std::runtime_error("Native synthetic master versions JSON failed to parse.");
+    try {
+        Discogs::parseMasterVersions(versions_json, &partial_master, SearchMode::AT);
+    } catch (...) {
+        json_decref(versions_json);
+        throw;
+    }
+    json_decref(versions_json);
+    const Release_ptr parsed_match = discogs_interface->get_release(encode_mr(0, 410087));
+    if (partial_master.sub_releases.get_count() != 1 ||
+        partial_master.sub_releases[0] != partial_match ||
+        !parsed_match || !parsed_match->loaded_preview ||
+        !parsed_match->title.equals("Matched synthetic version"))
+        throw std::runtime_error("Native partial-master version index/review isolation failed.");
+    log_msg("DISCOGGER_NATIVE_PARTIAL_MASTER_INDEX_QA=PASS");
+    log_msg("DISCOGGER_NATIVE_MASTER_FILTER_SUPERSESSION_QA=PASS");
+    log_msg("DISCOGGER_NATIVE_FILTER_MASTER_EPOCH_QA=PASS");
+    log_msg("DISCOGGER_NATIVE_STALE_SEARCH_QA=PASS");
+    m_query_mode = previous_mode;
+    return {1, initial_tree};
+}
+#endif
 
 void CFindReleaseDialog::ShowArtistSearchResults(Artist_ptr artist) {
 	cupdRelSrc cupdsrc(updRelSrc::ArtistSearchAT);

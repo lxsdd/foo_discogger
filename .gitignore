@@ -73,3 +73,23 @@ jansson/*.h
 zlib/*.h
 liboauthcpp/*.h
 
+# Local CI bootstrap and generated binaries (prevents accidental publication)
+.vs/
+external/
+out/
+artifacts/
+*.dll
+*.exe
+*.pdb
+*.fb2k-component
+
+# Credentials, OAuth tokens and local test fixtures
+.env
+.env.*
+secrets/
+*.token
+*.pem
+*.key
+*.p12
+*.pfx
+local-fixtures/

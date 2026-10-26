@@ -11,7 +11,7 @@
 #define ENCODE_DISCOGS(d,t)		((d==-1||t==-1) ? -1 : ((d<<16)|t))
 #define DEF_TIME_COL_WIDTH 45  //96dpi
 
-enum class lsmode { tracks_ui = 0, art, unknown, default = 0 };
+enum class lsmode { tracks_ui = 0, art, unknown, default_mode = 0 };
 
 class coord_presenters;
 
@@ -611,7 +611,7 @@ public:
 		m_file_art_presenter(this),
 
 		m_cImageTileMode(0),
-		m_lsmode(lsmode::default)
+		m_lsmode(lsmode::default_mode)
 	{
 		//..
 	}
@@ -620,8 +620,8 @@ public:
 		//..
 	}
 
-	void swap_map_elements(HWND hwnd, const size_t key1, const size_t key2, lsmode mode = lsmode::default);
-	void reorder_map_elements(HWND hwnd, size_t const* order, size_t count, lsmode mode = lsmode::default);
+	void swap_map_elements(HWND hwnd, const size_t key1, const size_t key2, lsmode mode = lsmode::default_mode);
+	void reorder_map_elements(HWND hwnd, size_t const* order, size_t count, lsmode mode = lsmode::default_mode);
 
 	//
 	void set_listview_mode() {}

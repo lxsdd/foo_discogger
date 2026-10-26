@@ -2,6 +2,10 @@
 
 #include "tags.h"
 #include "foo_discogs.h"
+#include <memory>
+#include <vector>
+#include <iterator>
+#include <utility>
 
 // {F932A0A3-554C-4F4C-B908-7A3758ED2620}
 static const GUID guid_cfg_tag_mappings = {0xf932a0a3, 0x554c, 0x4f4c, {0xb9, 0x8, 0x7a, 0x37, 0x58, 0xed, 0x26, 0x20}};
@@ -240,71 +244,59 @@ static ID3_FrameDef ID3_FrameDefs[] =
 };
 
 void init_tag_mappings() {
-
-	if (!cfg_tag_mappings.get_count()) {
-
-		init_with_default_tag_mappings();
-	}
-	else {
-
-		for (size_t i = 0; i < cfg_tag_mappings.get_count(); i++) {
-
-			if (cfg_tag_mappings[i].freeze_tag_name || cfg_tag_mappings[i].freeze_update || cfg_tag_mappings[i].freeze_write) {
-				const size_t count = sizeof(default_tag_mappings) / sizeof(tag_mapping_entry);
-				bool found = false;
-				for (size_t j = 0; j < count; j++) {
-
-					if (STR_EQUAL(default_tag_mappings[j].tag_name, cfg_tag_mappings[i].tag_name)) {
-						found = true;
-						break;
-					}
-				}
-				if (!found) {
-					cfg_tag_mappings[i].freeze_tag_name = false;
-					cfg_tag_mappings[i].freeze_update = false;
-					cfg_tag_mappings[i].freeze_write = false;
-					cfg_tag_mappings[i].enable_write = false;
-					cfg_tag_mappings[i].enable_update = false;
-				}
-			}
-		}
-	}
+    auto mappings = cfg_tag_mappings.get(); // SDK 2026 cfg_objList returns a snapshot.
+    if (mappings.empty()) {
+        init_with_default_tag_mappings();
+        return;
+    }
+    bool changed = false;
+    for (auto& entry : mappings) {
+        if (!(entry.freeze_tag_name || entry.freeze_update || entry.freeze_write)) continue;
+        bool found = false;
+        for (const auto& def : default_tag_mappings) {
+            if (STR_EQUAL(def.tag_name, entry.tag_name)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            entry.freeze_tag_name = false;
+            entry.freeze_update = false;
+            entry.freeze_write = false;
+            entry.enable_write = false;
+            entry.enable_update = false;
+            changed = true;
+        }
+    }
+    if (changed) cfg_tag_mappings.set(std::move(mappings));
 }
 
 void init_with_default_tag_mappings() {
-
-	cfg_tag_mappings.remove_all();
-
-	const size_t count = sizeof(default_tag_mappings) / sizeof(tag_mapping_entry);
-
-	for (size_t i = 0; i < count; i++) {
-		cfg_tag_mappings.add_item(*(default_tag_mappings[i].clone()));
-		cfg_tag_mappings[i].is_multival_meta = is_multivalue_meta(default_tag_mappings[i].tag_name);
-	}
+    std::vector<tag_mapping_entry> defaults;
+    defaults.reserve(std::size(default_tag_mappings));
+    for (auto& source : default_tag_mappings) {
+        std::unique_ptr<tag_mapping_entry> entry(source.clone());
+        entry->is_multival_meta = discogger_is_multivalue_meta(entry->tag_name);
+        defaults.push_back(*entry);
+    }
+    cfg_tag_mappings.set(std::move(defaults));
 }
 
 void copy_tag_mappings(tag_mapping_list_type* out_tmt) {
-
-	out_tmt->remove_all();
-
-	for (auto& tag_entry : cfg_tag_mappings) {
-
-		out_tmt->add_item(*tag_entry.clone());
-	}
+    out_tmt->remove_all();
+    for (auto& entry : cfg_tag_mappings.get()) {
+        std::unique_ptr<tag_mapping_entry> copy(entry.clone());
+        out_tmt->add_item(*copy);
+    }
 }
 
 void copy_default_tag_mappings(tag_mapping_list_type* out_tmt) {
-
-	out_tmt->remove_all();
-
-	const size_t count = sizeof(default_tag_mappings) / sizeof(tag_mapping_entry);
-
-	for (size_t i = 0; i < count; i++) {
-
-		out_tmt->add_item(*(default_tag_mappings[i].clone()));
-		tag_mapping_entry& new_map_entry = out_tmt->get_item(i);
-		new_map_entry.is_multival_meta = is_multivalue_meta(default_tag_mappings[i].tag_name);
-	}
+    out_tmt->remove_all();
+    for (auto& source : default_tag_mappings) {
+        std::unique_ptr<tag_mapping_entry> entry(source.clone());
+        entry->is_multival_meta = discogger_is_multivalue_meta(entry->tag_name);
+        out_tmt->add_item(*entry);
+    }
 }
 
 //menuctx (id3 split button) skips kPretags
@@ -336,7 +328,7 @@ void copy_id3_default_tag_mappings(tag_mapping_list_type * out_tmt, bool onlyms,
 
 			tagname = walk < kPretags ? fdef.fid : fdef.field;
 
-			std::string what = tagname.toLower();
+			std::string what(tagname.toLower().get_ptr());
 			auto foundit = std::find_if(map_ms.begin(), map_ms.end(), [&](const std::pair<std::string, pfc::string8>& val) {
 				return val.first.compare(what) == 0;
 				});
@@ -359,41 +351,42 @@ void copy_id3_default_tag_mappings(tag_mapping_list_type * out_tmt, bool onlyms,
 				entry.enable_write = true;
 			}
 
-			entry.is_multival_meta = is_multivalue_meta(entry.tag_name);
+			entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
 			out_tmt->add_item(*entry.clone());
 		}
 	}
 }
 
 void set_cfg_tag_mappings(pfc::list_t<tag_mapping_entry> *mappings) {
-
-	cfg_tag_mappings.remove_all();
-	for (size_t i = 0; i < mappings->get_count(); i++) {
-		cfg_tag_mappings.add_item(mappings->get_item(i));
-	}
+    std::vector<tag_mapping_entry> snapshot;
+    snapshot.reserve(mappings->get_count());
+    for (size_t i = 0; i < mappings->get_count(); ++i) {
+        snapshot.push_back(mappings->get_item(i));
+    }
+    cfg_tag_mappings.set(std::move(snapshot));
 }
 
- bool awt_get_release_mod_flag(tag_mapping_entry& out) {
-	for (auto& tag_entry : cfg_tag_mappings) {
-		bool release_id_mod = STR_EQUAL(TAG_RELEASE_ID, tag_entry.tag_name.get_ptr());
-		if (release_id_mod) {
-			out = tag_entry;
-			return true;
-		}
-	}
-	return false;
+bool awt_get_release_mod_flag(tag_mapping_entry& out) {
+    for (const auto& entry : cfg_tag_mappings.get()) {
+        if (STR_EQUAL(TAG_RELEASE_ID, entry.tag_name.get_ptr())) {
+            out = entry;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool awt_set_release_mod_flag(tag_mapping_entry e) {
-	for (auto & tag_entry : cfg_tag_mappings) {
-		bool release_id_mod = STR_EQUAL(TAG_RELEASE_ID, tag_entry.tag_name.get_ptr());
-		if (release_id_mod) {
-			tag_entry.enable_write = e.enable_write;
-			tag_entry.enable_update = e.enable_update;
-			return true;
-		}
-	}
-	return false;
+    auto mappings = cfg_tag_mappings.get();
+    for (auto& entry : mappings) {
+        if (STR_EQUAL(TAG_RELEASE_ID, entry.tag_name.get_ptr())) {
+            entry.enable_write = e.enable_write;
+            entry.enable_update = e.enable_update;
+            cfg_tag_mappings.set(std::move(mappings));
+            return true;
+        }
+    }
+    return false;
 }
 
 int awt_update_mod_flag(bool fromFlag) {
@@ -427,13 +420,14 @@ int awt_update_mod_flag(bool fromFlag) {
 }
 
 void update_loaded_tagmaps_multivalues() {
-	for (auto& entry : cfg_tag_mappings) {
-		entry.is_multival_meta = is_multivalue_meta(entry.tag_name);
-	}
-
-	for (auto& entry : default_tag_mappings) {
-		entry.is_multival_meta = is_multivalue_meta(entry.tag_name);
-	}
+    auto mappings = cfg_tag_mappings.get();
+    for (auto& entry : mappings) {
+        entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
+    }
+    cfg_tag_mappings.set(std::move(mappings));
+    for (auto& entry : default_tag_mappings) {
+        entry.is_multival_meta = discogger_is_multivalue_meta(entry.tag_name);
+    }
 }
 
 pfc::string8 get_default_tag(const pfc::string8 &name) {

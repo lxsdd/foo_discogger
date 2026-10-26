@@ -39,7 +39,7 @@ public:
 	}
 
 	const service_ptr_t<titleformat_object> & operator->() const {
-		if (script == NULL || !compiled) {
+		if (script == nullptr || !compiled) {
 			static_api_ptr_t<titleformat_compiler>()->compile_safe_ex(script, string);
 			compiled = true;
 		}
@@ -47,7 +47,7 @@ public:
 	}
 
 	const service_ptr_t<titleformat_object> & get_script() const {
-		if (script == NULL || !compiled) {
+		if (script == nullptr || !compiled) {
 			static_api_ptr_t<titleformat_compiler>()->compile_safe_ex(script, string);
 			compiled = true;
 		}

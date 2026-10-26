@@ -5,10 +5,107 @@
 #include "discogs_interface.h"
 #include "find_release_dialog.h"
 #include "find_artist_list.h"
+#include "discogger_artist_activation.h"
+#include <limits>
+#include <unordered_map>
+#include <unordered_set>
 
 const size_t TRACER_IMG_NDX = 3;
 const size_t LOADED_RELEASES_IMG_NDX = 6;
 const size_t SHOWING_IMAGE_NDX = 1;
+
+namespace {
+// Delayed invalidation must not retain the artist-list object after the
+// modeless Find Releases dialog is destroyed.
+void queue_artist_redraw(HWND window) {
+    fb2k::inMainThread([window] {
+        if (::IsWindow(window) && ::GetDlgCtrlID(window) == IDC_ARTIST_LIST)
+            ::InvalidateRect(window, nullptr, TRUE);
+    });
+}
+
+// Two asynchronous provider phases can describe the SAME artist ID with
+// disjoint release/master IDs. Build a search-only projection rather than
+// mutating the first (possibly canonical cached) Artist or losing late IDs.
+// Identical/repeated payload is a strict no-op: preserve the original pointer.
+Artist_ptr union_search_artist_payload(const Artist_ptr& retained,
+                                       const Artist_ptr& delta) {
+    if (!retained || !delta || !retained->id.equals(delta->id))
+        return retained;
+
+    std::unordered_set<std::string> known_releases, known_masters;
+    for (const auto& release : retained->releases)
+        if (release && release->id.get_length())
+            known_releases.emplace(release->id.get_ptr());
+    for (const auto& master : retained->master_releases)
+        if (master && master->id.get_length())
+            known_masters.emplace(master->id.get_ptr());
+
+    bool adds_new = false;
+    for (const auto& release : delta->releases)
+        if (release && release->id.get_length() &&
+            known_releases.emplace(release->id.get_ptr()).second)
+            adds_new = true;
+    for (const auto& master : delta->master_releases)
+        if (master && master->id.get_length() &&
+            known_masters.emplace(master->id.get_ptr()).second)
+            adds_new = true;
+    if (!adds_new) return retained;
+
+    Artist_ptr merged = std::make_shared<Artist>(retained->id.get_ptr());
+    merged->name = retained->name.get_length() ? retained->name : delta->name;
+    merged->profile = retained->profile;
+    merged->realname = retained->realname;
+    merged->images = retained->images;
+    merged->urls = retained->urls;
+    merged->aliases = retained->aliases;
+    merged->ingroups = retained->ingroups;
+    merged->anvs = retained->anvs;
+    merged->members = retained->members;
+    merged->loaded_preview = true;
+    // This union is a partial search projection, never a fully fetched
+    // artist cache. Default_Action must show it without pretending a full
+    // catalog has been loaded or silently committing any tags.
+    merged->loaded_releases = false;
+    merged->search_role_list_pos = retained->search_role_list_pos;
+
+    std::unordered_set<std::string> emitted_releases, emitted_masters;
+    auto add_release = [&](const Release_ptr& release) {
+        if (release && release->id.get_length() &&
+            emitted_releases.emplace(release->id.get_ptr()).second) {
+            merged->releases.append_single(release);
+            merged->search_order_master.append_single(false);
+        }
+    };
+    auto add_master = [&](const MasterRelease_ptr& master) {
+        if (master && master->id.get_length() &&
+            emitted_masters.emplace(master->id.get_ptr()).second) {
+            merged->master_releases.append_single(master);
+            merged->search_order_master.append_single(true);
+        }
+    };
+    for (const auto& artist : {retained, delta}) {
+        size_t master_index = 0, release_index = 0;
+        for (const bool is_master : artist->search_order_master) {
+            if (is_master) {
+                if (master_index < artist->master_releases.get_count())
+                    add_master(artist->master_releases[master_index]);
+                ++master_index;
+            } else {
+                if (release_index < artist->releases.get_count())
+                    add_release(artist->releases[release_index]);
+                ++release_index;
+            }
+        }
+        // Missing order flags must not hide valid provider releases.
+        while (master_index < artist->master_releases.get_count())
+            add_master(artist->master_releases[master_index++]);
+        while (release_index < artist->releases.get_count())
+            add_release(artist->releases[release_index++]);
+    }
+    return merged;
+}
+} // namespace
 
 CArtistList::CArtistList(IListControlOwnerDataSource* ilo, id_tracer* idtracer_p)
 	: CListControlOwnerData(ilo), m_idtracer_p(idtracer_p) {
@@ -41,20 +138,22 @@ void CArtistList::on_get_artist_done(cupdRelSrc updsrc, const Artist_ptr artist)
 			rppair rpempty;
 			dlg->print_root_stats(rpempty, false);
 
-			fb2k::inMainThread([dlg, rpempty] {
-				dlg->print_root_stats(rpempty, false);
-				});
+            // Resolve the live dialog on the main thread instead of
+            // dereferencing a stale object captured before close/reopen.
+            const HWND expected_dialog = dlg->m_hWnd;
+            fb2k::inMainThread([expected_dialog, rpempty] {
+                if (!g_discogs || !g_discogs->find_release_dialog ||
+                    !::IsWindow(expected_dialog) ||
+                    g_discogs->find_release_dialog->m_hWnd != expected_dialog)
+                    return;
+                g_discogs->find_release_dialog->print_root_stats(rpempty, false);
+            });
 
 		}
 
 		set_artists(true, false, artist, m_artist_exact_matches, m_artist_other_matches);
 
-		fb2k::inMainThread([this] {
-			try {
-				::InvalidateRect(m_hWnd, NULL, TRUE);
-			}
-			catch(...) {}
-			});
+		queue_artist_redraw(m_hWnd);
 
 		return;
 	}
@@ -96,12 +195,7 @@ void CArtistList::on_get_artist_done(cupdRelSrc updsrc, const Artist_ptr artist)
 				}
 			}
 
-			fb2k::inMainThread([this] {
-				try {
-				::InvalidateRect(m_hWnd, NULL, TRUE);
-				}
-				catch(...) {}
-				});
+			queue_artist_redraw(m_hWnd);
 
 		}
 	}
@@ -151,7 +245,8 @@ void CArtistList::fill_artist_list(bool dlgexact, bool force_exact, updRelSrc up
 		size_t prev_role_pos = m_find_release_artist ? m_find_release_artist->search_role_list_pos : 0/*~0*/;
 		size_t prev_list_pos = 0;
 		for (size_t w = 0; w < m_find_release_artists.get_count(); w++) {
-			if (m_find_release_artists[w]->search_role_list_pos == prev_role_pos) {
+			if (m_find_release_artists[w] &&
+                m_find_release_artists[w]->search_role_list_pos == prev_role_pos) {
 				prev_list_pos = w + 1; //1 base
 				break;
 			}
@@ -169,7 +264,7 @@ void CArtistList::fill_artist_list(bool dlgexact, bool force_exact, updRelSrc up
 
 		// * CHANGE CURRENT ARTIST
 
-		if (pos != SIZE_MAX && Get_Artists().get_count() > pos) {
+		if (pos != SIZE_MAX && Get_Artists().get_count() > pos && Get_Artists()[pos]) {
 			m_find_release_artist = Get_Artists()[pos];
 			m_idtracer_p->artist_check(m_find_release_artist->id, 0);
 		}
@@ -223,49 +318,75 @@ void CArtistList::switch_exact_matches(bool exact_matches, bool append) {
 
 void CArtistList::switch_find_releases(size_t op, bool append) {
 
-	switch (op) {
-	case 0:
-		m_find_release_artists = m_artist_exact_matches;
-		break;
-	case 1:
-		if (m_find_release_artist) {
-			m_artist_exact_matches.add_item(m_find_release_artist);
-		}
-		m_find_release_artists = m_artist_exact_matches;
-		break;
-	case 2:
-		break;
-	case 3:
-		if (!append) {
-			m_find_release_artists = m_artist_exact_matches;
-		}
-		else {
-			int base = m_find_release_artists.get_count();
-			int cadd = m_artist_exact_matches.get_count() - base;
-			m_find_release_artists.resize(base + cadd);
-			int c = 0;
-			for (auto w = base; w < base + cadd; w++) {
-				//copy last cadd elements
-				m_find_release_artists[w] = m_artist_exact_matches[w];
-				m_find_release_artists[w]->search_role_list_pos = get_next_role_pos();
-			}
-		}
-		m_find_release_artists.append(m_artist_other_matches);
-		break;
-	}
+    // A late worker update carries the cumulative exact/alternative buckets.
+    // Preserve per-artist row identities across either visible projection,
+    // including the exact-only checkbox, and allocate new roles only for
+    // identities not previously shown.
+    std::unordered_map<std::string, size_t> prior_roles;
+    if (append && (op == 0 || op == 3)) {
+        for (const auto& previous_artist : m_find_release_artists) {
+            if (previous_artist)
+                prior_roles.emplace(previous_artist->id.get_ptr(),
+                                    previous_artist->search_role_list_pos);
+        }
+    }
 
-	//reset ndx artist id (ref. artist search role)
+    switch (op) {
+    case 0:
+        m_find_release_artists = m_artist_exact_matches;
+        break;
+    case 1:
+        if (m_find_release_artist)
+            m_artist_exact_matches.add_item(m_find_release_artist);
+        m_find_release_artists = m_artist_exact_matches;
+        break;
+    case 2:
+        break;
+    case 3:
+        // Both source arrays are cumulative, whereas the current visible
+        // list may include other artists. The old base/cadd arithmetic
+        // discarded late exact matches and repeatedly duplicated others.
+        m_find_release_artists = m_artist_exact_matches;
+        m_find_release_artists.append(m_artist_other_matches);
+        break;
+    }
 
-	for (size_t i = 0; !append && i < m_find_release_artists.get_count(); i++) {
-		m_find_release_artists[i]->search_role_list_pos = get_next_role_pos();
-	}
+    if (op == 0 || op == 3) {
+        // Different search phases may return the same Discogs artist ID,
+        // or a failed asynchronous lookup may contribute a null pointer.
+        // Keep exact matches first, preserve the first valid identity and
+        // never expose null/duplicate owner-data rows to native callbacks.
+        std::unordered_map<std::string, size_t> visible_positions;
+        pfc::array_t<Artist_ptr> unique_artists;
+        for (const auto& candidate : m_find_release_artists) {
+            if (!candidate) continue;
+            if (!candidate->id.get_length()) continue;
+            const auto inserted = visible_positions.emplace(
+                candidate->id.get_ptr(), unique_artists.get_count());
+            if (inserted.second) {
+                unique_artists.append_single(candidate);
+            } else {
+                const size_t index = inserted.first->second;
+                unique_artists[index] =
+                    union_search_artist_payload(unique_artists[index], candidate);
+            }
+        }
+        m_find_release_artists = unique_artists;
+    }
 
-	fb2k::inMainThread([this] {
-    				try {
-    				::InvalidateRect(m_hWnd, NULL, TRUE);
-    				}
-    				catch(...) {}
-    				});
+    for (auto& current_artist : m_find_release_artists) {
+        if (!current_artist) continue;
+        if (!append) {
+            current_artist->search_role_list_pos = get_next_role_pos();
+        } else if (op == 0 || op == 3) {
+            const auto previous = prior_roles.find(current_artist->id.get_ptr());
+            current_artist->search_role_list_pos =
+                previous != prior_roles.end() && previous->second
+                    ? previous->second : get_next_role_pos();
+        }
+    }
+
+	queue_artist_redraw(m_hWnd);
 
 	auto citems = get_size();
 	bool bskip_idded_release_dlg = CONF.skip_mng_flag & SkipMng::RELEASE_DLG_IDED;
@@ -275,12 +396,7 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
 		|| (CONF.auto_rel_load_on_open && op == 3)
 		|| (op == 0 && citems == 1 && append == false)))
 	{
-		fb2k::inMainThread([this] {
-			try {
-			::InvalidateRect(m_hWnd, NULL, TRUE);
-			}
-			catch(...) {}
-			});
+		queue_artist_redraw(m_hWnd);
 
 	}
 }
@@ -292,6 +408,11 @@ void CArtistList::set_image_list() {
 }
 
 bool CArtistList::OnDisplayCellImage(int item, int subitem, int& result) const {
+
+	result = I_IMAGENONE;
+	if (subitem != 0 || !m_idtracer_p ||
+        !discogger_ui::valid_artist_list_row(item, m_find_release_artists.get_count()) ||
+        !m_find_release_artists[item]) return false;
 
 	int img_ndx = I_IMAGENONE;
 	bool is_traced;
@@ -324,13 +445,17 @@ bool CArtistList::OnDisplayCellImage(int item, int subitem, int& result) const {
 
 bool CArtistList::OnDisplayCellString(int item, int subitem, pfc::string8& result) {
 
+	result = "";
+    if (subitem != 0 ||
+        !discogger_ui::valid_artist_list_row(item, m_find_release_artists.get_count()) ||
+        !m_find_release_artists[item]) return false;
 	result = m_find_release_artists[item]->name;
 	return true;
 }
 
 size_t CArtistList::get_artist_id(size_t pos) {
 
-	if (get_size() > pos)
+	if (get_size() > pos && m_find_release_artists[pos])
 		return atoi(m_find_release_artists[pos]->id);
 
 	if (m_find_release_artist)
@@ -375,7 +500,8 @@ size_t CArtistList::get_artist_role_pos(size_t szartist_id) {
 		Artist_ptr artist;
 		for (size_t walk = 0; walk < m_find_release_artists.get_count(); walk++) {
 
-			if (atoi(m_find_release_artists[walk]->id) == szartist_id) {
+			if (m_find_release_artists[walk] &&
+                atoi(m_find_release_artists[walk]->id) == szartist_id) {
 
 				return m_find_release_artists[walk]->search_role_list_pos;
 			}
@@ -419,9 +545,10 @@ void CArtistList::Default_Action() {
 
 	size_t pos = GetFirstSelected();
 
-	if (pos == ~0) return;
+	if (pos == ~0 || pos >= m_find_release_artists.get_count()) return;
 
 	Artist_ptr artist = m_find_release_artists[pos];
+    if (!artist || !m_idtracer_p) return;
 
 	if (atoi(artist->id) != m_idtracer_p->get_artist_id()) {
 
@@ -445,18 +572,22 @@ void CArtistList::Default_Action() {
 // CListControlOwnerData overrides
 
 bool CArtistList::RenderCellImageTest(size_t item, size_t subItem) const {
-	int dummy;
-	OnDisplayCellImage(item, subItem, dummy);
+	if (item > static_cast<size_t>((std::numeric_limits<int>::max)())) return false;
+	int dummy = I_IMAGENONE;
+	OnDisplayCellImage(static_cast<int>(item), static_cast<int>(subItem), dummy);
 	return dummy == TRACER_IMG_NDX;
 }
 
 void CArtistList::RenderCellImage(size_t item, size_t subItem, CDCHandle dc, const CRect& rc) const  {
 
-	ICONINFO ii;
-	auto res = GetIconInfo(g_hIcon_quian, &ii);
-	BITMAP bm;
-	res = GetObject(ii.hbmMask, sizeof(bm), &bm) == sizeof(bm);
-		dc.DrawIconEx(CPoint(rc.TopLeft().x, rc.TopLeft().y), g_hIcon_quian, CSize(bm.bmWidth, bm.bmWidth));
+	// A paint callback must not call GetIconInfo: that allocates GDI bitmaps
+    // whose ownership previously leaked on every list repaint. Use the
+    // system's small-icon metrics, avoiding temporary bitmap handles entirely.
+    if (!g_hIcon_quian || item >= m_find_release_artists.get_count()) return;
+    const int cx = ::GetSystemMetrics(SM_CXSMICON);
+    const int cy = ::GetSystemMetrics(SM_CYSMICON);
+    if (cx <= 0 || cy <= 0) return;
+    dc.DrawIconEx(rc.TopLeft(), g_hIcon_quian, CSize(cx, cy));
 }
 
 // open artist profile panel
@@ -498,15 +629,7 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 	CFindReleaseDialog* dlg = static_cast<CFindReleaseDialog*>(m_host);
 
 	Artist_ptr artist;
-	bool isArtistOffline = false;
-
-	if (!empty_sel) {
-
-		if (artist = get_selected_artist()) {
-			isArtistOffline = artist->loaded_releases_offline;
-		}
-
-	}
+	if (!empty_sel) artist = get_selected_artist();
 
 	pfc::string8 sourcepage = "Web &artist page";
 	pfc::string8 copyrow = "&Copy";
@@ -527,10 +650,8 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 			uAppendMenu(menu, MF_STRING | (bexact_matches? MF_CHECKED : MF_UNCHECKED), ID_ARTIST_EXACT_MATCHES, "&exact matches");
 			uAppendMenu(menu, MF_STRING, ID_ARTIST_PROFILE, "&profile panel");
 			uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-			if (isArtistOffline) {
-				uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_ARTIST_DEL_CACHE, "&Delete artist cache");
-				uAppendMenu(menu, MF_SEPARATOR, 0, 0);
-			}
+			uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_ARTIST_DEL_CACHE, "&Refresh artist releases (online)");
+            uAppendMenu(menu, MF_SEPARATOR, 0, 0);
 			uAppendMenu(menu, MF_STRING | (!artist ? MF_DISABLED | MF_GRAYED : 0), ID_VIEW_PAGE, sourcepage);
 		}
 
@@ -538,6 +659,14 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 		DestroyMenu(menu);
 
 		if (!cmd) return;
+
+        // The selected row can change while TrackPopupMenu is open.
+        // Fail closed rather than copy, open, or refresh the wrong artist.
+        const Artist_ptr current_artist = get_selected_artist();
+        if (!discogger_ui::valid_artist_context_target(
+                list_index, GetSingleSel(),
+                artist && current_artist && current_artist->id.equals(artist->id)))
+            return;
 
 		switch (cmd)
 		{
@@ -558,9 +687,9 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 			auto isel = GetSingleSel();
 			if (isel != ~0) {
 				pfc::string8 out;
-				GetSubItemText(isel, 1, out);
+				GetSubItemText(isel, 0, out);
 				ClipboardHelper::OpenScope scope;
-				scope.Open(core_api::get_main_window(), true);
+				scope.Open(core_api::get_main_window());
 				ClipboardHelper::SetString(out);
 				scope.Close();
 			}
@@ -568,9 +697,15 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 		}
 		case ID_ARTIST_DEL_CACHE:
 		{
-			if (discogs_interface->delete_artist_cache(artist->id)) {
-				artist->loaded_releases_offline = false;
-			}
+			if (!artist || !discogs_interface) break;
+            // Artist search rows can differ from the canonical cached object.
+            // Keep original profile, cached thumbnails, and last good releases.
+            auto cached_artist = discogs_interface->get_artist(artist->id);
+            if (!cached_artist) break;
+            cached_artist->release_refresh.request();
+            cupdRelSrc refresh(updRelSrc::ArtistList);
+            refresh.extended = true;
+            dlg->convey_artist_list_selection(refresh);
 			break;
 		}
 		case ID_ARTIST_EXACT_MATCHES: {

@@ -1,10 +1,20 @@
 #include "stdafx.h"
 
 #include "fetcher.h"
+#include "http_status_util.h"
+#include "interruptible_wait.h"
 #include "exception.h"
 #include "utils.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+// Stable, non-secret identity for protected native Discogs read-only requests.
+char USER_AGENT[] = "User-Agent: foobar2000-discogger-protected-qa/1.0 (+https://github.com/lxsdd/foo_discogger)";
+#else
 char USER_AGENT[] = "User-Agent: <<user agent>>";
+#endif
 
 const double RL_AVG_THRESHOLD = 0.5;
 const size_t RL_REMAINING_THRESHOLD = 30;
@@ -13,6 +23,8 @@ const size_t RL_REMAINING_THRESHOLD = 30;
 #include <optional>
 #include <ostream>
 #include <iostream>
+#include <cstdlib>
+#include <cstring>
 
 std::ostream& operator<<(std::ostream& os, std::chrono::nanoseconds ns)
 {
@@ -61,12 +73,11 @@ void Fetcher::fetch_html(const pfc::string8 &url, const pfc::string8 &params, pf
 
 void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc::array_t<t_uint8> & out, abort_callback &p_abort, bool use_oauth, const pfc::string8 &content_type) {
 
-	try {
-		p_abort.check();
-	}
-	catch (exception_aborted) {
-		return;
-	}
+    // Cancellation is not a successful, empty HTTP response. A caller may
+    // reuse its output buffer, so invalidate it before checking the abort.
+    // Propagate exception_aborted to the modeless task just like later I/O.
+    out.set_size(0);
+    p_abort.check();
 
 	pfc::string8 msg_average;
 	pfc::string8 status;
@@ -82,12 +93,12 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 	}
 
 	if (params.get_length()) clean_url << "?" << params;
-	bool use_api = url.find_first("api") != ~0;
+    const bool use_api = discogger_net::is_discogs_api_url(url.c_str());
 	use_oauth &= use_api;
 
-	bool isImageUrl = url.has_prefix("https://img.discogs.com");
-	isImageUrl |= url.has_prefix("https://i.discogs.com");
-	isImageUrl &= !std::string(url.c_str()).find("h:150"); //ignore img previews
+    // Classify full-resolution artwork, excluding small preview thumbnails.
+    // This must remain separate from the API rate-limit classification.
+    const bool isImageUrl = discogger_net::should_throttle_discogs_image(url.c_str());
 
 	if (isImageUrl) {
 
@@ -110,9 +121,10 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 			else if (Min != m_current_minute) {
 				m_ratelimit_remaining = m_ratelimit_max;
 			}
-			else if (m_ratelimit_remaining < 0) {
-				m_ratelimit_remaining = 0;
-			}
+			else if (m_ratelimit_remaining == 0) {
+                // Keep exhausted counters at zero; never wrap the unsigned value.
+                m_ratelimit_remaining = 0;
+            }
 		}
 		m_current_minute = Min;
 	}
@@ -122,7 +134,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 	}
 
 	//log: url and oauth status
-	log_msg(clean_url);
+	log_msg("Discogs HTTP request (URL and query redacted).");
 	if (use_oauth) {
 		log_msg("Url OAuth enabled");
 	}
@@ -165,7 +177,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 
 		//apply delta/set cruise mode
 		if (m_ratelimit_cruise ||
-			(m_fetch_wait_rolling_avg < (60/m_ratelimit_max) /*RL_AVG_THRESHOLD*/ /*(0.5)*/ && m_ratelimit_remaining <= m_ratelimit_threshold /*(30)*/)) {
+			(m_fetch_wait_rolling_avg < discogger_net::discogs_rate_interval(m_ratelimit_max) && m_ratelimit_remaining <= m_ratelimit_threshold)) {
 
 			m_ratelimit_cruise = true;
 
@@ -174,7 +186,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 			m_throttle_delta = (std::max)(sleep_base - (isImageUrl ? 0 : time_span_milli.count()), 0.0);
 
 			DWORD dw = static_cast<DWORD>((int)m_throttle_delta);
-			Sleep(dw);
+			discogger_net::interruptible_wait(dw, p_abort);
 		}
 		else {
 			m_throttle_delta = 0;
@@ -216,21 +228,30 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 				pfc::string8 msg_ratelimits;
 
 				if (r->get_http_header("X-Discogs-Ratelimit", rate_header_buffer)) {
-					m_ratelimit_max = atoi(rate_header_buffer); //currently 60, discoggs may update these rate limits at any time
-					m_ratelimit_threshold = m_ratelimit_max - RL_REMAINING_THRESHOLD; //max - 30
-					msg_ratelimits << "RL: " << rate_header_buffer;
-				}
+                    std::size_t parsed = 0;
+                    if (discogger_net::parse_discogs_rate_header(
+                            rate_header_buffer.c_str(), 600, parsed, false)) {
+                        m_ratelimit_max = parsed;
+                        m_ratelimit_threshold = discogger_net::discogs_rate_threshold(parsed);
+                        if (m_ratelimit_remaining > parsed) m_ratelimit_remaining = parsed;
+                        msg_ratelimits << "RL: " << parsed;
+                    }
+                }
 				if (r->get_http_header("X-Discogs-Ratelimit-Used", rate_header_buffer)) {
 					msg_ratelimits << " - Used: " << rate_header_buffer;
 				}
 				if (r->get_http_header("X-Discogs-Ratelimit-Remaining", rate_header_buffer)) {
-					m_ratelimit_remaining = atoi(rate_header_buffer);
-					msg_ratelimits << " - RMNG: " << rate_header_buffer;
-				}
+                    std::size_t parsed = 0;
+                    if (discogger_net::parse_discogs_rate_header(
+                            rate_header_buffer.c_str(), m_ratelimit_max, parsed)) {
+                        m_ratelimit_remaining = parsed;
+                        msg_ratelimits << " - RMNG: " << parsed;
+                    }
+                }
 
 				if (isImageUrl && !use_api) {
 					m_ratelimit_max = 20;
-					--m_ratelimit_remaining;
+                    m_ratelimit_remaining = discogger_net::consume_discogs_rate(m_ratelimit_remaining);
 					msg_ratelimits << "RL: " << m_ratelimit_max;
 					msg_ratelimits << " - Used: " << m_ratelimit_max - m_ratelimit_remaining;
 					msg_ratelimits << " - RMNG: " << m_ratelimit_remaining;
@@ -240,10 +261,10 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 					std::stringstream human_read_time;
 					human_read_time << std::setprecision(3) << m_throttle_delta;
 					if (msg_ratelimits.get_length()) {
-						msg_ratelimits << " - Throttle engaged (" << pfc::string8(human_read_time.str().c_str()) << u8" \u03BCs)";
+						msg_ratelimits << " - Throttle engaged (" << pfc::string8(human_read_time.str().c_str()) << "\xCE\xBCs)";
 					}
 					else {
-						msg_ratelimits << "Image Throttle engaged (" << pfc::string8(human_read_time.str().c_str()) << u8" \u03BCs)";
+						msg_ratelimits << "Image Throttle engaged (" << pfc::string8(human_read_time.str().c_str()) << "\xCE\xBCs)";
 					}
 				}
 
@@ -253,33 +274,25 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 					m_ratelimit_remaining = m_ratelimit_threshold; //if rate info is empty reset to threshold
 				}
 
-				// check status
-				if (pfc::string8(status).find_first("200") == SIZE_MAX) {
-
-					int error_code = 0;
+				// Parse the actual HTTP status before considering query-specific hints.
+				// In particular, Discogs search requests must retain 429 so the
+				// existing rate-limit retry path remains reachable.
+				const int error_code = discogger_net::parse_http_status_code(status.c_str());
+				if (error_code != 200) {
+					const bool is_search = url.find_first("search") != SIZE_MAX;
 					pfc::string8 msg_status;
-					auto search_url = url.find_first("search");
-
-					if (search_url != SIZE_MAX) {
-						msg_status << "Query syntax/Network error: " << status;
-						error_code = 4011; //todo
-					}
-					else {
-						msg_status << "HTTP error status: " << status;
-						error_code = std::stoi(substr(status, 9, 3).get_ptr());
-					}
-
+					msg_status << (is_search ? "Search HTTP error status: " : "HTTP error status: ") << status;
 					log_msg(msg_status);
-
 					switch (error_code) {
 					case 404:
 						throw http_404_exception();
-					case 401: //unauthorized
+					case 401:
+						if (is_search) throw http_401_Search_exception();
 						throw http_401_exception();
-					case 4011:
-						throw http_401_Search_exception();
-					case 429: //too many requests (need to wait for remaining 60 or slow to 1 req/sec)
+					case 429:
 						throw http_429_exception();
+					case 0:
+						throw http_exception(0, "Malformed HTTP status line");
 					default:
 						throw http_exception(error_code);
 					}
@@ -303,20 +316,26 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 					if (done != delta) {
 						break;
 					}
-					out.set_size(out.get_size() << 1);
+					const size_t next_capacity = discogger_net::next_http_buffer_capacity(out.get_size());
+                    if (!next_capacity)
+                        throw network_exception("Discogs response exceeds the 64 MiB safety limit.");
+                    out.set_size(next_capacity);
 				}
 				out.set_size(bufferUsed);
 
 				// see if we must unzip buffer
 				if (out.get_size() >= 6 && out[0] == 0x1f && out[1] == 0x8b) {
 					pfc::array_t<t_uint8> unzipped;
-					unzipped.set_size(pfc::decode_little_endian<t_uint32>(out.get_ptr() + out.get_size() - 4));
+					const size_t decoded_size = pfc::decode_little_endian<t_uint32>(out.get_ptr() + out.get_size() - 4);
+                    if (!discogger_net::acceptable_http_decoded_size(decoded_size))
+                        throw network_exception("Discogs gzip response exceeds the 64 MiB decoded safety limit.");
+                    unzipped.set_size(decoded_size);
 					uLongf destLen = unzipped.get_size();
 					int state = myUncompress(unzipped.get_ptr(), &destLen, out.get_ptr(), out.get_size());
-					if (state != Z_OK) {
-						throw network_exception("Error unzipping network response.");
-					}
-					PFC_ASSERT(destLen == unzipped.get_size());
+					// The gzip trailer declares the expected decoded size. Do not
+                    // accept a short successful inflate in Release builds.
+                    if (state != Z_OK || destLen != unzipped.get_size())
+                        throw network_exception("Invalid or truncated gzip response.");
 					out = unzipped;
 				}
 				break;
@@ -328,21 +347,35 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 				pfc::string8 error_msg;
 				error_msg << "Rate-limited. Retrying: " << tries;
 				log_msg(error_msg);
-				Sleep(2000 * tries);
+				discogger_net::interruptible_wait(2000u * tries, p_abort);
 			}
-			catch (foobar2000_io::exception_io &e) {
+			catch (const http_exception& e) {
+                // Retry only transient HTTP 5xx for the existing idempotent
+                // GET. Fail closed after two bounded, cancellation-aware
+                // delays; do not mask 401/403/404 or replace 429 handling.
+                const unsigned delay = discogger_net::transient_server_retry_delay_ms(
+                    static_cast<unsigned>(tries));
+                if (!discogger_net::retryable_discogs_server_status(e.get_status()) ||
+                    delay == 0) throw;
+                out.set_size(0);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::http_server_retries.fetch_add(1);
+#endif
+                log_msg("Transient Discogs server failure; retrying bounded GET (status only).");
+                discogger_net::interruptible_wait(delay, p_abort);
+            }
+            catch (foobar2000_io::exception_io &) {
 
 				if (tries > 5) throw;
 
+				// Host transport errors may contain the fully signed OAuth URL.
+                // Never send raw SDK exception text to diagnostics.
 				pfc::string8 error_msg;
-				error_msg << "Network error";
-				if (!error_msg.has_prefix(pfc::string8(e.what())))
-					error_msg << ": " << e.what();
-				error_msg << ". Retrying: " << tries;
+                error_msg << "Network transport error (URL redacted). Retrying: " << tries;
 
 				log_msg(error_msg);
 
-				Sleep(2000 * (tries > 1 ? 2 : 1));
+				discogger_net::interruptible_wait(2000u * (tries > 1 ? 2 : 1), p_abort);
 			}
 			tries++;
 		}
@@ -350,41 +383,34 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 	catch (exception_aborted) {
 		throw;
 	}
-	catch (foo_discogs_exception &e) {
-		char decoded[MAX_PATH];
-		urldecode2(decoded, clean_url);
-
-		e << "url: " << decoded;
-		pfc::string8 error_msg;
-		error_msg << "Exception handling: " << clean_url;
-		log_msg(error_msg);
-		throw;
-	}
-	catch (const foobar2000_io::exception_io &e) {
-		//retries > max retries
-		network_exception ex("Network exception: ");
-		ex << e.what() << " (url: " << clean_url << ")";
-		pfc::string8 error_msg;
-		error_msg << "Network exception fetching url: " << clean_url;
-		log_msg(error_msg);
-		throw ex;
-	}
-	catch (const std::exception& e) {
-		log_msg(e.what());
-	}
+	catch (foo_discogs_exception &) {
+        // No raw query strings, decoded URLs or OAuth signatures in logs/errors.
+        log_msg("Discogs request failed (URL redacted).");
+        throw;
+    }
+	catch (const foobar2000_io::exception_io &) {
+        log_msg("Discogs transport retries exhausted (URL redacted).");
+        throw network_exception("Discogs network transport failed; check connectivity and retry.");
+    }
+	catch (const std::exception&) {
+        // The previous handler swallowed this exception and exposed any
+        // partially downloaded bytes as a successful response.
+        out.set_size(0);
+        log_msg("Discogs request failed unexpectedly (details redacted).");
+        throw network_exception("Discogs request failed; response discarded.");
+    }
 	catch (...) {
-		out.set_size(0);
-		network_exception ex("Unknown network exception: ");
-		ex << "(url: " << clean_url << ")";
-		pfc::string8 error_msg;
-		error_msg << "Unknown network exception handling: " << clean_url;
-		log_msg(error_msg);
-		throw ex;
-	}
+        out.set_size(0);
+        log_msg("Discogs request failed with unknown error (details redacted).");
+        throw network_exception("Unknown Discogs network failure; response discarded.");
+    }
 }
 
 void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8& params, pfc::string8& html, abort_callback& p_abort, bool throw_abort, const pfc::string8& content_type) {
 
+	// This best-effort request must never hand partial or previously returned
+    // HTTP data to the artwork preview after a size, decode, or network error.
+    html = "";
 	pfc::array_t<t_uint8> buffer;
 
 	pfc::string8 status;
@@ -393,7 +419,7 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 
 	if (params.get_length()) clean_url << "?" << params;
 
-	log_msg(clean_url);
+	log_msg("Discogs HTTP request (URL and query redacted).");
 
 	try {
 		const http_request::ptr request = client->create_request("GET");
@@ -429,12 +455,18 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 
 				// check status (applies only to request->run_ex)
 
-				if (pfc::string8(status).find_first("200") == ~0) {
-
-					pfc::string8 msg_status;
-					msg_status << "HTTP error status: " << status;
-					log_msg(msg_status);
-				}
+                // This best-effort preview path used to merely log a 404,
+                // 429 or partial HTTP response, then expose its body as if
+                // artwork/JSON had been fetched successfully. Reject it before
+                // reading any bytes; do not retry an unchanged bad status.
+                if (!discogger_net::usable_preview_http_response(status.c_str())) {
+                    buffer.set_size(0);
+                    pfc::string8 message;
+                    message << "Preview HTTP response rejected (status "
+                            << discogger_net::parse_http_status_code(status.c_str()) << ").";
+                    log_msg(message);
+                    break;
+                }
 
 				//Sleep(1000);
 
@@ -457,78 +489,98 @@ void Fetcher::fetch_html_simple_log(const pfc::string8& url, const pfc::string8&
 					if (done != delta) {
 						break;
 					}
-					buffer.set_size(buffer.get_size() << 1);
+					const size_t next_capacity = discogger_net::next_http_buffer_capacity(buffer.get_size());
+                    if (!next_capacity)
+                        throw network_exception("Discogs response exceeds the 64 MiB safety limit.");
+                    buffer.set_size(next_capacity);
 				}
 				buffer.set_size(bufferUsed);
 
 				// see if we must unzip buffer
 				if (buffer.get_size() >= 6 && buffer[0] == 0x1f && buffer[1] == 0x8b) {
 					pfc::array_t<t_uint8> unzipped;
-					unzipped.set_size(pfc::decode_little_endian<t_uint32>(buffer.get_ptr() + buffer.get_size() - 4));
+					const size_t decoded_size = pfc::decode_little_endian<t_uint32>(buffer.get_ptr() + buffer.get_size() - 4);
+                    if (!discogger_net::acceptable_http_decoded_size(decoded_size))
+                        throw network_exception("Discogs gzip response exceeds the 64 MiB decoded safety limit.");
+                    unzipped.set_size(decoded_size);
 					uLongf destLen = unzipped.get_size();
 					int state = myUncompress(unzipped.get_ptr(), &destLen, buffer.get_ptr(), buffer.get_size());
-					if (state != Z_OK) {
-						log_msg("Error unzipping network response.");
-						break;
-					}
-					PFC_ASSERT(destLen == unzipped.get_size());
+					// Preview fetches must not return compressed bytes as if they
+                    // were decoded artwork after a failed inflate.
+                    if (state != Z_OK || destLen != unzipped.get_size()) {
+                        buffer.set_size(0);
+                        log_msg("Invalid or truncated gzip preview response.");
+                        break;
+                    }
 					buffer = unzipped;
 				}
 
 				break;
 			}
-			catch (foobar2000_io::exception_io& e) {
+			catch (foobar2000_io::exception_io&) {
 
 				if (tries > 5) throw;
 
+				// Host transport errors may contain the fully signed OAuth URL.
+                // Never send raw SDK exception text to diagnostics.
 				pfc::string8 error_msg;
-				error_msg << "Network error";
-				if (!error_msg.has_prefix(pfc::string8(e.what())))
-					error_msg << ": " << e.what();
-				error_msg << ". Retrying: " << tries;
+                error_msg << "Network transport error (URL redacted). Retrying: " << tries;
 				log_msg(error_msg);
-				Sleep(2000 * (tries > 1 ? 2 : 1));
+				discogger_net::interruptible_wait(2000u * (tries > 1 ? 2 : 1), p_abort);
 			}
 			tries++;
 		}
 	}
 	catch (exception_aborted) {
+        buffer.set_size(0);
 		if (throw_abort)
 			throw;
 	}
-	catch (foo_discogs_exception& e) {
-		e << "(url: " << clean_url << ")";
-		pfc::string8 error_msg;
-		error_msg << "Exception handling: " << clean_url;
-		log_msg(error_msg);
-	}
-	catch (const foobar2000_io::exception_io& e) {
-		//retries > max retries
-		network_exception ex("Network exception: ");
-		ex << e.what() << " (url: " << clean_url << ")";
-		pfc::string8 error_msg = PFC_string_formatter() << "Network exception (simlog fetching url): " << clean_url;
-		log_msg(error_msg);
-		throw ex;
-	}
-	catch (const std::exception& e) {
-		log_msg(e.what());
-	}
+	catch (foo_discogs_exception&) {
+        buffer.set_size(0);
+        log_msg("Discogs preview request failed (URL redacted).");
+    }
+	catch (const foobar2000_io::exception_io&) {
+        buffer.set_size(0);
+        log_msg("Discogs preview transport retries exhausted (URL redacted).");
+        throw network_exception("Discogs preview network transport failed.");
+    }
+	catch (const std::exception&) {
+        buffer.set_size(0);
+        log_msg("Discogs preview request failed unexpectedly (details redacted).");
+    }
 	catch (...) {
-
-		// fallback for request->run errors
-
-		buffer.set_size(0);
-		network_exception ex("Unknown network exception: ");
-		ex << "(url: " << clean_url << ")";
-		pfc::string8 error_msg;
-		error_msg << "Unknown network exception handling: " << clean_url;
-		log_msg(error_msg);
-	}
+        buffer.set_size(0);
+        log_msg("Unknown Discogs preview request failure (details redacted).");
+    }
 
 	html = pfc::string8((char*)buffer.get_ptr(), buffer.get_size());
 }
 
 void Fetcher::set_oauth(const pfc::string8 &token, const pfc::string8 &token_secret) {
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+	// Test-only process-memory OAuth injection. Never compile secrets into the DLL,
+	// write them to a profile, or enable this path in production component builds.
+	const char* runner = std::getenv("GITHUB_ACTIONS");
+	const char* key = std::getenv("DISCOGS_OAUTH_CONSUMER_KEY");
+	const char* secret = std::getenv("DISCOGS_OAUTH_CONSUMER_SECRET");
+	const char* access = std::getenv("DISCOGS_OAUTH_ACCESS_TOKEN");
+	const char* access_secret = std::getenv("DISCOGS_OAUTH_TOKEN_SECRET");
+	const bool any = (key && *key) || (secret && *secret) ||
+		(access && *access) || (access_secret && *access_secret);
+	const bool all = (key && *key) && (secret && *secret) &&
+		(access && *access) && (access_secret && *access_secret);
+	if (any && (!all || !runner || std::strcmp(runner, "true") != 0)) {
+		throw foo_discogs_exception("Incomplete or unauthorized runner OAuth configuration.");
+	}
+	if (all) {
+		consumer = new OAuth::Consumer(key, secret);
+		oauth_token = access;
+		oauth_token_secret = access_secret;
+		init_oauth();
+		return;
+	}
+#endif
 	consumer = new OAuth::Consumer(CONSUMER_KEY, CONSUMER_SECRET);
 	oauth_token = token;
 	oauth_token_secret = token_secret;
@@ -607,9 +659,8 @@ pfc::string8 Fetcher::get_oauth_authorize_url(abort_callback &p_abort) {
 	pfc::string8 html;
 	fetch_html(REQUEST_TOKEN_URL, oauth_query_str, html, p_abort, false);
 
-	pfc::string8 msg("OAuth request response: ");
-	msg << html;
-	log_msg(msg);
+	// Contains oauth_token and oauth_token_secret; never log raw body.
+    log_msg("OAuth request-token response received (redacted).");
 
 	if (request_token != nullptr) {
 		delete request_token;
@@ -636,9 +687,8 @@ OAuth::Token * Fetcher::generate_oauth(pfc::string8 &code, abort_callback &p_abo
 	pfc::string8 html;
 	fetch_html(ACCESS_TOKEN_URL, oauth_query_str, html, p_abort, false);
 
-	pfc::string8 msg("OAuth generated response: ");
-	msg << html;
-	log_msg(msg);
+	// Contains persistent access token and secret; never log raw body.
+    log_msg("OAuth access-token response received (redacted).");
 
 	OAuth::KeyValuePairs access_token_resp_data = OAuth::ParseKeyValuePairs(html.get_ptr());
 	OAuth::Token t = OAuth::Token::extract(access_token_resp_data);

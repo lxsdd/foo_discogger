@@ -75,7 +75,7 @@ inline pfc::string EscapeWin(pfc::string8 keyWord) {
 
 inline bool remove_continous_space(pfc::string8 in, pfc::string8& out, std::regex &regex_v) {
 
-	std::string tmpstr = in;
+	std::string tmpstr(in.c_str());
 
 	if (regex_v._Empty()) {
 		try {
@@ -192,7 +192,7 @@ pfc::string8 sanitize_track_commas(const pfc::string8& tracks, std::regex& regex
 		res_no_extra_comma_spc = std::regex_replace(res_no_extra_comma_spc.c_str(), regex_v, ", ");
 	}
 	catch (std::regex_error e) {
-		return false;
+		return tracks;
 	}
 
 	pfc::string8 tracks_semied = sanitize_track_semi_media(res_no_extra_comma_spc.c_str());
@@ -253,7 +253,7 @@ pfc::string8 sanitize_track_to(const pfc::string8& tracks) {
 		res << i->prefix().str().c_str();
 	}
 	res << i->str().c_str();
-	std::string str_suffix = trim(i->suffix().str().c_str());
+	std::string str_suffix(trim(i->suffix().str().c_str()).c_str());
 	if (i->suffix().matched && str_suffix.length()) {
 		if (str_suffix.at(0) != ',') {
 			res << ",";
@@ -360,7 +360,7 @@ size_t encode_mr(const int a, const unsigned long b) {
 	return coded;
 }
 
-size_t encode_mr(const int a, pfc::string8& sb) {
+size_t encode_mr(const int a, const pfc::string8& sb) {
 	return encode_mr(a, atoi(sb));
 }
 
@@ -710,7 +710,9 @@ void display_url(const pfc::string8 &url) {
 				nullptr, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, nullptr);
 
 			foo_discogs_exception ex;
-			ex << "Error opening browser page: " << wurl << messageBuffer;
+            const auto url_utf8 = pfc::stringcvt::string_utf8_from_os(wurl);
+            ex << "Error opening browser page: " << url_utf8.get_ptr()
+               << (messageBuffer ? messageBuffer : "");
 
 			LocalFree(messageBuffer);
 
@@ -1247,7 +1249,7 @@ bool check_os_wine_dark_no_theme() {
 		hres = GetThemeDocumentationProperty(theme_name,
 			SZ_THDOCPROP_DISPLAYNAME, theme_name, MAX_PATH);
 	}
-	pfc::string8 str_cvt = pfc::stringcvt::string_utf8_from_os(theme_name, MAX_PATH);
+	pfc::string8 str_cvt = pfc::stringcvt::string_utf8_from_os(theme_name, MAX_PATH).get_ptr();
 
 	is_wine_dark_no_theme &= !str_cvt.length();
 
@@ -1353,12 +1355,12 @@ void CustomFont(HWND hwndParent, size_t flag, bool check_font, bool apply) {
 			HWND next = ::GetWindow(walk, GW_HWNDNEXT);
 			if (next && ::IsWindow(next)) {
 				if (g_hFont && (((_wcsnicmp(cls, L"libPPUI:", 8) == 0) || (_wcsnicmp(cls, L"SysTreeV", 8) == 0)))) {
-					CWindow* cwnd = &CWindow(walk);
-					cwnd->SetFont(g_hFont);
+					CWindow cwnd(walk);
+					cwnd.SetFont(g_hFont);
 				}
 				else if (g_hFontTabs && (_wcsnicmp(cls, L"SysTabControl32", 15) == 0)) {
-					CWindow* cwnd = &CWindow(walk);
-					cwnd->SetFont(g_hFontTabs);
+					CWindow cwnd(walk);
+					cwnd.SetFont(g_hFontTabs);
 				}
 			}
 			walk = next;

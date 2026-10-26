@@ -135,11 +135,19 @@ inline bool vregex_util_get(const pfc::string8& expr, std::regex& regex_v, bool 
 	return (!regex_v._Empty());
 }
 
-extern inline bool remove_continous_space(pfc::string8 in, pfc::string8& out, std::regex& regex_v = std::regex());
+extern inline bool remove_continous_space(pfc::string8 in, pfc::string8& out, std::regex& regex_v);
+inline bool remove_continous_space(pfc::string8 in, pfc::string8& out) {
+    std::regex regex_v;
+    return remove_continous_space(in, out, regex_v);
+}
 extern inline std::string any_case_substring(std::string s, std::string a, const std::string& b);
 
 extern pfc::string8 sanitize_track_semi_media(const pfc::string8& tracks);
-extern pfc::string8 sanitize_track_commas(const pfc::string8& tracks, std::regex &regex_v = std::regex());
+extern pfc::string8 sanitize_track_commas(const pfc::string8& tracks, std::regex& regex_v);
+inline pfc::string8 sanitize_track_commas(const pfc::string8& tracks) {
+    std::regex regex_v;
+    return sanitize_track_commas(tracks, regex_v);
+}
 extern pfc::string8 sanitize_track_to(const pfc::string8& tracks);
 extern void replace_track_volume_desc(const pfc::string& sometrack, nota_info& out, std::vector<pfc::string8>alldescs);
 
@@ -158,7 +166,7 @@ extern size_t split(pfc::string8 str, pfc::string8 token, size_t index, std::vec
 extern bool sanitaze_track_title(pfc::string8& out);
 
 size_t encode_mr(const int a, const unsigned long b);
-size_t encode_mr(const int a, pfc::string8& sb);
+size_t encode_mr(const int a, const pfc::string8& sb);
 std::pair<int, unsigned long> decode_mr(const size_t coded);
 
 extern void szcstr(size_t n, pfc::string8& out);
@@ -190,7 +198,7 @@ extern int myUncompress(Bytef *dest, uLongf *destLen, const Bytef *source, uLong
 
 template<typename T>
 void log_msg(const T &msg) {
-	console::print(pfc::string8("foo_discogger: ") << msg);
+	console::print((PFC_string_formatter() << "foo_discogger: " << msg).c_str());
 }
 
 extern void ensure_directory_exists(const char* dir);

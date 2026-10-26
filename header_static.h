@@ -2,7 +2,7 @@
 
 class HeaderStatic : public CWindowImpl<HeaderStatic, CStatic> {
 public:
-	HeaderStatic::HeaderStatic() : m_iLeftSpacing(8) {}
+	HeaderStatic() : m_iLeftSpacing(8) {}
 	BOOL SubclassWindow(HWND hWnd);
 
 	DECLARE_WND_SUPERCLASS(0, CStatic::GetWndClassName())
