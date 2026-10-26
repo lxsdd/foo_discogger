@@ -319,6 +319,8 @@ private:
 	int m_query_mode;
     HWND m_owner_window = nullptr; // Exact window captured before worker dispatch.
     std::uint64_t m_search_ticket = 0; // Reject a master expansion from a previous search.
+    std::uint64_t m_filter_ticket = 0; // A filter edit/rebuild invalidates the original master row.
+    pfc::string8 m_filter_text; // Reject silent programmatic filter changes as well.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
