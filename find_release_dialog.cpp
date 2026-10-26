@@ -2610,8 +2610,8 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     partial_master.sub_releases.append_single(partial_match);
     json_error_t versions_error{};
     json_t* versions_json = json_loads(
-        "{\\"versions\\":[{\\"id\\":\\"410088\\",\\"title\\":\\"Other version\\"},"
-        "{\\"id\\":\\"410087\\",\\"title\\":\\"Matched synthetic version\\"}]}",
+        "{\"versions\":[{\"id\":\"410088\",\"title\":\"Other version\"},"
+        "{\"id\":\"410087\",\"title\":\"Matched synthetic version\"}]}",
         0, &versions_error);
     if (!versions_json)
         throw std::runtime_error("Native synthetic master versions JSON failed to parse.");
