@@ -30,6 +30,13 @@ inline std::atomic<unsigned> response_items{0};
 inline std::atomic<unsigned> parsed_masters{0};
 inline std::atomic<unsigned> parsed_releases{0};
 inline std::atomic<unsigned> query_limit{0};
+inline std::atomic<unsigned> fallback_entered{0};
+inline std::atomic<unsigned> fallback_planned{0};
+inline std::atomic<unsigned> fallback_requested{0};
+inline std::atomic<unsigned> fallback_completed{0};
+inline std::atomic<unsigned> fallback_primary{0};
+inline std::atomic<unsigned> fallback_partner{0};
+inline std::atomic<unsigned> fallback_broad{0};
 inline void reset() noexcept {
     button.store(0);
     input_nonempty.store(0);
@@ -56,6 +63,13 @@ inline void reset() noexcept {
     parsed_masters.store(0);
     parsed_releases.store(0);
     query_limit.store(0);
+    fallback_entered.store(0);
+    fallback_planned.store(0);
+    fallback_requested.store(0);
+    fallback_completed.store(0);
+    fallback_primary.store(0);
+    fallback_partner.store(0);
+    fallback_broad.store(0);
 }
 }
 #endif
