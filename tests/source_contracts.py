@@ -236,9 +236,9 @@ assert master_load.index("stageMasterVersionPages(") < master_load.index("p_abor
 assert "discogger_master::stage_master_pages<MasterRelease_ptr>(" in master_stage
 assert "std::make_shared<Release>(*child)" in master_stage
 assert "discogger_search::valid_release_id(child_id.c_str())" in master_stage
-// JSONAttributeString currently accepts json_t*, not const json_t*.
-// The Jansson array getter owns a mutable json_t* handle even when the
-// container is inspected via const json_t*; preserve MSVC type compatibility.
+# JSONAttributeString currently accepts json_t*, not const json_t*.
+# Jansson's array getter returns json_t* even for a const container pointer;
+# preserve compatibility with the existing MSVC helper signature.
 assert "json_t* child = json_array_get(versions, i);" in master_stage
 assert "const json_t* child = json_array_get(versions, i);" not in master_stage
 assert 'JSONAttributeString(child, "id")' in master_stage
