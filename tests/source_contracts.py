@@ -386,7 +386,7 @@ assert "if (!original_has_candidates || !original_title_plausible)" in amt_searc
 assert "fake_artist->master_releases.get_count() > prior_masters" in fallback_loop
 assert "fake_artist->releases.get_count() > prior_releases" in fallback_loop
 assert "if (have_new_candidates)" in fallback_loop
-nonempty_result = fallback_loop.split("if (have_candidates) {", 1)[1].split(
+nonempty_result = fallback_loop.split("if (have_new_candidates) {", 1)[1].split(
     "            }", 1)[0]
 assert "break;" not in nonempty_result
 assert "review release/version before tagging" in nonempty_result
