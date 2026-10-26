@@ -2157,7 +2157,7 @@ static void runner_qa_native_search_preview_fields() {
     // not contain the requested track/release title.
     Artist_ptr grouped_artist = std::make_shared<Artist>("991994");
     std::map<std::string, MasterRelease_ptr> grouped_masters;
-    root = parse(R"({"results":[{"type":"master","id":"991995","title":"Compilation","role":"Other"},{"type":"release","id":"991996","title":"A New Day (Extended Mix)","master_id":"991995","role":"Other"}]})");
+    root = parse(R"GROUP({"results":[{"type":"master","id":"991995","title":"Compilation","role":"Other"},{"type":"release","id":"991996","title":"A New Day (Extended Mix)","master_id":"991995","role":"Other"}]})GROUP");
     try {
         Discogs::parseArtistReleases(root, grouped_artist.get(), SearchMode::AT, grouped_masters);
     } catch (...) {
