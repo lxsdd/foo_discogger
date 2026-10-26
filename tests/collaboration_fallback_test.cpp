@@ -149,6 +149,35 @@ int main() {
     assert(build_fallback_plan("", "Only You", "").empty());
     assert(build_fallback_plan("Matt Fax", "X", "").empty());
     assert(build_fallback_plan("Matt Fax", "", "Till You Let Go").size() == 1);
+    // A nonempty but unrelated guest/title response must not stop the
+    // following broad-title phase. No phase ever implies tag acceptance.
+    fallback_query_budget three_phases(3);
+    assert(three_phases.begin());
+    three_phases.observe(true); // wrong release from first phase
+    assert(three_phases.has_candidates() && three_phases.can_continue());
+    assert(three_phases.begin());
+    three_phases.observe(false); // second phase empty
+    assert(three_phases.has_candidates() && three_phases.can_continue());
+    assert(three_phases.begin());
+    three_phases.observe(true); // third phase contributes a candidate
+    assert(three_phases.has_candidates() && !three_phases.can_continue());
+    assert(!three_phases.begin());
+    fallback_query_budget capped(999);
+    assert(capped.begin() && capped.begin() && capped.begin());
+    assert(!capped.begin()); // never more than three online requests
+    fallback_query_budget limited(3);
+    assert(limited.begin());
+    limited.observe(false);
+    limited.stop(); // provider result cap: no further online request
+    assert(!limited.begin() && !limited.can_continue() &&
+           !limited.has_candidates());
+    fallback_query_budget empty(0);
+    assert(!empty.begin() && !empty.has_candidates());
+    fallback_query_budget two_phases(collab.size());
+    assert(two_phases.begin());
+    two_phases.observe(true);
+    assert(two_phases.begin()); // wrong nonempty partner cannot hide title
+    assert(!two_phases.begin());
     std::vector<std::string> ids;
     assert(!already_seen_release_id(ids, "36397609"));
     assert(already_seen_release_id(ids, "36397609"));
