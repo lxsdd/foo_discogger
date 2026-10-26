@@ -1773,6 +1773,13 @@ void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& ma
     if (!master_release || !m_find_release_artist || list_index < 0 ||
         !original_rows || static_cast<size_t>(list_index) >= original_rows->size())
         return;
+    // A filter rebuild can reuse the same numeric row for a different master.
+    // Check both its kind and the exact source object before any tree mutation.
+    mounted_param selected_row(original_rows->at(static_cast<size_t>(list_index)).first->first);
+    if (!selected_row.is_master() ||
+        selected_row.master_ndx >= m_find_release_artist->master_releases.get_count() ||
+        m_find_release_artist->master_releases[selected_row.master_ndx] != master_release)
+        return;
 
 	int master_i = -1;
 	for (size_t i = 0; i < m_find_release_artist->master_releases.get_size(); i++) {
@@ -1822,6 +1829,10 @@ void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& ma
         return;
 
 	mounted_param myparam(vec_items->at(list_index).first->first);
+    // Child insertion/re-filtering must not make the old row index auto-fill
+    // a different release ID after the asynchronous expansion.
+    if (!myparam.is_master() || myparam.master_ndx != static_cast<size_t>(master_i))
+        return;
 
 	pfc::string8 release_url;
 
