@@ -236,6 +236,12 @@ assert master_load.index("stageMasterVersionPages(") < master_load.index("p_abor
 assert "discogger_master::stage_master_pages<MasterRelease_ptr>(" in master_stage
 assert "std::make_shared<Release>(*child)" in master_stage
 assert "discogger_search::valid_release_id(child_id.c_str())" in master_stage
+// JSONAttributeString currently accepts json_t*, not const json_t*.
+// The Jansson array getter owns a mutable json_t* handle even when the
+// container is inspected via const json_t*; preserve MSVC type compatibility.
+assert "json_t* child = json_array_get(versions, i);" in master_stage
+assert "const json_t* child = json_array_get(versions, i);" not in master_stage
+assert 'JSONAttributeString(child, "id")' in master_stage
 assert "parseMasterVersions(roots[page], staged.get(), query_mode, true);" in master_stage
 assert "runner_qa_native_master_page_transaction();" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 for test_runner in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
