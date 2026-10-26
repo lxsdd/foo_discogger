@@ -378,14 +378,21 @@ assert "std::min(" not in (root / "discogger_search_fallback.h").read_text(encod
 assert "discogger_search::fallback_query_budget budget(plans.size());" in amt_search
 assert "if (!budget.begin()) break;" in fallback_loop
 assert "budget.stop();" in fallback_loop
-assert "budget.observe(have_candidates);" in fallback_loop
+assert "budget.observe(have_new_candidates);" in fallback_loop
 assert "used_broad_fallback = true;" in fallback_loop
+assert "const bool original_has_candidates =" in amt_search
+assert "discogger_search::plausible_release_title(" in amt_search
+assert "if (!original_has_candidates || !original_title_plausible)" in amt_search
+assert "fake_artist->master_releases.get_count() > prior_masters" in fallback_loop
+assert "fake_artist->releases.get_count() > prior_releases" in fallback_loop
+assert "if (have_new_candidates)" in fallback_loop
 nonempty_result = fallback_loop.split("if (have_candidates) {", 1)[1].split(
     "            }", 1)[0]
 assert "break;" not in nonempty_result
 assert "review release/version before tagging" in nonempty_result
 native_fallback = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 assert "Native fallback stopped on an unrelated first result." in native_fallback
+assert "Native structured-title fallback confidence gate failed." in native_fallback
 assert "Native later fallback phase lost a review-only result." in native_fallback
 parsed_releases = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 release_section = parsed_releases[parsed_releases.index("void Discogs::parseArtistReleases("):
