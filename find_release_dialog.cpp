@@ -18,6 +18,7 @@
 #include "discogger_artist_refresh.h"
 #include "discogs_interface.h"
 #include "discogger_search_visibility.h"
+#include "discogger_search_fallback.h"
 #include <unordered_set>
 #include <iterator>
 
@@ -2384,6 +2385,19 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     runner_qa_native_cache_json_rollback();
     runner_qa_native_master_child_isolation();
     runner_qa_native_search_preview_fields();
+    // Exercise the same bounded fallback controller used by the real search
+    // inside each original Win32/x64 foobar host (no network or user media).
+    const auto fallback_plan = discogger_search::build_fallback_plan(
+        "Producer feat. Guest", "A New Day", "");
+    discogger_search::fallback_query_budget fallback_budget(fallback_plan.size());
+    if (fallback_plan.size() != 3 || !fallback_budget.begin())
+        throw std::runtime_error("Native fallback planner/budget failed.");
+    fallback_budget.observe(true); // nonempty but unrelated first phase
+    if (!fallback_budget.can_continue() || !fallback_budget.begin())
+        throw std::runtime_error("Native fallback stopped on an unrelated first result.");
+    fallback_budget.observe(false);
+    if (!fallback_budget.begin() || fallback_budget.can_continue())
+        throw std::runtime_error("Native fallback query bound or continuation failed.");
     const size_t previous_mode = m_query_mode;
     m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
 
@@ -2417,6 +2431,35 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     const size_t initial_tree = m_dctree.Get_Size();
     if (initial_tree != 5)
         throw std::runtime_error("Native auto-preview did not publish five synthetic releases.");
+
+    // Model the actual native GUI's successive review-only fallback phases:
+    // an unrelated nonempty partner result, then a different relevant title
+    // result. Both remain selectable suggestions; neither auto-tags media.
+    Artist_ptr unrelated = std::make_shared<Artist>("201");
+    unrelated->name = "Unrelated partner result";
+    Release_ptr unrelated_release = std::make_shared<Release>("700001");
+    unrelated_release->title = "Wrong Title";
+    unrelated_release->loaded_preview = true;
+    unrelated->releases.append_single(unrelated_release);
+    unrelated->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> fallback_first;
+    fallback_first.append_single(unrelated);
+    on_search_artist_done(exact, fallback_first, false);
+    if (m_dctree.Get_Size() != 1 || m_alist.Get_Artists().get_count() != 1)
+        throw std::runtime_error("Native first nonempty fallback phase did not render.");
+    Artist_ptr relevant = std::make_shared<Artist>("202");
+    relevant->name = "Later title discovery";
+    Release_ptr relevant_release = std::make_shared<Release>("700002");
+    relevant_release->title = "A New Day";
+    relevant_release->loaded_preview = true;
+    relevant->releases.append_single(relevant_release);
+    relevant->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> fallback_second;
+    fallback_second.append_single(relevant);
+    on_search_artist_done(exact, fallback_second, true);
+    if (m_dctree.Get_Size() != 2 || m_alist.Get_Artists().get_count() != 2 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED)
+        throw std::runtime_error("Native later fallback phase lost a review-only result.");
 
     // Multiple artist matches, mixed masters/releases, and duplicate IDs.
     Artist_ptr first = std::make_shared<Artist>("101");
