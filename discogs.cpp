@@ -2809,7 +2809,7 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 	}
 }
 
-void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, int query_mode) {
+void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, int query_mode, bool isolated_versions) {
 
 	json_t *versions = json_object_get(root, "versions");
 
@@ -2824,40 +2824,65 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 				size_t lkey;
 				size_t found_i = SIZE_MAX;
 
-				if (query_mode & SearchMode::AT) {
-
-					if (!master_release->loaded_releases && master_release->sub_releases.get_count()) {
-
-						found_i = discogger_master::find_partial_version_index(
+                // Modeless master expansion must never mutate cached Release
+                // objects or read a live TreeView child's fields on the worker.
+                // The UI thread cloned partial children before dispatch.
+                if (isolated_versions) {
+                    if ((query_mode & SearchMode::AT) &&
+                        !master_release->loaded_releases && master_release->sub_releases.get_count()) {
+                        found_i = discogger_master::find_partial_version_index(
                             master_release->sub_releases.get_count(), [&](size_t candidate) {
-                                const auto& existing = master_release->sub_releases[candidate];
-                                return existing && existing->id.equals(release_id);
+                                const auto& child = master_release->sub_releases[candidate];
+                                return child && child->id.equals(release_id);
                             });
-						if (found_i == SIZE_MAX) {
-							continue;
-						}
-						else {
-							lkey = encode_mr(0, atol(master_release->sub_releases[found_i]->id));
-							release = discogs_interface->get_release(lkey);
-						}
-					}
-					else {
-						lkey = encode_mr(0, atol(release_id));
-						release = discogs_interface->get_release(lkey);
-					}
-				}
-				else {
-					lkey = encode_mr(0, atol(release_id));
-					release = discogs_interface->get_release(lkey);
-				}
-
-				//mr from any artist
-				lkey = encode_mr(0, atol(master_release->id));
-				//..
-				MasterRelease_ptr master = discogs_interface->get_master_release(lkey);
+                        if (found_i == SIZE_MAX) continue;
+                        release = master_release->sub_releases[found_i];
+                    } else {
+                        release = std::make_shared<Release>(release_id.get_ptr());
+                    }
+                } else {
+    				if (query_mode & SearchMode::AT) {
+    
+    					if (!master_release->loaded_releases && master_release->sub_releases.get_count()) {
+    
+    						found_i = discogger_master::find_partial_version_index(
+                                master_release->sub_releases.get_count(), [&](size_t candidate) {
+                                    const auto& existing = master_release->sub_releases[candidate];
+                                    return existing && existing->id.equals(release_id);
+                                });
+    						if (found_i == SIZE_MAX) {
+    							continue;
+    						}
+    						else {
+    							lkey = encode_mr(0, atol(master_release->sub_releases[found_i]->id));
+    							release = discogs_interface->get_release(lkey);
+    						}
+    					}
+    					else {
+    						lkey = encode_mr(0, atol(release_id));
+    						release = discogs_interface->get_release(lkey);
+    					}
+    				}
+    				else {
+    					lkey = encode_mr(0, atol(release_id));
+    					release = discogs_interface->get_release(lkey);
+    				}
+    
+    				//mr from any artist
+    				lkey = encode_mr(0, atol(master_release->id));
+    				//..
+                    MasterRelease_ptr master;
+                if (!isolated_versions) master = discogs_interface->get_master_release(lkey);
+    
+                }
 
 				if (!release->loaded_preview) {
-					release->set_master_release(master);
+                    if (isolated_versions) {
+                        // No global master/cache mutation or fetch on the worker.
+                        release->master_id = master_release->id;
+                    } else {
+                        release->set_master_release(master);
+                    }
 					release->title = JSONAttributeString(rel, "title");
 					release->search_labels = JSONAttributeString(rel, "label");
 					release->search_major_formats = JSONAttributeStringArray(rel, "major_formats");
@@ -3426,7 +3451,7 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 	}
 }
 
-void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, abort_callback &p_abort, bool throw_all, pfc::string8 offlineArtistId, db_fetcher* dbfetcher, int query_mode) {
+void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, abort_callback &p_abort, bool throw_all, pfc::string8 offlineArtistId, db_fetcher* dbfetcher, int query_mode, bool isolated_versions) {
 
 	if (loaded_releases || !id.get_length()) {
 		return;
@@ -3482,7 +3507,7 @@ void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, ab
 
         for (size_t page = 0; page < cPages; ++page) {
             p_abort.check();
-            parseMasterVersions(pages[page]->root, this, query_mode);
+            parseMasterVersions(pages[page]->root, this, query_mode, isolated_versions);
         }
         if (btransient && offline_can_write) {
             discogger_cache::directory_cache_transaction tx(
