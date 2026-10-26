@@ -236,6 +236,10 @@ assert master_load.index("stageMasterVersionPages(") < master_load.index("p_abor
 assert "discogger_master::stage_master_pages<MasterRelease_ptr>(" in master_stage
 assert "std::make_shared<Release>(*child)" in master_stage
 assert "discogger_search::valid_release_id(child_id.c_str())" in master_stage
+assert "std::unordered_set<std::string> page_release_ids;" in master_stage
+assert "page_release_ids.emplace(child_id.c_str()).second" in master_stage
+assert "Duplicate master version ID across pages; retaining prior list." in master_stage
+assert "Native duplicate/incomplete master page leaked partial data." in dialog
 # JSONAttributeString currently accepts json_t*, not const json_t*.
 # Jansson's array getter returns json_t* even for a const container pointer;
 # preserve compatibility with the existing MSVC helper signature.

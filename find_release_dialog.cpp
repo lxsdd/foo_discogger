@@ -2317,10 +2317,20 @@ static void runner_qa_native_master_page_transaction() {
     json_t* invalid = json_loads(
         R"({"versions":[{"id":"not-an-id","title":"Invalid page two"}]})",
         JSON_DECODE_ANY, &error);
-    if (!first || !second || !invalid) {
-        if (first) json_decref(first);
-        if (second) json_decref(second);
-        if (invalid) json_decref(invalid);
+    json_t* duplicateAcross = json_loads(
+        R"({"versions":[{"id":"410997","title":"Repeated from page one"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* duplicateWithin = json_loads(
+        R"({"versions":[{"id":"410999"},{"id":"410999"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* missingArray = json_loads(
+        R"({"versions":null})",
+        JSON_DECODE_ANY, &error);
+    const std::vector<json_t*> fixtures{
+        first, second, invalid, duplicateAcross, duplicateWithin, missingArray};
+    if (!first || !second || !invalid || !duplicateAcross ||
+        !duplicateWithin || !missingArray) {
+        for (json_t* fixture : fixtures) if (fixture) json_decref(fixture);
         throw std::runtime_error("Native master page-transaction JSON fixture failed.");
     }
     try {
@@ -2360,6 +2370,22 @@ static void runner_qa_native_master_page_transaction() {
             visible_child->title != "Visible before page one")
             throw std::runtime_error("Native invalid master page two leaked partial data.");
 
+        // A duplicate identity on a later page or within one page is
+        // ambiguous even if the parser would normally deduplicate it.
+        // Neither form may overwrite the last visible child snapshot.
+        const std::vector<std::vector<json_t*>> malformedPages{
+            {first, duplicateAcross}, {duplicateWithin}, {first, missingArray}};
+        for (const auto& badPages : malformedPages) {
+            rejected = false;
+            try {
+                (void)Discogs::stageMasterVersionPages(original, badPages, 0, []() {});
+            } catch (const foo_discogs_exception&) { rejected = true; }
+            if (!rejected || original.sub_releases.get_count() != 1 ||
+                original.sub_releases[0] != visible_child ||
+                visible_child->title != "Visible before page one")
+                throw std::runtime_error("Native duplicate/incomplete master page leaked partial data.");
+        }
+
         for (int stop_at : {2, 3}) {
             int checks = 0;
             rejected = false;
@@ -2379,10 +2405,10 @@ static void runner_qa_native_master_page_transaction() {
             visible_child->title != "Visible before page one")
             throw std::runtime_error("Native complete master page commit failed.");
     } catch (...) {
-        json_decref(first); json_decref(second); json_decref(invalid);
+        for (json_t* fixture : fixtures) json_decref(fixture);
         throw;
     }
-    json_decref(first); json_decref(second); json_decref(invalid);
+    for (json_t* fixture : fixtures) json_decref(fixture);
     log_msg("DISCOGGER_NATIVE_MASTER_PAGE_TRANSACTION_QA=PASS");
 }
 

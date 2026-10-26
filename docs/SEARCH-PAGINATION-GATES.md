@@ -66,3 +66,15 @@ This work is intentionally staged **outside** Draft PR #10 while its
 infrastructure Draft PR #48. Staging CI is not protected OAuth qualification. No clean private
 owner-machine installation, post-I/O physical rollback, or redistribution
 permission is established by this change.
+
+### Duplicate version identities across or within pages
+
+The prior staged parser quietly ignored repeated release IDs. When the
+Discogs index changes between successive page requests, that behavior can
+conceal an omitted version and publish an incomplete tree. Validation now
+rejects repeated IDs across the entire page set (including within one page)
+before any visible child is replaced. Original foobar Win32/x64 native QA
+covers both duplicate patterns and a missing later-page array, as well as
+existing positive completion, invalid-ID and cancellation cases. The staging
+PR remains independent of the SHA-pinned OAuth diagnosis; its successful
+secret-free host tests do not establish authenticated provider success.

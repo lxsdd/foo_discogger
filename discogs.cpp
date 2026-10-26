@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include <unordered_set>
+#include <string>
 #include <vector>
 #include "jansson/jansson.h"
 
@@ -2951,6 +2952,10 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 MasterRelease_ptr Discogs::stageMasterVersionPages(
     const MasterRelease& current, const std::vector<json_t*>& roots,
     int query_mode, const std::function<void()>& check_abort) {
+    // Discogs pagination can shift while requests are in flight. Repeated
+    // release identities make the assembled page set ambiguous: abort the
+    // entire transaction rather than silently hiding a missing version.
+    std::unordered_set<std::string> page_release_ids;
     return discogger_master::stage_master_pages<MasterRelease_ptr>(
         roots.size(),
         [&]() {
@@ -2974,6 +2979,8 @@ MasterRelease_ptr Discogs::stageMasterVersionPages(
                 const pfc::string8 child_id = JSONAttributeString(child, "id");
                 if (!discogger_search::valid_release_id(child_id.c_str()))
                     throw foo_discogs_exception("Invalid master version ID; retaining prior list.");
+                if (!page_release_ids.emplace(child_id.c_str()).second)
+                    throw foo_discogs_exception("Duplicate master version ID across pages; retaining prior list.");
             }
         },
         [&](MasterRelease_ptr& staged, std::size_t page) {
