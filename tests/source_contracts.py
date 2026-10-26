@@ -2450,3 +2450,36 @@ assert qa_gui < clean_rebuild < clean_win32 < clean_x64
 assert "./scripts/build-component-dll.ps1 -CleanNonQa" in validation
 assert "upload-artifact" not in validation
 print("PASS: clean non-QA host acceptance follows real synthetic GUI QA, rebuilds both architectures and forbids runner-only markers/artifacts.")
+
+# Same-HWND is not same-query: every modeless producer and the presentation
+# callback must carry the identity of the accepted search, including direct
+# ID and multi-artist paths. These are source-wiring contracts; real Win32/x64
+# native GUI and portable/MSVC C++ regressions remain independent gates.
+search_dialog_h = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+search_dialog_cpp = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+search_tasks_h = (root / "tasks.h").read_text(encoding="utf-8-sig")
+search_tasks_cpp = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+assert '#include "discogger_search_request.h"' in search_dialog_h
+assert "m_search_request_epoch.begin();" in search_dialog_cpp
+assert search_dialog_cpp.count("m_search_request_epoch.begin();") >= 5  # 3 routes + native QA
+assert "on_search_artist_done_if_current(" in search_dialog_h
+assert "DISCOGGER_NATIVE_STALE_SEARCH_QA=PASS" in search_dialog_cpp
+assert "on_search_artist_done_if_current(obsolete" in search_dialog_cpp
+assert "on_search_artist_done_if_current(latest" in search_dialog_cpp
+for producer in ("get_artist_process_callback", "get_multi_artists_process_callback",
+                 "search_artist_process_callback", "on_get_artist_done_process_callback"):
+    assert f"void {producer}::start(HWND parent)" in search_tasks_cpp
+    assert "m_search_ticket" in search_tasks_h.split(f"class {producer}", 1)[1].split("\nclass ", 1)[0]
+for callback in ("get_artist_process_callback::on_success",
+                 "get_multi_artists_process_callback::on_success",
+                 "get_multi_artists_process_callback::on_error",
+                 "search_artist_process_callback::on_success",
+                 "on_search_artist_done_process_callback::on_success",
+                 "on_get_artist_done_process_callback::on_success"):
+    block = search_tasks_cpp.split(f"void {callback}(", 1)[1].split("\nvoid ", 1)[0]
+    assert "is_current_search_request(m_search_ticket)" in block, callback
+assert "res_cap, m_search_ticket);" in search_tasks_cpp
+assert "on_search_artist_done_if_current(m_search_ticket" in search_tasks_cpp
+for test_runner in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
+    assert "search_request_epoch_test.cpp" in (root / test_runner).read_text(encoding="utf-8-sig")
+print("PASS: same-window asynchronous search identity across native artist, multi-artist, direct-ID, and presentation paths.")
