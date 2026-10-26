@@ -1,6 +1,7 @@
 #include "../discogger_search_fallback.h"
 #include <cassert>
 #include <string>
+#include <string_view>
 #include <vector>
 int main() {
     using namespace discogger_search;
@@ -161,6 +162,28 @@ int main() {
     assert(!plausible_release_title("EP", "Artist - EP"));
     assert(!plausible_release_title("", "Artist - Only You"));
     assert(!plausible_release_title("Only You", ""));
+
+    // Original Discogs results may group a requested version below a
+    // compilation/master with a different title. The matching child is a
+    // plausible original hit and must not trigger extra fallback requests.
+    const std::vector<std::string_view> grouped_versions = {
+        "Unrelated Mix", "A New Day (Extended Mix)", ""
+    };
+    auto version_title = [](std::string_view value) { return value; };
+    assert(plausible_release_group_title(
+        "A New Day", "Various Artists - Compilation", grouped_versions, version_title));
+    assert(plausible_release_group_title(
+        "Compilation", "Various Artists - Compilation", grouped_versions, version_title));
+    assert(!plausible_release_group_title(
+        "Only You", "Various Artists - Compilation", grouped_versions, version_title));
+    assert(!plausible_release_group_title(
+        "A New Day", "Compilation", std::vector<std::string_view>{}, version_title));
+    assert(!plausible_release_group_title(
+        "A New Day", "Compilation", std::vector<std::string_view>{"A New Daylight"}, version_title));
+    assert(plausible_release_group_title(
+        "Only You (Extended Mix)", "Compilation",
+        std::vector<std::string_view>{"Only You"}, version_title));
+
     // A nonempty but unrelated guest/title response must not stop the
     // following broad-title phase. No phase ever implies tag acceptance.
     fallback_query_budget three_phases(3);
