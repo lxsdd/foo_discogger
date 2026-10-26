@@ -2548,4 +2548,20 @@ assert "if (!m_artist)" in artist_worker
 artist_completion = filter_tasks.split("void get_artist_process_callback::on_success(", 1)[1].split(
     "void get_artist_process_callback::on_abort(", 1)[0]
 assert artist_completion.count("is_current_search_request(m_search_ticket)") >= 3
+# Master HTTP completions must also be tied to the filter generation and
+# original row identity; an unchanged search HWND is not sufficient.
+assert "m_filter_ticket = dialog->current_filter_request();" in expand_parts
+assert "m_filter_text = trim(uGetWindowText(dialog->m_edit_filter));" in expand_parts
+assert "is_current_filter_request(m_filter_ticket)" in expand_foreground
+assert "GetSearchMode() != static_cast<size_t>(m_query_mode)" in expand_foreground
+assert "uGetWindowText(g_discogs->find_release_dialog->m_edit_filter)" in expand_foreground
+assert "std::uint64_t m_filter_ticket = 0;" in expand_header
+assert "pfc::string8 m_filter_text;" in expand_header
+assert "mounted_param selected_row(original_rows->at(" in master_completion
+assert "selected_row.is_master()" in master_completion
+assert "m_find_release_artist->master_releases[selected_row.master_ndx] != master_release" in master_completion
+assert master_completion.index("selected_row.is_master()") < master_completion.index("set_node_expanded(")
+assert "myparam.master_ndx != static_cast<size_t>(master_i)" in master_completion
+assert "DISCOGGER_NATIVE_MASTER_FILTER_SUPERSESSION_QA=PASS" in filter_dialog
+print("PASS: master expansion filter generation, row identity, and live native supersession.")
 print("PASS: async artist/master/filter UI lifecycle and stale callback gates.")
