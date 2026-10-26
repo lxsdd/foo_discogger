@@ -149,6 +149,18 @@ int main() {
     assert(build_fallback_plan("", "Only You", "").empty());
     assert(build_fallback_plan("Matt Fax", "X", "").empty());
     assert(build_fallback_plan("Matt Fax", "", "Till You Let Go").size() == 1);
+    // Nonempty but irrelevant original results must permit bounded discovery;
+    // a plausible release-title hit suppresses extra API requests.
+    assert(plausible_release_title("Sun & Moon", "Above & Beyond - Sun & Moon"));
+    assert(plausible_release_title("1000 Years", "Kyau & Albert x Maywave - 1000 Years (DJ Version)"));
+    assert(plausible_release_title("Only You (Extended Mix)", "Matt Fax - Only You"));
+    assert(plausible_release_title("Till You Let Go", "Matt Fax - Till You Let Go"));
+    assert(!plausible_release_title("Sun & Moon", "Above & Beyond - Sun & Moonlight"));
+    assert(!plausible_release_title("1000 Years", "Kyau & Albert - 2000 Years"));
+    assert(!plausible_release_title("Only You", "Artist - Only Yourself"));
+    assert(!plausible_release_title("EP", "Artist - EP"));
+    assert(!plausible_release_title("", "Artist - Only You"));
+    assert(!plausible_release_title("Only You", ""));
     // A nonempty but unrelated guest/title response must not stop the
     // following broad-title phase. No phase ever implies tag acceptance.
     fallback_query_budget three_phases(3);
