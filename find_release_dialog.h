@@ -145,6 +145,8 @@ public:
     // a newer artist, direct-ID or advanced-search request in this dialog.
     std::uint64_t current_search_request() const noexcept { return m_search_request_epoch.current(); }
     bool is_current_search_request(std::uint64_t ticket) const noexcept { return m_search_request_epoch.matches(ticket); }
+    std::uint64_t current_filter_request() const noexcept { return m_filter_request_epoch.current(); }
+    bool is_current_filter_request(std::uint64_t ticket) const noexcept { return m_filter_request_epoch.matches(ticket); }
 
 	bool GetCustomQueryTF(pfc::string8& frm_custom_tf);
 
@@ -661,6 +663,7 @@ private:
 	pfc::string8 m_search_expression;
 
     discogger_async::search_request_epoch m_search_request_epoch;
+    discogger_async::search_request_epoch m_filter_request_epoch;
 	size_t m_query_mode = SearchMode::DEFAULT_SEARCH;
 	QueryDefMap m_qdm_search_query = {};
 
