@@ -1663,11 +1663,11 @@ void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
 
 // expand_master_release_process_done
 
-void CFindReleaseDialog::on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort) {
+void CFindReleaseDialog::on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort, const MasterRelease_ptr& staged_master) {
 
 	// forward to tree
 
-	m_dctree.on_expand_master_release_done(master_release, list_index, p_status, p_abort);
+	m_dctree.on_expand_master_release_done(master_release, list_index, p_status, p_abort, staged_master);
 }
 
 void CFindReleaseDialog::call_expand_master_service(MasterRelease_ptr& release, int pos) {
