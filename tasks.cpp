@@ -1075,6 +1075,11 @@ void get_artist_process_callback::safe_run(threaded_process_status &p_status, ab
 	m_artist = discogs_interface->get_artist(m_artist_id, m_bload_releases, p_status, p_abort,
 		false, false, m_cupdsrc != updRelSrc::ArtistProfile, bsimple_list_sel);
 
+    // A failed/empty provider result must not dereference a null artist.
+    if (!m_artist) {
+        p_status.set_item("artist details are not available.");
+        return;
+    }
 
 	pfc::string8 status_msg;
 	if (!(m_artist->loaded_preview || m_artist->loaded)) {
@@ -1116,6 +1121,13 @@ void get_artist_process_callback::on_success(HWND p_wnd) {
 			g_discogs->find_release_dialog->add_history(oplog_type::artist, kHistoryGetArtist, "", "", m_artist->id, m_artist->name);
 		}
 
+		// History may dispatch synchronous UI messages or close the dialog.
+        if (!::IsWindow(m_owner_window) || !g_discogs ||
+            !g_discogs->find_release_dialog ||
+            g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+            !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
+            return;
+
 		try {
 
 			service_ptr_t<on_get_artist_done_process_callback> task =
@@ -1127,7 +1139,10 @@ void get_artist_process_callback::on_success(HWND p_wnd) {
 		{
 			log_msg(e.what());
 		}
-        if (retry_refresh && g_discogs && g_discogs->find_release_dialog) {
+        if (retry_refresh && m_owner_window && ::IsWindow(m_owner_window) &&
+            g_discogs && g_discogs->find_release_dialog &&
+            g_discogs->find_release_dialog->m_hWnd == m_owner_window &&
+            g_discogs->find_release_dialog->is_current_search_request(m_search_ticket)) {
             CFindReleaseDialog* dlg = g_discogs->find_release_dialog;
             if (::IsWindow(dlg->m_hWnd) &&
                 dlg->m_alist.Get_Selected_Id().equals(m_artist->id)) {
@@ -1475,6 +1490,9 @@ void search_artist_process_callback::on_error(HWND p_wnd) {
 
 void expand_master_release_process_callback::start(HWND parent) {
     m_owner_window = parent;
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1500,7 +1518,8 @@ void expand_master_release_process_callback::on_success(HWND p_wnd) {
     PFC_ASSERT(core_api::is_main_thread());
     if (!m_master_release || !m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
         return;
     // The active tree checks the master ID against its current artist before
     // expanding; a stale background load must not touch the old dialog.
@@ -1522,6 +1541,11 @@ void expand_master_release_process_callback::on_error(HWND p_wnd) {
 void tree_apply_filter_process_callback::start(HWND parent) {
     // A worker must not operate on a Win32 TreeView or an obsolete dialog.
     m_owner_window = parent;
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent) {
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
+        m_filter_ticket = g_discogs->find_release_dialog->current_filter_request();
+    }
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1543,7 +1567,9 @@ void tree_apply_filter_process_callback::on_success(HWND p_wnd) {
     PFC_ASSERT(core_api::is_main_thread());
     if (!m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket) ||
+        !g_discogs->find_release_dialog->is_current_filter_request(m_filter_ticket))
         return;
 
     CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
@@ -1568,7 +1594,9 @@ void tree_apply_filter_process_callback::on_abort(HWND p_wnd) {
     PFC_ASSERT(core_api::is_main_thread());
     if (!m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket) ||
+        !g_discogs->find_release_dialog->is_current_filter_request(m_filter_ticket))
         return;
     CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
     ::ShowWindow(find_dlg->m_release_tree, SW_SHOW);
