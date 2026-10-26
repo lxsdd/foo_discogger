@@ -1476,6 +1476,8 @@ void CFindReleaseDialog::apply_filter(pfc::string8 strFilter, bool force_redraw,
 LRESULT CFindReleaseDialog::OnEditFilter(WORD wNotifyCode, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
 
 	if (is_filter_box_event_enabled() && wNotifyCode == EN_CHANGE) {
+        // Invalidate queued filters on EVERY edit, not just after the timer.
+        m_filter_request_epoch.begin();
 
 		//supress auto-fill filter box on user interaction
 
@@ -1532,6 +1534,9 @@ LRESULT CFindReleaseDialog::OnCheckboxOnlyExactMatches(WORD /*wNotifyCode*/, WOR
 }
 
 LRESULT CFindReleaseDialog::OnCheckboxFindReleaseFilterFlags(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+
+    if (wID == IDC_CHK_FIND_RELEASE_FILTER_ROLEMAIN || wID == IDC_CHK_FIND_RELEASE_FILTER_VERS)
+        m_filter_request_epoch.begin(); // Changed filtering semantics supersede queued results.
 
 	bool force_refresh, force_rebuild;
 
@@ -2564,6 +2569,18 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     on_search_artist_done(exact, alternatives, false);
     if (m_dctree.Get_Size() != 5)
         throw std::runtime_error("Native search epoch QA failed to restore preview.");
+    // Real HWND + independent search/filter generations: a delayed filter
+    // or master expansion must not repaint a newer search with the same text.
+    const auto old_filter = m_filter_request_epoch.current();
+    const auto new_filter = m_filter_request_epoch.begin();
+    if (is_current_filter_request(old_filter) || !is_current_filter_request(new_filter) ||
+        !::IsWindow(m_hWnd) || !::IsWindow(m_edit_filter))
+        throw std::runtime_error("Native filter generation failed on live foobar controls.");
+    const auto old_master_search = m_search_request_epoch.current();
+    const auto new_master_search = m_search_request_epoch.begin();
+    if (is_current_search_request(old_master_search) || !is_current_search_request(new_master_search))
+        throw std::runtime_error("Native master expansion generation was not superseded.");
+    log_msg("DISCOGGER_NATIVE_FILTER_MASTER_EPOCH_QA=PASS");
     log_msg("DISCOGGER_NATIVE_STALE_SEARCH_QA=PASS");
     m_query_mode = previous_mode;
     return {1, initial_tree};
