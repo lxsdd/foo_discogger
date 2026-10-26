@@ -12,6 +12,7 @@
 #include "find_release_tree.h"
 #include "find_artist_list.h"
 #include "find_artist_list_ILO.h"
+#include "discogger_search_request.h"
 
 class expand_master_release_process_callback;
 class get_artist_process_callback;
@@ -140,6 +141,10 @@ public:
 	void SetSearchModeText(const pfc::string8 msg, bool mode_prefix = true);
 	void SetSearchModeFlag(SearchMode sm, bool enabled);
 	size_t GetSearchMode();
+    // Main-thread-only identity: stale modeless completions cannot replace
+    // a newer artist, direct-ID or advanced-search request in this dialog.
+    std::uint64_t current_search_request() const noexcept { return m_search_request_epoch.current(); }
+    bool is_current_search_request(std::uint64_t ticket) const noexcept { return m_search_request_epoch.matches(ticket); }
 
 	bool GetCustomQueryTF(pfc::string8& frm_custom_tf);
 
@@ -566,6 +571,15 @@ private:
 
 	void on_get_artist_done(cupdRelSrc updsrc, Artist_ptr& artist);
 	void on_search_artist_done(const pfc::array_t<Artist_ptr>& p_artist_exact_matches, const pfc::array_t<Artist_ptr>& p_artist_other_matches, bool append, std::pair<size_t, size_t>& out_va_cap);
+    bool on_search_artist_done_if_current(std::uint64_t ticket,
+        const pfc::array_t<Artist_ptr>& exact, const pfc::array_t<Artist_ptr>& other,
+        bool append, std::pair<size_t, size_t>& cap);
+    bool on_search_artist_done_if_current(std::uint64_t ticket,
+        const pfc::array_t<Artist_ptr>& exact, const pfc::array_t<Artist_ptr>& other,
+        bool append) {
+        std::pair<size_t, size_t> cap{0, 0};
+        return on_search_artist_done_if_current(ticket, exact, other, append, cap);
+    }
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 public:
     // TEST-ONLY: available solely in the isolated runner component.
@@ -646,6 +660,7 @@ private:
 	pfc::string8 m_search_artist;
 	pfc::string8 m_search_expression;
 
+    discogger_async::search_request_epoch m_search_request_epoch;
 	size_t m_query_mode = SearchMode::DEFAULT_SEARCH;
 	QueryDefMap m_qdm_search_query = {};
 
