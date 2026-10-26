@@ -83,6 +83,41 @@ inline std::string without_terminal_mix_suffix(std::string_view title) {
     }
     return clean;
 }
+
+ // Treat a structured search hit as plausible only if its *release* title
+ // contains the requested release title as whole words. Discogs may prefix
+ // the result with artist credits or append a mix/version. This is a
+ // conservative discovery gate, NOT an identity match or tag approval.
+inline std::string fold_title_words(std::string_view text) {
+    std::string out;
+    for (unsigned char ch : text) {
+        const bool word = (ch >= 'A' && ch <= 'Z') ||
+            (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch >= 0x80;
+        if (word) {
+            out.push_back(ch >= 'A' && ch <= 'Z'
+                ? static_cast<char>(ch - 'A' + 'a') : static_cast<char>(ch));
+        } else if (!out.empty() && out.back() != ' ') {
+            out.push_back(' ');
+        }
+    }
+    if (!out.empty() && out.back() == ' ') out.pop_back();
+    return out;
+}
+inline bool plausible_release_title(std::string_view requested, std::string_view result) {
+    const std::string needle = fold_title_words(without_terminal_mix_suffix(requested));
+    if (needle.size() < 3) return false;
+    const std::string haystack = fold_title_words(result);
+    std::size_t at = haystack.find(needle);
+    while (at != std::string::npos) {
+        if ((at == 0 || haystack[at - 1] == ' ') &&
+            (at + needle.size() == haystack.size() ||
+             haystack[at + needle.size()] == ' '))
+            return true;
+        at = haystack.find(needle, at + 1);
+    }
+    return false;
+}
+
 struct fallback_candidate {
     std::string label;
     std::string q;
@@ -136,8 +171,8 @@ inline std::string encode_fallback_query(const fallback_candidate& candidate) {
     }
     return params;
 }
-// At most three bounded fallback *queries*, only after an empty original
-// search: a guest-artist hint, an optional explicitly featured MAIN artist
+// At most three bounded fallback *queries*, after an empty original
+// search or one with no plausible release-title match: a guest-artist hint, an optional explicitly featured MAIN artist
 // plus release title, and broad title discovery. All remain review-only.
 // No unqualified short/empty title or broad artist-only search.
 inline std::vector<fallback_candidate> build_fallback_plan(
