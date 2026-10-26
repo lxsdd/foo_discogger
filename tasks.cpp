@@ -1678,12 +1678,26 @@ process_release_callback::process_release_callback(CFindReleaseDialog *dialog, c
 }
 
 void process_release_callback::start(HWND parent) {
+    m_owner_window = parent;
+    // Only capture the UI request ticket on the UI thread. The worker must
+    // never touch CFindReleaseDialog or its HWND.
+    if (g_discogs && g_discogs->find_release_dialog == m_dialog &&
+        m_dialog && m_dialog->m_hWnd == parent)
+        m_search_ticket = m_dialog->current_search_request();
 	threaded_process::g_run_modeless(this,
 		threaded_process::flag_show_item |
 		threaded_process::flag_show_delayed |
 		threaded_process::flag_show_abort,
 		parent,
 		"Processing release...");
+}
+
+bool process_release_callback::owner_is_current() const {
+    PFC_ASSERT(core_api::is_main_thread());
+    return m_owner_window && ::IsWindow(m_owner_window) &&
+        g_discogs && g_discogs->find_release_dialog == m_dialog &&
+        m_dialog && m_dialog->m_hWnd == m_owner_window &&
+        m_dialog->is_current_search_request(m_search_ticket);
 }
 
 void process_release_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
@@ -1747,9 +1761,8 @@ void process_release_callback::safe_run(threaded_process_status& p_status, abort
 		throw;
 	}
 
-	// hide find release dlg
-
-	m_dialog->hide();
+	// Win32 dialog visibility is UI-thread-owned. Do not hide or dereference
+    // the originating dialog from this network/metadata worker.
 
 #ifdef SIM_VA_MA_BETA
 	bool bva_as_ma = CONF.find_release_dlg_flags & CFindReleaseDialog::FLG_VA_AS_MA;
@@ -1881,7 +1894,12 @@ void process_release_callback::generate_track_mapping(TagWriter& tagwriter, cons
 }
 
 void process_release_callback::on_success(HWND p_wnd) {
+    PFC_ASSERT(core_api::is_main_thread());
+    // A newer search/release, closed dialog or replaced HWND must never
+    // receive this old release's history or track-matching preview.
+    if (!owner_is_current() || !m_tag_writer) return;
 	auto tw_release = m_tag_writer->GetRelease();
+    if (!tw_release) return;
 	if (tw_release) {
 		rppair row = std::pair(std::pair(tw_release->id, tw_release->title),
 			std::pair("", ""));
@@ -1890,6 +1908,10 @@ void process_release_callback::on_success(HWND p_wnd) {
 		m_dialog->add_history(oplog_type::release, kHistoryProccessRelease, row);
 	}
 
+    // add_history may synchronously dispatch Win32 messages and close the
+    // dialog. Revalidate before hiding it or opening the preview.
+    if (!owner_is_current()) return;
+    m_dialog->hide();
 	{
 		//todo: trace race condition
 		std::lock_guard<std::mutex> ul(g_discogs->create_match_tracking_mutex);
@@ -1901,11 +1923,13 @@ void process_release_callback::on_success(HWND p_wnd) {
 }
 
 void process_release_callback::on_abort(HWND p_wnd) {
-	m_dialog->show();
+    PFC_ASSERT(core_api::is_main_thread());
+    if (owner_is_current()) m_dialog->show();
 }
 
 void process_release_callback::on_error(HWND p_wnd) {
-	m_dialog->show();
+    PFC_ASSERT(core_api::is_main_thread());
+    if (owner_is_current()) m_dialog->show();
 }
 
 process_artwork_preview_callback::process_artwork_preview_callback(CTrackMatchingDialog* dialog, const Release_ptr& release, const size_t img_ndx, const bool bartist, bool onlycache, bool get_mibs) :
