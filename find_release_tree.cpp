@@ -1764,7 +1764,7 @@ void release_tree_cache::expand_releases(const pfc::string8& filter, t_size mast
 
 // from dlg callback (expand_master_release_process_callback)
 // or from local on_release_selected
-void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort) {
+void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort, const MasterRelease_ptr& staged_master) {
     // An async release load may complete after the user changes artist, tree
     // filter, or selection. Do not dereference a stale list position or mutate
     // the tree until the original row is still in the current snapshot.
@@ -1780,6 +1780,18 @@ void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& ma
         selected_row.master_ndx >= m_find_release_artist->master_releases.get_count() ||
         m_find_release_artist->master_releases[selected_row.master_ndx] != master_release)
         return;
+
+    // Publish a completed, isolated worker snapshot only after the original
+    // visible master row and artist identity have been verified on the UI
+    // thread. An older concurrent load must never replace newer versions.
+    if (staged_master) {
+        if (!staged_master->loaded_releases || staged_master->id != master_release->id)
+            return;
+        if (!master_release->loaded_releases) {
+            master_release->sub_releases = staged_master->sub_releases;
+            master_release->loaded_releases = true;
+        }
+    }
 
 	int master_i = -1;
 	for (size_t i = 0; i < m_find_release_artist->master_releases.get_size(); i++) {
