@@ -118,6 +118,22 @@ inline bool plausible_release_title(std::string_view requested, std::string_view
     return false;
 }
 
+
+ // A database-search release can be grouped under a differently titled
+ // master. The requested title may match a child version even when the
+ // master title is a compilation or unrelated parent title. Suppressing
+ // fallback based on the master alone would miss a usable original hit.
+ // This remains a discovery heuristic, never a release identity approval.
+template <typename Children, typename ChildTitle>
+inline bool plausible_release_group_title(
+    std::string_view requested, std::string_view master_title,
+    const Children& children, ChildTitle title_of) {
+    if (plausible_release_title(requested, master_title)) return true;
+    for (const auto& child : children)
+        if (plausible_release_title(requested, title_of(child))) return true;
+    return false;
+}
+
 struct fallback_candidate {
     std::string label;
     std::string q;
