@@ -382,6 +382,10 @@ assert "budget.observe(have_new_candidates);" in fallback_loop
 assert "used_broad_fallback = true;" in fallback_loop
 assert "const bool original_has_candidates =" in amt_search
 assert "discogger_search::plausible_release_title(" in amt_search
+assert "discogger_search::plausible_release_group_title(" in amt_search
+assert "master->sub_releases" in amt_search
+assert "Native grouped version original-result fallback gate failed." in (
+    root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 assert "if (!original_has_candidates || !original_title_plausible)" in amt_search
 assert "fake_artist->master_releases.get_count() > prior_masters" in fallback_loop
 assert "fake_artist->releases.get_count() > prior_releases" in fallback_loop
