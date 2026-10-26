@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include <unordered_set>
+#include <vector>
 #include "jansson/jansson.h"
 
 #include "discogs_interface.h"
@@ -2451,6 +2452,22 @@ void Discogs::parseMasterRelease(MasterRelease *master_release, json_t *root) {
 
 }
 
+// Discogs can return the same release/master ID with different artist roles
+// across pages. Preserve Main once observed and keep each role only once;
+// a later Other result must not silently hide a Main release in the tree.
+template <typename T>
+static void merge_search_result_role(T& target, const pfc::string8& incoming) {
+    if (!incoming.get_length()) return;
+    bool seen = false;
+    for (const auto& role : target.search_roles) {
+        if (role.equals(incoming)) { seen = true; break; }
+    }
+    if (!seen) target.search_roles.add_item(incoming);
+    if (!target.search_role.get_length() ||
+        (incoming.equals("Main") && !target.search_role.equals("Main")))
+        target.search_role = incoming;
+}
+
 void parse_release_search_fields(json_t* rel, Release_ptr release) {
 
 	if (!release->artists.get_count()) {
@@ -2536,45 +2553,48 @@ void parse_release_search_fields(json_t* rel, Release_ptr release) {
 		release->query_major_formats_qty = JSONAttributeString(rel, "format_quantity");// json_integer_value(/*s*/"format_quantity");
 	}
 
-	size_t minors_lenght = 0;
 	json_t* formats = json_object_get(rel, "formats");
 	if (json_is_array(formats)) {
 		pfc::array_t<pfc::string8> mf;
-		std::unordered_set<std::string> sminors;
-		auto s = json_array_size(formats);
+		std::unordered_set<std::string> seen_minors;
+		std::vector<std::string> ordered_minors;
 		for (size_t i = 0; i < json_array_size(formats); i++) {
-			std::string wmajor;
 			json_t* format = json_array_get(formats, i);
-			if (json_is_object(format)) {
-				json_t* s = json_object_get(format, "qty");
-				if (json_is_string(s) && (atoi(json_string_value(s)) > 1)) {
-					wmajor.append(json_string_value(s)).append("x");
-				}
-				wmajor.append(json_string_value(json_object_get(format, "name")));
-				mf.add_item(wmajor.c_str());
-				json_t* descs = json_object_get(format, "descriptions");
-				if (json_is_array(descs)) {
-					for (size_t j = 0; j < json_array_size(descs); j++) {
-						json_t* desc = json_array_get(descs, j);
-						sminors.insert(json_string_value(desc));
-						minors_lenght += (--sminors.end())->size();
-					}
-				}
+			if (!json_is_object(format)) continue;
+			json_t* name = json_object_get(format, "name");
+			// Discogs' formats array is external data. Missing/null/non-string
+			// names or descriptions must not become std::string(nullptr).
+			if (!json_is_string(name)) continue;
+			const char* format_name = json_string_value(name);
+			if (!format_name || !*format_name) continue;
+			std::string wmajor;
+			json_t* qty = json_object_get(format, "qty");
+			if (json_is_string(qty) && atoi(json_string_value(qty)) > 1)
+				wmajor.append(json_string_value(qty)).append("x");
+			wmajor.append(format_name);
+			mf.add_item(wmajor.c_str());
+			json_t* descs = json_object_get(format, "descriptions");
+			if (!json_is_array(descs)) continue;
+			for (size_t j = 0; j < json_array_size(descs); j++) {
+				json_t* desc = json_array_get(descs, j);
+				if (!json_is_string(desc)) continue;
+				const char* value = json_string_value(desc);
+				if (value && *value && seen_minors.emplace(value).second)
+					ordered_minors.emplace_back(value);
 			}
 		}
-
 		release->search_major_formats.force_reset();
 		release->search_major_formats.move_from(mf);
-
-		if (sminors.size()) {
-			minors_lenght += sminors.size() -1;
-			std::string str; str.reserve(minors_lenght);
-			auto sep = ""; for (auto&& e : sminors) { str += sep; str += e; sep = ", "; }
-			release->search_formats = str.c_str();
+		if (!ordered_minors.empty()) {
+			std::string joined;
+			for (const auto& minor : ordered_minors) {
+				if (!joined.empty()) joined += ", ";
+				joined += minor;
+			}
+			release->search_formats = joined.c_str();
 		}
 	}
-	release->search_role = JSONAttributeString(rel, "role");
-	release->search_roles.add_item(JSONAttributeString(rel, "role"));
+	merge_search_result_role(*release, JSONAttributeString(rel, "role"));
 }
 
 MasterRelease_ptr check_in_master(pfc::string8 master_id, std::map<std::string, MasterRelease_ptr>& mva_masters, Artist* artist, size_t query_mode) {
@@ -2657,8 +2677,7 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 								//..
 								release->set_main_release(main_release);
 							}
-							release->search_role = JSONAttributeString(rel, "role");
-							release->search_roles.add_item(JSONAttributeString(rel, "role"));
+							merge_search_result_role(*release, JSONAttributeString(rel, "role"));
 
 						}
 
@@ -2668,11 +2687,8 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 						for (MasterRelease_ptr walk_master_release : artist->master_releases) {
 
 							if (release->id == walk_master_release->id) {
-								if (!release->search_role.equals("Main")) {
-									release->search_role = JSONAttributeString(rel, "role");
-								}
-
-								release->search_roles.add_item(JSONAttributeString(rel, "role"));
+								merge_search_result_role(*walk_master_release,
+									JSONAttributeString(rel, "role"));
 
 								duplicate = true;
 
@@ -2771,10 +2787,8 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 
 						for (Release_ptr walk_release : artist->releases) {
 							if (release->id == walk_release.get()->id) {
-								if (!walk_release->id.equals("Main")) {
-									release->search_role = JSONAttributeString(rel, "role");
-								}
-								release->search_roles.add_item(JSONAttributeString(rel, "role"));
+								merge_search_result_role(*walk_release,
+									JSONAttributeString(rel, "role"));
 
 								duplicate = true;
 								break;
