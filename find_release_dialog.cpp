@@ -2580,6 +2580,19 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     const auto new_master_search = m_search_request_epoch.begin();
     if (is_current_search_request(old_master_search) || !is_current_search_request(new_master_search))
         throw std::runtime_error("Native master expansion generation was not superseded.");
+    // A master expansion bound to the original filter must not update the
+    // same live HWND after the user edits the filter without changing artist.
+    const auto pending_master_search = m_search_request_epoch.current();
+    const auto pending_master_filter = m_filter_request_epoch.current();
+    if (!is_current_search_request(pending_master_search) ||
+        !is_current_filter_request(pending_master_filter))
+        throw std::runtime_error("Native master request was not initially current.");
+    const auto changed_master_filter = m_filter_request_epoch.begin();
+    if (!is_current_search_request(pending_master_search) ||
+        is_current_filter_request(pending_master_filter) ||
+        !is_current_filter_request(changed_master_filter))
+        throw std::runtime_error("Native master filter supersession failed.");
+    log_msg("DISCOGGER_NATIVE_MASTER_FILTER_SUPERSESSION_QA=PASS");
     log_msg("DISCOGGER_NATIVE_FILTER_MASTER_EPOCH_QA=PASS");
     log_msg("DISCOGGER_NATIVE_STALE_SEARCH_QA=PASS");
     m_query_mode = previous_mode;
