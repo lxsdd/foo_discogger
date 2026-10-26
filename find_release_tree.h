@@ -126,7 +126,7 @@ public:
 	bool set_node_expanded(t_size master_id, int& state, bool build);
 
 	void expand_releases(const pfc::string8& filter, t_size master_index, t_size master_list_pos);
-	void on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort);
+	void on_expand_master_release_done(const MasterRelease_ptr& master_release, int list_index, threaded_process_status& p_status, abort_callback& p_abort, const MasterRelease_ptr& staged_master = nullptr);
 
 	//artist done, update releases & apply filter
 
