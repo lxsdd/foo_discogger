@@ -62,7 +62,7 @@ stage function in original Win32/x64 foobar hosts with real JSON objects,
 positive two-page commit and negative invalid-ID/abort cases.
 
 This work is intentionally staged **outside** Draft PR #10 while its
-`f3ac723a...` product SHA is pinned by owner-approved infrastructure
-PR #48. Staging CI is not protected OAuth qualification. No clean private
+`f3ac723a...` product SHA is pinned by an unmerged, not yet owner-approved
+infrastructure Draft PR #48. Staging CI is not protected OAuth qualification. No clean private
 owner-machine installation, post-I/O physical rollback, or redistribution
 permission is established by this change.
