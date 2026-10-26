@@ -242,6 +242,12 @@ assert "discogger_search::valid_release_id(child_id.c_str())" in master_stage
 assert "json_t* child = json_array_get(versions, i);" in master_stage
 assert "const json_t* child = json_array_get(versions, i);" not in master_stage
 assert 'JSONAttributeString(child, "id")' in master_stage
+# Full-version pages must update existing copied child by release ID;
+# AT partial matching still excludes IDs not in the original partial list.
+assert "if (found_i != SIZE_MAX)" in artist_load
+assert "else if (query_mode & SearchMode::AT)" in artist_load
+assert 'release = master_release->sub_releases[found_i];' in artist_load
+assert "Native partial master selection leaked a full-version child." in dialog
 assert "parseMasterVersions(roots[page], staged.get(), query_mode, true);" in master_stage
 assert "runner_qa_native_master_page_transaction();" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 for test_runner in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
