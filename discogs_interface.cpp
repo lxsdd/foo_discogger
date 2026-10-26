@@ -804,9 +804,23 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             discogger_live_search_qa::fallback_attempts.fetch_add(1);
             discogger_live_search_qa::worker_phase.store(3);
 #endif
-            pfc::array_t<JSONParser_ptr> fallback_pages =
-                get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,
-                    "Fetching bounded Discogs fallback candidates...", p_status);
+            pfc::array_t<JSONParser_ptr> fallback_pages;
+            try {
+                fallback_pages = get_all_pages(fallback_url, fallback_params, fallback_max,
+                    p_abort, "Fetching bounded Discogs fallback candidates...", p_status);
+            }
+            catch (const exception_aborted&) {
+                throw; // User cancellation must never become a successful search.
+            }
+            catch (const foo_discogs_exception&) {
+                // These are optional discovery suggestions. An unavailable or
+                // malformed fallback page must not discard the original
+                // already-parsed Discogs results. Keep all error text and
+                // signed request details out of public logs.
+                p_status.set_item("Optional Discogs discovery unavailable; preserving search results.");
+                budget.observe(false);
+                continue;
+            }
             if (fallback_max > max_to_abort) {
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
                 discogger_live_search_qa::query_limit.fetch_add(1);
