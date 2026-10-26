@@ -1498,7 +1498,13 @@ void expand_master_release_process_callback::start(HWND parent) {
         CFindReleaseDialog* dialog = g_discogs->find_release_dialog;
         if (m_master_release) {
             m_staged_master = std::make_shared<MasterRelease>(m_master_release->id.get_ptr());
-            m_staged_master->sub_releases = m_master_release->sub_releases;
+            // Copy each child object, not just its shared_ptr. The background
+            // parser updates preview fields and must never mutate a visible
+            // partial child before the UI accepts this search/filter ticket.
+            for (const Release_ptr& child : m_master_release->sub_releases) {
+                m_staged_master->sub_releases.append_single(
+                    child ? std::make_shared<Release>(*child) : Release_ptr());
+            }
             m_staged_master->loaded_releases = m_master_release->loaded_releases;
         }
         m_search_ticket = dialog->current_search_request();
@@ -1523,7 +1529,7 @@ void expand_master_release_process_callback::safe_run(threaded_process_status &p
     if (!m_staged_master) return;
     // Partial AT results do not mean versions are complete.
     if (!m_staged_master->loaded_releases) {
-        m_staged_master->load_releases(p_status, p_abort, false, m_offlineArtist_id, get_dbfetcher(), m_query_mode);
+        m_staged_master->load_releases(p_status, p_abort, false, m_offlineArtist_id, get_dbfetcher(), m_query_mode, true);
     }
     p_abort.check();
 }
