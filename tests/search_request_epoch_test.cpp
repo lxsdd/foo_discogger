@@ -38,5 +38,22 @@ int main() {
         const auto current = request.begin();
         assert(!request.matches(previous) && request.matches(current));
     }
+    // A->B->A text edits can have the same final filter string: equality
+    // of text is insufficient to accept a delayed filter completion.
+    search_request_epoch filter;
+    const auto filter_a = filter.begin();
+    const auto filter_b = filter.begin();
+    const auto filter_a_again = filter.begin();
+    assert(!filter.matches(filter_a) && !filter.matches(filter_b));
+    assert(filter.matches(filter_a_again));
+    // A new search also invalidates a master-expansion or filter callback,
+    // even if the query mode and visible filter text remain identical.
+    const auto old_search = request.current();
+    const auto old_filter = filter.current();
+    const auto next_search = request.begin();
+    assert(!request.matches(old_search) && request.matches(next_search));
+    assert(filter.matches(old_filter)); // Independent generation, both checked.
+    const auto next_filter = filter.begin(); // Checkbox change or edit.
+    assert(!filter.matches(old_filter) && filter.matches(next_filter));
     return 0;
 }
