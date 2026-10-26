@@ -1016,6 +1016,10 @@ void find_releases_not_in_collection_task::finish() {
 
 void get_artist_process_callback::start(HWND parent) {
     m_owner_window = parent;
+    // The owner dialog is accessed only on the GUI thread, never by safe_run.
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 	pfc::string8 msg;
 	msg << "Loading artist id " << m_artist_id << ": " << m_artist_name;
 
@@ -1102,7 +1106,8 @@ void get_artist_process_callback::on_success(HWND p_wnd) {
         // A finished network task must not target a closed/replaced dialog.
         if (!m_owner_window || !::IsWindow(m_owner_window) ||
             !g_discogs || !g_discogs->find_release_dialog ||
-            g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+            g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
             return;
 
 		//artist history
@@ -1149,6 +1154,10 @@ void get_artist_process_callback::on_error(HWND p_wnd) {
 
 void get_multi_artists_process_callback::start(HWND parent) {
     m_owner_window = parent;
+    // The owner dialog is accessed only on the GUI thread, never by safe_run.
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 	pfc::string8 msg;
 	std::string msg_ids;
 	for (const auto& artist_id : m_artist_ids) msg_ids += (std::to_string(artist_id) + " ");
@@ -1242,7 +1251,8 @@ void get_multi_artists_process_callback::on_success(HWND p_wnd) {
 	}
     if (!m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
         return;
 
 	if (m_artists.get_count()) {
@@ -1259,7 +1269,7 @@ void get_multi_artists_process_callback::on_success(HWND p_wnd) {
             if (::IsWindow(m_owner_window) && g_discogs &&
                 g_discogs->find_release_dialog &&
                 g_discogs->find_release_dialog->m_hWnd == m_owner_window)
-                g_discogs->find_release_dialog->on_search_artist_done(tail, pfc::array_t<Artist_ptr>(), true);
+                g_discogs->find_release_dialog->on_search_artist_done_if_current(m_search_ticket, tail, pfc::array_t<Artist_ptr>(), true);
 		}
 	}
 }
@@ -1275,9 +1285,10 @@ void get_multi_artists_process_callback::on_error(HWND p_wnd) {
 	m_artists.force_reset();
     if (!m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
         return;
-	g_discogs->find_release_dialog->on_search_artist_done(pfc::array_t<Artist_ptr>(), pfc::array_t<Artist_ptr>(), true);
+	g_discogs->find_release_dialog->on_search_artist_done_if_current(m_search_ticket, pfc::array_t<Artist_ptr>(), pfc::array_t<Artist_ptr>(), true);
 
 }
 
@@ -1300,6 +1311,10 @@ search_artist_process_callback::~search_artist_process_callback() {
 
 void search_artist_process_callback::start(HWND parent) {
     m_owner_window = parent;
+    // The owner dialog is accessed only on the GUI thread, never by safe_run.
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 
 	pfc::string8 pop_title;
 	if (m_va) {
@@ -1362,7 +1377,8 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
     // Never update a new window with an obsolete search's cached results.
     if (!m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
         return;
     CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
 
@@ -1427,11 +1443,12 @@ void search_artist_process_callback::on_success(HWND p_wnd) {
         // messages. Recheck the original owner before scheduling presentation.
         if (!::IsWindow(m_owner_window) || !g_discogs ||
             !g_discogs->find_release_dialog ||
-            g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+            g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
             return;
 		service_ptr_t<on_search_artist_done_process_callback> task =
 			new service_impl_t<on_search_artist_done_process_callback>(m_artist_exact_matches, m_artist_other_matches, false,
-				res_cap);
+				res_cap, m_search_ticket);
 
         task->start(m_owner_window);
 	}
@@ -1587,15 +1604,17 @@ void on_search_artist_done_process_callback::on_success(HWND p_wnd) {
     PFC_ASSERT(core_api::is_main_thread());
     if (!m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
         return;
     CFindReleaseDialog* find_dlg = g_discogs->find_release_dialog;
-    find_dlg->on_search_artist_done(
+    find_dlg->on_search_artist_done_if_current(m_search_ticket, 
         m_p_artist_exact_matches, m_p_artist_other_matches, m_append, m_out_va_cap);
     // A synchronous display update can close or replace the modeless window.
     if (!::IsWindow(m_owner_window) || !g_discogs ||
         !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
         return;
     find_dlg->ilo_get_uilist()->Invalidate(true);
     init_scroolbars(find_dlg->ilo_get_uilist()->m_hWnd);
@@ -1611,6 +1630,10 @@ void on_search_artist_done_process_callback::on_error(HWND p_wnd) {
 
 void on_get_artist_done_process_callback::start(HWND parent) {
     m_owner_window = parent;
+    // The owner dialog is accessed only on the GUI thread, never by safe_run.
+    if (g_discogs && g_discogs->find_release_dialog &&
+        g_discogs->find_release_dialog->m_hWnd == parent)
+        m_search_ticket = g_discogs->find_release_dialog->current_search_request();
 	threaded_process::g_run_modeless(
 		this,
 		threaded_process::flag_show_item |
@@ -1631,7 +1654,8 @@ void on_get_artist_done_process_callback::on_success(HWND p_wnd) {
     PFC_ASSERT(core_api::is_main_thread());
     if (!m_artist || !m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
-        g_discogs->find_release_dialog->m_hWnd != m_owner_window)
+        g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
+        !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket))
         return;
     g_discogs->find_release_dialog->on_get_artist_done(m_updsrc, m_artist);
 }
