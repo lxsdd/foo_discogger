@@ -1490,9 +1490,17 @@ void search_artist_process_callback::on_error(HWND p_wnd) {
 
 void expand_master_release_process_callback::start(HWND parent) {
     m_owner_window = parent;
+    // Snapshot on the UI thread: a worker must not mutate the master
+    // whose sub_releases are currently rendered by the TreeView.
+    m_staged_master.reset();
     if (g_discogs && g_discogs->find_release_dialog &&
         g_discogs->find_release_dialog->m_hWnd == parent) {
         CFindReleaseDialog* dialog = g_discogs->find_release_dialog;
+        if (m_master_release) {
+            m_staged_master = std::make_shared<MasterRelease>(m_master_release->id.get_ptr());
+            m_staged_master->sub_releases = m_master_release->sub_releases;
+            m_staged_master->loaded_releases = m_master_release->loaded_releases;
+        }
         m_search_ticket = dialog->current_search_request();
         m_filter_ticket = dialog->current_filter_request();
         if (::IsWindow(dialog->m_edit_filter))
@@ -1512,16 +1520,18 @@ void expand_master_release_process_callback::safe_run(threaded_process_status &p
     // Worker-only: load versions without touching Win32 tree controls.
     p_abort.check();
     p_status.set_item("expanding master release...");
-    if (!m_master_release) return;
-    if (!m_master_release->loaded_releases && !m_master_release->sub_releases.get_count()) {
-        m_master_release->load_releases(p_status, p_abort, false, m_offlineArtist_id, get_dbfetcher(), m_query_mode);
+    if (!m_staged_master) return;
+    // Partial AT results do not mean versions are complete.
+    if (!m_staged_master->loaded_releases) {
+        m_staged_master->load_releases(p_status, p_abort, false, m_offlineArtist_id, get_dbfetcher(), m_query_mode);
     }
     p_abort.check();
 }
 
 void expand_master_release_process_callback::on_success(HWND p_wnd) {
     PFC_ASSERT(core_api::is_main_thread());
-    if (!m_master_release || !m_owner_window || !::IsWindow(m_owner_window) ||
+    if (!m_master_release || !m_staged_master || !m_staged_master->loaded_releases ||
+        !m_owner_window || !::IsWindow(m_owner_window) ||
         !g_discogs || !g_discogs->find_release_dialog ||
         g_discogs->find_release_dialog->m_hWnd != m_owner_window ||
         !g_discogs->find_release_dialog->is_current_search_request(m_search_ticket) ||
@@ -1535,7 +1545,7 @@ void expand_master_release_process_callback::on_success(HWND p_wnd) {
     fake_threaded_process_status status;
     abort_callback_dummy abort;
     g_discogs->find_release_dialog->on_expand_master_release_done(
-        m_master_release, m_pos, status, abort);
+        m_master_release, m_pos, status, abort, m_staged_master);
 }
 
 void expand_master_release_process_callback::on_abort(HWND p_wnd) {
