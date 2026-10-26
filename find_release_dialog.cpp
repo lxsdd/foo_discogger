@@ -2151,6 +2151,34 @@ static void runner_qa_native_search_preview_fields() {
         !artist->master_releases[0]->search_role.equals("Main") ||
         artist->master_releases[0]->search_roles.get_count() != 2)
         throw std::runtime_error("Native master duplicate demoted Main or duplicated visible role.");
+    // Exercise the actual Jansson search parser with a differently titled
+    // master and a matching release-version child. The original structured
+    // hit must suppress unnecessary fallback even if the parent title does
+    // not contain the requested track/release title.
+    Artist_ptr grouped_artist = std::make_shared<Artist>("991994");
+    std::map<std::string, MasterRelease_ptr> grouped_masters;
+    root = parse(R"({"results":[{"type":"master","id":"991995","title":"Compilation","role":"Other"},{"type":"release","id":"991996","title":"A New Day (Extended Mix)","master_id":"991995","role":"Other"}]})");
+    try {
+        Discogs::parseArtistReleases(root, grouped_artist.get(), SearchMode::AT, grouped_masters);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (grouped_artist->master_releases.get_count() != 1 ||
+        grouped_artist->master_releases[0]->sub_releases.get_count() != 1)
+        throw std::runtime_error("Native structured search lost grouped release version.");
+    const auto& grouped_master = grouped_artist->master_releases[0];
+    auto grouped_title = [](const Release_ptr& child) -> std::string_view {
+        return child ? std::string_view(child->title.c_str()) : std::string_view{};
+    };
+    if (!discogger_search::plausible_release_group_title(
+            "A New Day", grouped_master->title.c_str(),
+            grouped_master->sub_releases, grouped_title) ||
+        discogger_search::plausible_release_group_title(
+            "Only You", grouped_master->title.c_str(),
+            grouped_master->sub_releases, grouped_title))
+        throw std::runtime_error("Native grouped version original-result fallback gate failed.");
     log_msg("DISCOGGER_NATIVE_SEARCH_PREVIEW_FIELDS_QA=PASS");
 }
 #endif
