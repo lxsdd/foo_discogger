@@ -1241,7 +1241,23 @@ FILE "synthetic-side-b.wav" WAVE
                     }
                 }
                 if($matrixCounts['WORKER_ERROR'] -gt 0 -or $matrixCounts['WORKER_ABORT'] -gt 0){
-                    throw 'Native GUI matrix worker failed or aborted.'
+                    # Emit only bounded integer stage counters and a fixed
+                    # runner-owned case label; never include credentials,
+                    # freeform exception messages, URL bodies or user data.
+                    $caseLabel=[string]$item.Name
+                    if($caseLabel -notmatch '^[a-z0-9][a-z0-9-]{0,63}$'){
+                        throw 'Unexpected native QA case label.'
+                    }
+                    throw ("Native GUI matrix worker stopped; case={0} error={1} abort={2} started={3} advanced={4} success={5} pages={6} items={7} capped={8}" -f
+                        $caseLabel,
+                        [int]$matrixCounts['WORKER_ERROR'],
+                        [int]$matrixCounts['WORKER_ABORT'],
+                        [int]$matrixCounts['WORKER_STARTED'],
+                        [int]$matrixCounts['WORKER_ADVANCED'],
+                        [int]$matrixCounts['WORKER_SUCCESS'],
+                        [int]$matrixCounts['RESPONSE_PAGES'],
+                        [int]$matrixCounts['RESPONSE_ITEMS'],
+                        [int]$matrixCounts['QUERY_LIMIT'])
                 }
                 $done=$matrixCounts['WORKER_SUCCESS'] -eq 1
             }
