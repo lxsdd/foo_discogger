@@ -617,12 +617,12 @@ print('PASS: SQLite wrapper/include/link version consistency (3.40.1).')
 
 # All long network backoff sites must be abort-aware, not raw Sleep().
 assert '#include "interruptible_wait.h"' in fetcher
-assert fetcher.count("discogger_net::interruptible_wait(") == 4
+assert fetcher.count("discogger_net::interruptible_wait(") == 5
 assert "Sleep(dw);" not in fetcher
 assert "Sleep(2000 * tries);" not in fetcher
 assert "Sleep(2000 * (tries > 1 ? 2 : 1));" not in fetcher
 assert "tests/interruptible_wait_test.cpp" in workflow
-print("PASS: all four throttle/retry backoffs are cancellation-aware and tested.")
+print("PASS: all five throttle/retry backoffs are cancellation-aware and tested.")
 
 # Require ASLR in all four Windows component configurations.
 for item in project.iter(msbuild_ns + "ItemDefinitionGroup"):
