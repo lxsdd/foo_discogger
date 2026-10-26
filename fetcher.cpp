@@ -359,7 +359,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
                     delay == 0) throw;
                 out.set_size(0);
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
-                discogger_live_search_qa::http_5xx_retries.fetch_add(1);
+                discogger_live_search_qa::http_server_retries.fetch_add(1);
 #endif
                 log_msg("Transient Discogs server failure; retrying bounded GET (status only).");
                 discogger_net::interruptible_wait(delay, p_abort);
