@@ -9,13 +9,6 @@ on:
     branches:
       - master
       - work/portable-build-properties-20261018
-      # Temporary secret-free SHA qualification of staging PR #20 only.
-      # Remove this trigger before integration into the product work branch.
-      - fix/discogger-worker-resilience-20261026
-      # Temporary source-only validation for optional fallback recovery.
-      - fix/discogger-optional-fallback-recovery-20261026
-      # Integrated source-only search recovery + atomic master pagination.
-      - qa/discogger-integrated-search-master-20261026
   pull_request:
     branches:
       - master
