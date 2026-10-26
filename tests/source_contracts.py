@@ -2430,6 +2430,14 @@ for marker in (
     assert f'"{marker}="' in qa_native_source
     assert f"'{marker}'" in native_gui_script
 assert "DISCOGGER_AUTHENTICATED_API_COHORT_FOLLOWUP_" in native_gui_script
+# A live matrix failure must identify its fixed public case and numeric worker
+# stage without leaking freeform exception text, URLs or OAuth materials.
+assert "Native GUI matrix worker stopped; case={0} error={1} abort={2}" in native_gui_script
+assert "^[a-z0-9][a-z0-9-]{0,63}$" in native_gui_script
+assert "[int]$matrixCounts['WORKER_ERROR']" in native_gui_script
+assert "[int]$matrixCounts['WORKER_ABORT']" in native_gui_script
+assert "[int]$matrixCounts['RESPONSE_PAGES']" in native_gui_script
+assert "Native GUI matrix worker failed or aborted." not in native_gui_script
 # A previous protected run failed because the PowerShell parser matched
 # [A-Z_]+, excluding PAGE2 keys. Ensure numeric marker names are accepted,
 # and only exact whitelisted nonnegative values can enter the QA counters.
