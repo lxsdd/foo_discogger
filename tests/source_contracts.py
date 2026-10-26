@@ -2119,7 +2119,7 @@ async_tasks_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
 async_tasks_source = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
 for callback_name, ui_function in (
     ("on_get_artist_done_process_callback", "on_get_artist_done("),
-    ("on_search_artist_done_process_callback", "on_search_artist_done("),
+    ("on_search_artist_done_process_callback", "on_search_artist_done_if_current("),
 ):
     begin = async_tasks_source.split(
         f"void {callback_name}::safe_run(", 1)[1]
