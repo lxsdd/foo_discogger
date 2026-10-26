@@ -314,6 +314,7 @@ public:
 
 private:
 	MasterRelease_ptr m_master_release;
+    MasterRelease_ptr m_staged_master; // Worker-owned version data, not the visible tree object.
 	int m_pos;
 	pfc::string8 m_offlineArtist_id;
 	int m_query_mode;
