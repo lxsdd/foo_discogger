@@ -777,6 +777,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         }
     }
     bool used_broad_fallback = false;
+    discogger_search::optional_fallback_outcome fallback_outcome;
     if (!original_has_candidates || !original_title_plausible) {
         // Keep the exact original query untouched; the plan only suggests
         // additional Discogs candidates and never writes tags.
@@ -804,9 +805,42 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             discogger_live_search_qa::fallback_attempts.fetch_add(1);
             discogger_live_search_qa::worker_phase.store(3);
 #endif
-            pfc::array_t<JSONParser_ptr> fallback_pages =
-                get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,
+            pfc::array_t<JSONParser_ptr> fallback_pages;
+            bool optional_fetch_failed = false;
+            // get_all_pages validates every page before returning. A failed
+            // optional request must never leak its partially fetched pages,
+            // but can leave already completed original/earlier fallback
+            // candidates available for explicit user review.
+            try {
+                fallback_pages = get_all_pages(
+                    fallback_url, fallback_params, fallback_max, p_abort,
                     "Fetching bounded Discogs fallback candidates...", p_status);
+            }
+            catch (const exception_aborted&) {
+                throw;
+            }
+            catch (const http_exception& e) {
+                // Auth, malformed/client responses and exhausted 429 must
+                // retain their existing fail-closed behavior.
+                if (!discogger_search::recoverable_optional_fallback_http(
+                        e.get_status())) throw;
+                optional_fetch_failed = true;
+            }
+            catch (const foo_discogs_exception&) {
+                // Network failures or invalid/changing provider pagination
+                // cannot contribute an incomplete page to the visible list.
+                optional_fetch_failed = true;
+            }
+            if (optional_fetch_failed) {
+                p_abort.check();
+                fallback_outcome.record_fetch_failure();
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::fallback_fetch_errors.fetch_add(1);
+#endif
+                log_msg("Optional Discogs discovery unavailable (request redacted); retaining complete candidates.");
+                p_status.set_item("Optional Discogs discovery unavailable; continuing review-only search.");
+                continue; // Remaining bounded plans can still find a match.
+            }
             if (fallback_max > max_to_abort) {
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
                 discogger_live_search_qa::query_limit.fetch_add(1);
@@ -850,6 +884,18 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             }
         }
     }
+    // Do not misreport a completely failed search as an empty-success result.
+    // Only fully received and parsed primary/earlier fallback candidates
+    // can survive a later optional fetch failure.
+    const size_t completed_candidates =
+        fake_artist->master_releases.get_count() + fake_artist->releases.get_count();
+    if (fallback_outcome.requires_error(completed_candidates)) {
+        p_abort.check();
+        throw foo_discogs_exception(
+            "Optional Discogs discovery failed without complete candidates; retry.");
+    }
+    if (fallback_outcome.failed_fetches)
+        p_status.set_item("Some Discogs discovery requests unavailable; review completed candidates.");
 
 	va_res_cap.first = fake_artist->master_releases.get_count();
 	va_res_cap.second = fake_artist->releases.get_count();
@@ -867,7 +913,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 	// Low-confidence fallback suggestions stay in the 'other' section:
     // the UI cannot mistake them for exact original-artist hits.
     QueryDefMap presentation_query = qdm_search_query;
-    if (used_broad_fallback)
+    if (fallback_outcome.requires_review(original_title_plausible, used_broad_fallback))
         presentation_query["artist="].first.clear();
     parse_amt_info presentation_pai = {
         presentation_query, map_found_artists, set_bad_artists, mva_masters,

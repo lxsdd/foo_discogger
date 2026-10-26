@@ -491,6 +491,7 @@ void run_live_search_probe_qa() {
         << "QUERY_LIMIT=" << discogger_live_search_qa::query_limit.load() << '\n'
         << "WORKER_PHASE=" << discogger_live_search_qa::worker_phase.load() << '\n'
         << "FALLBACK_ATTEMPTS=" << discogger_live_search_qa::fallback_attempts.load() << '\n'
+        << "FALLBACK_FETCH_ERRORS=" << discogger_live_search_qa::fallback_fetch_errors.load() << '\n'
         << "PREVIEW_ATTEMPTS=" << discogger_live_search_qa::preview_attempts.load() << '\n'
         << "PREVIEW_SUCCESSES=" << discogger_live_search_qa::preview_successes.load() << '\n'
         << "HTTP_SERVER_RETRIES=" << discogger_live_search_qa::http_server_retries.load() << '\n'

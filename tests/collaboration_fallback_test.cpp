@@ -213,6 +213,47 @@ int main() {
     two_phases.observe(true);
     assert(two_phases.begin()); // wrong nonempty partner cannot hide title
     assert(!two_phases.begin());
+    // Authenticated native regression: Sun & Moon reached its third optional
+    // fallback and encountered a provider error after two completed queries.
+    // Completed review candidates must survive; an all-failed discovery must
+    // still fail closed rather than incorrectly reporting no entries.
+    for (int http : {500, 502, 503, 504})
+        assert(recoverable_optional_fallback_http(http));
+    for (int http : {0, 200, 206, 301, 400, 401, 403, 404, 408, 429, 501, 505, 599})
+        assert(!recoverable_optional_fallback_http(http));
+    optional_fallback_outcome recovered;
+    assert(!recovered.requires_error(0));
+    assert(!recovered.requires_review(false, false));
+    recovered.record_fetch_failure(); // third query fails, earlier pages complete
+    assert(recovered.failed_fetches == 1);
+    assert(!recovered.requires_error(2));
+    assert(recovered.requires_review(false, false));
+    assert(!recovered.requires_review(true, false));
+    assert(recovered.requires_review(true, true)); // broader match still review-only
+    optional_fallback_outcome unavailable;
+    unavailable.record_fetch_failure(); // first query fails
+    unavailable.record_fetch_failure(); // last query fails too
+    assert(unavailable.failed_fetches == 2 && unavailable.requires_error(0));
+    assert(!unavailable.requires_error(1)); // later fully parsed candidate exists
+    assert(unavailable.requires_review(false, false));
+    optional_fallback_outcome clean;
+    assert(!clean.requires_error(0)); // genuinely empty, all queries completed
+    assert(!clean.requires_review(true, false));
+
+    // Provider failures do not increase the bounded query budget or permit
+    // an unbounded retry loop. Other independent fallback plans still run.
+    fallback_query_budget after_failure(3);
+    optional_fallback_outcome partial;
+    assert(after_failure.begin());
+    partial.record_fetch_failure();
+    assert(after_failure.can_continue());
+    assert(after_failure.begin());
+    after_failure.observe(true);
+    assert(after_failure.begin());
+    partial.record_fetch_failure();
+    assert(!after_failure.can_continue() && after_failure.has_candidates());
+    assert(!partial.requires_error(1) && partial.requires_review(false, true));
+
     std::vector<std::string> ids;
     assert(!already_seen_release_id(ids, "36397609"));
     assert(already_seen_release_id(ids, "36397609"));

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -257,6 +258,25 @@ private:
     std::size_t remaining_;
     bool saw_candidates_ = false;
     bool stopped_ = false;
+};
+
+// An optional discovery failure must not invalidate candidates from completed
+// search pages. Never treat failed primary fetches or unfinished page payloads
+// as candidates. HTTP auth/client errors and exhausted 429 remain hard errors.
+inline bool recoverable_optional_fallback_http(int status) noexcept {
+    return status == 500 || status == 502 || status == 503 || status == 504;
+}
+struct optional_fallback_outcome {
+    std::size_t failed_fetches = 0;
+    void record_fetch_failure() noexcept { ++failed_fetches; }
+    bool requires_error(std::size_t completed_candidate_count) const noexcept {
+        return failed_fetches != 0 && completed_candidate_count == 0;
+    }
+    bool requires_review(bool original_title_plausible,
+                         bool used_broad_fallback) const noexcept {
+        return used_broad_fallback ||
+            (failed_fetches != 0 && !original_title_plausible);
+    }
 };
 
 // Identity is type + numerical Discogs ID, not title, role or search source.

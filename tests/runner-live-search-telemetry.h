@@ -35,6 +35,7 @@ inline std::atomic<unsigned> query_limit{0};
 // 4=fallback parse, 5=preview, 6=post-preview, 7=complete.
 inline std::atomic<unsigned> worker_phase{0};
 inline std::atomic<unsigned> fallback_attempts{0};
+inline std::atomic<unsigned> fallback_fetch_errors{0};
 inline std::atomic<unsigned> preview_attempts{0};
 inline std::atomic<unsigned> preview_successes{0};
 inline std::atomic<unsigned> http_server_retries{0};
@@ -66,6 +67,7 @@ inline void reset() noexcept {
     query_limit.store(0);
     worker_phase.store(0);
     fallback_attempts.store(0);
+    fallback_fetch_errors.store(0);
     preview_attempts.store(0);
     preview_successes.store(0);
     http_server_retries.store(0);

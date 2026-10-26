@@ -2462,6 +2462,43 @@ assert "discogger_net::interruptible_wait(delay, p_abort);" in qa_fetcher
 assert "catch (http_429_exception)" in qa_fetcher
 print("PASS: bounded transient GET retries and numeric worker-stage reporting.")
 
+# The protected Win32 matrix proved that three completed response pages can
+# be lost when a third *optional* discovery query fails during its fetch.
+# Primary request errors and exhausted auth/rate-limit statuses remain fatal.
+policy = (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
+assert "bool recoverable_optional_fallback_http(int status)" in policy
+assert "struct optional_fallback_outcome" in policy
+assert "bool requires_error(std::size_t completed_candidate_count)" in policy
+assert "bool requires_review(bool original_title_plausible" in policy
+fallback_impl = qa_iface.split(
+    "bool used_broad_fallback = false;", 1)[1].split(
+    "process_amt_parsed_fake_artist(fake_artist, presentation_pai", 1)[0]
+assert "catch (const exception_aborted&)" in fallback_impl
+assert "catch (const http_exception& e)" in fallback_impl
+assert "catch (const foo_discogs_exception&)" in fallback_impl
+assert fallback_impl.index("catch (const exception_aborted&)") < fallback_impl.index(
+    "catch (const http_exception& e)") < fallback_impl.index(
+    "catch (const foo_discogs_exception&)")
+assert "get_all_pages(fallback_url, fallback_params, fallback_max, p_abort," not in fallback_impl
+assert "fallback_pages = get_all_pages(" in fallback_impl
+assert "if (!discogger_search::recoverable_optional_fallback_http(" in fallback_impl
+assert "fallback_outcome.record_fetch_failure();" in fallback_impl
+assert "p_abort.check();" in fallback_impl
+assert "continue; // Remaining bounded plans can still find a match." in fallback_impl
+assert "fallback_outcome.requires_error(completed_candidates)" in fallback_impl
+assert "fallback_outcome.requires_review(original_title_plausible, used_broad_fallback)" in fallback_impl
+assert "FALLBACK_FETCH_ERRORS=" in qa_probe
+assert "'FALLBACK_FETCH_ERRORS'" in native_gui_script
+assert "fallback_fetch_errors.fetch_add(1)" in fallback_impl
+assert "Optional Discogs discovery failed without complete candidates; retry." in fallback_impl
+# The only primary search page fetch must remain outside the optional catch.
+primary = qa_iface.split(
+    "rppair_t DiscogsInterface::search_amt_artist(", 1)[1].split(
+    "bool used_broad_fallback = false;", 1)[0]
+assert "pages = discogs_interface->get_all_pages(url, params" in primary
+print("PASS: optional fallback failure retains only complete review candidates; primary/auth/abort remain fatal.")
+
+
 # A previous protected run failed because the PowerShell parser matched
 # [A-Z_]+, excluding PAGE2 keys. Ensure numeric marker names are accepted,
 # and only exact whitelisted nonnegative values can enter the QA counters.
