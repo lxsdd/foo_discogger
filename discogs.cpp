@@ -2828,7 +2828,7 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 					if (!master_release->loaded_releases && master_release->sub_releases.get_count()) {
 
 						for (size_t i = 0; i < master_release->sub_releases.get_size(); i++) {
-							if (master_release->sub_releases[i]->id.equals(release_id)) {
+							if (master_release->sub_releases[i] && master_release->sub_releases[i]->id.equals(release_id)) {
 								found_i = i;
 								release = master_release->sub_releases[i];
 								break;
@@ -2838,7 +2838,7 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 							continue;
 						}
 						else {
-							lkey = encode_mr(0, atol(master_release->sub_releases[i]->id));
+							lkey = encode_mr(0, atol(master_release->sub_releases[found_i]->id));
 							release = discogs_interface->get_release(lkey);
 						}
 					}
