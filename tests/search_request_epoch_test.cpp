@@ -88,9 +88,9 @@ int main() {
     };
     assert(find_version("410087") == 0);
     assert(find_version("410099") == 2);
-    assert(find_version("not-found") == std::numeric_limits<std::size_t>::max());
+    assert(find_version("not-found") == (std::numeric_limits<std::size_t>::max)());
     assert(discogger_master::find_partial_version_index(
         0, [](std::size_t) { return true; }) ==
-        std::numeric_limits<std::size_t>::max());
+        (std::numeric_limits<std::size_t>::max)());
     return 0;
 }
