@@ -2151,7 +2151,9 @@ assert "on_expand_master_release_done(" not in expand_background
 assert "m_staged_master->load_releases(" in expand_background
 assert "m_master_release->load_releases(" not in expand_background
 assert "m_master_release->sub_releases" not in expand_background
-assert "m_staged_master->sub_releases = m_master_release->sub_releases;" in expand_parts
+assert "std::make_shared<Release>(*child)" in expand_parts
+assert "m_staged_master->sub_releases.append_single(" in expand_parts
+assert "m_staged_master->sub_releases = m_master_release->sub_releases;" not in expand_parts
 assert "m_staged_master->loaded_releases = m_master_release->loaded_releases;" in expand_parts
 assert "m_staged_master->loaded_releases" in expand_foreground
 assert "m_staged_master" in expand_header
@@ -2165,6 +2167,21 @@ assert "m_master_release, m_pos, status, abort, m_staged_master" in expand_foreg
 assert "m_owner_window = parent;" in expand_parts
 assert "class expand_master_release_process_callback" in expand_header
 print("PASS: owner-bound main-thread master expansion, background load-only.")
+# The worker must parse into independent Release objects, including AT
+# partial matches; no cached Release or master is modified before UI commit.
+assert "m_query_mode, true);" in expand_background
+master_parser = parsed_releases.split("void Discogs::parseMasterVersions(", 1)[1].split(
+    "void Discogs::parseArtist(", 1)[0]
+assert "if (isolated_versions)" in master_parser
+assert "release = std::make_shared<Release>(release_id.get_ptr());" in master_parser
+assert "release = master_release->sub_releases[found_i];" in master_parser
+assert "release->master_id = master_release->id;" in master_parser
+assert "if (!isolated_versions) master = discogs_interface->get_master_release(lkey);" in master_parser
+native_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "runner_qa_native_master_child_isolation();" in native_dialog
+assert "DISCOGGER_NATIVE_MASTER_CHILD_ISOLATION_QA=PASS" in native_dialog
+print("PASS: worker-owned master children, native Jansson partial/full isolation contract.")
+
 
 # The completion of a master-release HTTP load may race with a tree/filter
 # change. Its UI callback must reject stale or invalid source and list rows
