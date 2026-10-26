@@ -55,5 +55,18 @@ int main() {
     assert(filter.matches(old_filter)); // Independent generation, both checked.
     const auto next_filter = filter.begin(); // Checkbox change or edit.
     assert(!filter.matches(old_filter) && filter.matches(next_filter));
+    // Master data can finish loading after a filter edit while the artist
+    // search itself remains current. Both identities must still match.
+    search_request_epoch master_filter;
+    const auto pending_master_search = request.current();
+    const auto pending_master_filter = master_filter.current();
+    assert(request.matches(pending_master_search) && master_filter.matches(pending_master_filter));
+    const auto changed_master_filter = master_filter.begin();
+    assert(request.matches(pending_master_search));
+    assert(!master_filter.matches(pending_master_filter));
+    assert(master_filter.matches(changed_master_filter));
+    const auto next_master_search = request.begin();
+    assert(!request.matches(pending_master_search) && request.matches(next_master_search));
+    assert(master_filter.matches(changed_master_filter));
     return 0;
 }
