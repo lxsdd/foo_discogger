@@ -359,7 +359,7 @@ assert "throw;" in search_fetch[search_fetch.index("catch (const exception_abort
                                search_fetch.index("catch (foo_discogs_exception& e)")]
 
 assert "for (const auto& candidate : plans)" in search
-assert "get_all_pages(fallback_url, fallback_params" in search
+assert "fallback_pages = get_all_pages(" in search
 assert "discogger_search::encode_fallback_query(candidate)" in search
 assert "search_query::TextToMap(fallback_expression, fallback_map)" not in search
 assert "fallback_params(fallback_query.c_str())" in search
