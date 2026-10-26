@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include "sqlite3.h"
 #include "db_fetcher.h"
 
@@ -224,6 +225,7 @@ private:
 	pfc::string8 m_artist_id;
 	pfc::string8 m_artist_name;
     HWND m_owner_window = nullptr;
+    std::uint64_t m_search_ticket = 0;
 	Artist_ptr m_artist;
 	cupdRelSrc m_cupdsrc;
 	bool m_bload_releases = false;
@@ -255,6 +257,7 @@ public:
 private:
 	std::vector<size_t> m_artist_ids; // Owned across modeless dialog destruction.
     HWND m_owner_window = nullptr;
+    std::uint64_t m_search_ticket = 0;
 	std::vector<pfc::string8> m_checked_in_artist_ids;
 	pfc::array_t<Artist_ptr> m_artists;
 	Release_ptr m_release;
@@ -281,7 +284,8 @@ public:
 
 private:
 	pfc::string8 m_search;
-    HWND m_owner_window = nullptr; // Captured before the online worker starts.
+    HWND m_owner_window = nullptr;
+    std::uint64_t m_search_ticket = 0; // Captured before the online worker starts.
 	bool m_dlgbutton = false;
 	const int m_va;
 	QueryDefMap m_qdm_search_query = {};
@@ -357,8 +361,8 @@ class on_search_artist_done_process_callback : public foo_discogs_threaded_proce
 public:
 	on_search_artist_done_process_callback(const pfc::array_t<Artist_ptr> p_artist_exact_matches,
 		const pfc::array_t<Artist_ptr> p_artist_other_matches,
-		bool append, std::pair<size_t, size_t>& out_va_cap) :
-		m_p_artist_exact_matches(p_artist_exact_matches), m_p_artist_other_matches(p_artist_other_matches), m_append(append), m_out_va_cap(out_va_cap) {};
+		bool append, std::pair<size_t, size_t>& out_va_cap, std::uint64_t ticket) :
+		m_p_artist_exact_matches(p_artist_exact_matches), m_p_artist_other_matches(p_artist_other_matches), m_append(append), m_out_va_cap(out_va_cap), m_search_ticket(ticket) {};
 
 	void start(HWND parent);
 
@@ -369,6 +373,7 @@ private:
 	bool m_append;
 	std::pair<size_t, size_t> m_out_va_cap;
     HWND m_owner_window = nullptr; // Captured before dispatch, checked at UI completion.
+    const std::uint64_t m_search_ticket;
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
@@ -388,7 +393,8 @@ private:
 
 	cupdRelSrc m_updsrc;
 	Artist_ptr m_artist;
-    HWND m_owner_window = nullptr; // Do not target a replaced modeless dialog.
+    HWND m_owner_window = nullptr;
+    std::uint64_t m_search_ticket = 0; // Do not target a replaced modeless dialog.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
