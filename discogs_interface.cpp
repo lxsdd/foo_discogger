@@ -727,7 +727,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 	}
 
     // Exact structured results take precedence; only widen after no parsed
-    // release/master candidates. At most two bounded online searches.
+    // release/master candidates. At most three bounded online searches.
     // Discogs fallback matches are suggestions, never silently promoted to
     // an exact artist or metadata write.
     bool used_broad_fallback = false;
@@ -738,6 +738,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         // Keep this explicit for compatibility checks and collaborator UX.
         const auto plans = discogger_search::build_fallback_plan(
             original_artist, release_title, original_track);
+        discogger_search::fallback_query_budget budget(plans.size());
         for (const auto& candidate : plans) {
             p_abort.check();
             // Do not round-trip untrusted release titles/artist names through
@@ -746,6 +747,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             const std::string fallback_query =
                 discogger_search::encode_fallback_query(candidate);
             if (fallback_query.empty()) continue;
+            if (!budget.begin()) break;
 
             pfc::string8 status("No exact result: ");
             status << candidate.label.c_str();
@@ -761,6 +763,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                 discogger_live_search_qa::query_limit.fetch_add(1);
 #endif
                 p_status.set_item("Fallback result limit exceeded; refine the search.");
+                budget.stop();
                 break;
             }
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
@@ -777,11 +780,17 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                 p_abort.check();
                 parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
             }
-            if (fake_artist->master_releases.get_count() ||
-                fake_artist->releases.get_count()) {
+            const bool have_candidates =
+                fake_artist->master_releases.get_count() ||
+                fake_artist->releases.get_count();
+            budget.observe(have_candidates);
+            if (have_candidates) {
                 used_broad_fallback = true;
                 p_status.set_item("Broader Discogs results: review release/version before tagging.");
-                break;
+                // Never stop merely because a fallback returned something:
+                // guest/title may return an unrelated release while the next
+                // bounded phase contains the requested ID. The parser merges
+                // distinct IDs; presentation stays review-only.
             }
         }
     }
