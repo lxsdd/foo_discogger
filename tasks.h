@@ -415,6 +415,9 @@ private:
 	metadb_handle_list m_items;
 
 	CFindReleaseDialog *m_dialog;
+    HWND m_owner_window = nullptr; // Captured on UI thread; never dereference stale m_dialog.
+    std::uint64_t m_search_ticket = 0; // Release selection supersedes older async searches.
+    bool owner_is_current() const; // UI thread only, before any dialog access.
 	pfc::string8 m_release_id;
 	pfc::string8 m_offline_artist_id;
 	pfc::string8 m_inno;
