@@ -958,7 +958,7 @@ namespace Discogs
 		}
 		void load(threaded_process_status &p_status, abort_callback &p_abort, bool throw_all = false) override;
 		void load_releases(threaded_process_status &p_status, abort_callback &p_abort, bool throw_all = false,
-				pfc::string8 offlineArtistId = "", db_fetcher* dbfetcher = nullptr, int query_mode = 0);
+				pfc::string8 offlineArtistId = "", db_fetcher* dbfetcher = nullptr, int query_mode = 0, bool isolated_versions = false);
 	};
 
 
@@ -1213,7 +1213,7 @@ namespace Discogs
 		std::pair<size_t, size_t> ignored{0, 0};
 		parseArtistReleases(element, artist, query_mode, mva_masters, ignored);
 	}
-	extern void parseMasterVersions(json_t *element, MasterRelease *master_release, int query_mode);
+	extern void parseMasterVersions(json_t *element, MasterRelease *master_release, int query_mode, bool isolated_versions = false);
 
 	extern ReleaseArtist_ptr parseReleaseArtist(json_t *element, bool preload = false);
 	extern void parseReleaseArtists(json_t *element, pfc::array_t<ReleaseArtist_ptr> &artists, bool preload = false);
