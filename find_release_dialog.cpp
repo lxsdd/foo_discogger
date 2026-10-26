@@ -2090,6 +2090,71 @@ void CFindReleaseDialog::UpdateArtistProfile(Artist_ptr artist) {
 
 
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
+// Production search-preview parser is a free function in discogs.cpp.
+// This fixture runs that parser and the real master page parser in the
+// original Win32/x64 foobar hosts; no network, cache or user-media I/O.
+void parse_release_search_fields(json_t*, Release_ptr);
+static void runner_qa_native_search_preview_fields() {
+    json_error_t error = {};
+    auto parse = [&](const char* value) -> json_t* {
+        json_t* root = json_loads(value, JSON_DECODE_ANY, &error);
+        if (!root) throw std::runtime_error("Native search-preview fixture JSON invalid.");
+        return root;
+    };
+    Release_ptr release = std::make_shared<Release>("410994");
+    json_t* root = parse(R"({"id":"410994","title":"Preview","role":"Main","formats":[{"name":"Vinyl","qty":"2","descriptions":["12 inch",null,"EP","EP",42]},{"name":null,"descriptions":["Invalid"]}]})");
+    parse_release_search_fields(root, release);
+    json_decref(root);
+    if (!release->search_role.equals("Main") ||
+        release->search_roles.get_count() != 1 ||
+        release->search_major_formats.get_count() != 1 ||
+        !release->search_major_formats[0].equals("2xVinyl") ||
+        !release->search_formats.equals("12 inch, EP"))
+        throw std::runtime_error("Native preview lost Main role or mishandled malformed/duplicate format descriptions.");
+    root = parse(R"({"id":"410994","role":"Other","formats":[null,{},{"name":null},{"name":"Digital","descriptions":[false,"Stereo"]}]})");
+    parse_release_search_fields(root, release);
+    json_decref(root);
+    if (!release->search_role.equals("Main") ||
+        release->search_roles.get_count() != 2 ||
+        release->search_major_formats.get_count() != 1 ||
+        !release->search_major_formats[0].equals("Digital") ||
+        !release->search_formats.equals("Stereo"))
+        throw std::runtime_error("Native duplicate release demoted Main or accepted invalid formats.");
+    root = parse(R"({"id":"410994","role":"Other"})");
+    parse_release_search_fields(root, release);
+    json_decref(root);
+    if (!release->search_role.equals("Main") || release->search_roles.get_count() != 2)
+        throw std::runtime_error("Native repeated release duplicated search role.");
+    Release_ptr promoted = std::make_shared<Release>("410995");
+    root = parse(R"({"id":"410995","role":"Other"})");
+    parse_release_search_fields(root, promoted);
+    json_decref(root);
+    root = parse(R"({"id":"410995","role":"Main"})");
+    parse_release_search_fields(root, promoted);
+    json_decref(root);
+    if (!promoted->search_role.equals("Main") || promoted->search_roles.get_count() != 2)
+        throw std::runtime_error("Native later Main role failed to promote release.");
+    Artist_ptr artist = std::make_shared<Artist>("991992");
+    MasterRelease_ptr master = std::make_shared<MasterRelease>("991993");
+    std::map<std::string, MasterRelease_ptr> masters;
+    masters.emplace("991993", master);
+    root = parse(R"({"results":[{"type":"master","id":"991993","title":"Master","role":"Main"},{"type":"master","id":"991993","title":"Master","role":"Other"},{"type":"master","id":"991993","title":"Master","role":"Other"}]})");
+    try {
+        Discogs::parseArtistReleases(root, artist.get(), SearchMode::AT, masters);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (artist->master_releases.get_count() != 1 ||
+        !artist->master_releases[0]->search_role.equals("Main") ||
+        artist->master_releases[0]->search_roles.get_count() != 2)
+        throw std::runtime_error("Native master duplicate demoted Main or duplicated visible role.");
+    log_msg("DISCOGGER_NATIVE_SEARCH_PREVIEW_FIELDS_QA=PASS");
+}
+#endif
+
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
 // Actual Jansson + directory-recovery integration, exercised inside both
 // original Win32/x64 foobar hosts on disposable TEMP cache files only.
 static void runner_qa_native_cache_json_rollback() {
@@ -2318,6 +2383,7 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
     runner_qa_native_cache_json_rollback();
     runner_qa_native_master_child_isolation();
+    runner_qa_native_search_preview_fields();
     const size_t previous_mode = m_query_mode;
     m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
 
