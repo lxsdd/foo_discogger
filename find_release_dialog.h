@@ -600,7 +600,7 @@ private:
 	// release service callbacks
 
 	void call_expand_master_service(MasterRelease_ptr& master_release, int pos); //serves tree
-	void on_expand_master_release_done(const MasterRelease_ptr& master_release, int pos, threaded_process_status& p_status, abort_callback& p_abort);
+	void on_expand_master_release_done(const MasterRelease_ptr& master_release, int pos, threaded_process_status& p_status, abort_callback& p_abort, const MasterRelease_ptr& staged_master = nullptr);
 
 	// spawns get_artist_process_callback
 
