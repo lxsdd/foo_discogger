@@ -2880,8 +2880,10 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 						break;
 					}
 				}
+                // A matched partial version is a duplicate ID, but its
+                // preview has nevertheless been successfully parsed.
+                release->loaded_preview = true;
 				if (!duplicate) {
-					release->loaded_preview = true;
 					if (!(bool)query_mode || found_i == SIZE_MAX) {
 						master_release->sub_releases.append_single(std::move(release));
 					}
