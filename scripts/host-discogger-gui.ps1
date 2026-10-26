@@ -1080,7 +1080,8 @@ FILE "synthetic-side-b.wav" WAVE
             'ALT_MODE','REPEAT_QUERY','EARLY_EXIT',
             'WORKER_STARTED','WORKER_ADVANCED','WORKER_SUCCESS','WORKER_ERROR','WORKER_ABORT',
             'RESPONSE_PAGES','RESPONSE_ITEMS','PARSED_MASTERS','PARSED_RELEASES',
-            'QUERY_LIMIT','API_IDENTITY','API_EXACT_OK','API_EXACT_ITEMS',
+            'QUERY_LIMIT','WORKER_PHASE','FALLBACK_ATTEMPTS','PREVIEW_ATTEMPTS',
+            'PREVIEW_SUCCESSES','HTTP_SERVER_RETRIES','API_IDENTITY','API_EXACT_OK','API_EXACT_ITEMS',
             'API_EXACT_KNOWN','API_BROAD_OK','API_BROAD_ITEMS','API_BROAD_KNOWN',
             'API_COHORT_TOTAL','API_COHORT_OK','API_COHORT_NONEMPTY','API_COHORT_KNOWN',
             'API_COHORT_MASK','API_COHORT_KNOWN_MASK',
@@ -1248,7 +1249,7 @@ FILE "synthetic-side-b.wav" WAVE
                     if($caseLabel -notmatch '^[a-z0-9][a-z0-9-]{0,63}$'){
                         throw 'Unexpected native QA case label.'
                     }
-                    throw ("Native GUI matrix worker stopped; case={0} error={1} abort={2} started={3} advanced={4} success={5} pages={6} items={7} capped={8}" -f
+                    throw ("Native GUI matrix worker stopped; case={0} error={1} abort={2} started={3} advanced={4} success={5} pages={6} items={7} capped={8} phase={9} fallback={10} previews={11} completed={12} retries={13}" -f
                         $caseLabel,
                         [int]$matrixCounts['WORKER_ERROR'],
                         [int]$matrixCounts['WORKER_ABORT'],
@@ -1257,7 +1258,12 @@ FILE "synthetic-side-b.wav" WAVE
                         [int]$matrixCounts['WORKER_SUCCESS'],
                         [int]$matrixCounts['RESPONSE_PAGES'],
                         [int]$matrixCounts['RESPONSE_ITEMS'],
-                        [int]$matrixCounts['QUERY_LIMIT'])
+                        [int]$matrixCounts['QUERY_LIMIT'],
+                        [int]$matrixCounts['WORKER_PHASE'],
+                        [int]$matrixCounts['FALLBACK_ATTEMPTS'],
+                        [int]$matrixCounts['PREVIEW_ATTEMPTS'],
+                        [int]$matrixCounts['PREVIEW_SUCCESSES'],
+                        [int]$matrixCounts['HTTP_SERVER_RETRIES'])
                 }
                 $done=$matrixCounts['WORKER_SUCCESS'] -eq 1
             }

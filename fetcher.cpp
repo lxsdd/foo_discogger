@@ -5,6 +5,9 @@
 #include "interruptible_wait.h"
 #include "exception.h"
 #include "utils.h"
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+#include "tests/runner-live-search-telemetry.h"
+#endif
 
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 // Stable, non-secret identity for protected native Discogs read-only requests.
@@ -346,7 +349,22 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 				log_msg(error_msg);
 				discogger_net::interruptible_wait(2000u * tries, p_abort);
 			}
-			catch (foobar2000_io::exception_io &) {
+			catch (const http_exception& e) {
+                // Retry only transient HTTP 5xx for the existing idempotent
+                // GET. Fail closed after two bounded, cancellation-aware
+                // delays; do not mask 401/403/404 or replace 429 handling.
+                const unsigned delay = discogger_net::transient_server_retry_delay_ms(
+                    static_cast<unsigned>(tries));
+                if (!discogger_net::retryable_discogs_server_status(e.get_status()) ||
+                    delay == 0) throw;
+                out.set_size(0);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::http_5xx_retries.fetch_add(1);
+#endif
+                log_msg("Transient Discogs server failure; retrying bounded GET (status only).");
+                discogger_net::interruptible_wait(delay, p_abort);
+            }
+            catch (foobar2000_io::exception_io &) {
 
 				if (tries > 5) throw;
 

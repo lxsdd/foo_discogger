@@ -97,6 +97,15 @@ inline int parse_http_status_code(std::string_view line) noexcept {
     const int status = (a - '0') * 100 + (b - '0') * 10 + (c - '0');
     return status >= 100 && status <= 599 ? status : 0;
 }
+// Only idempotent GETs may retry transient server failures. Authorization,
+// invalid requests, missing releases and Discogs-specific 429 retain their
+// existing separate error/retry semantics; no partial payload is accepted.
+inline bool retryable_discogs_server_status(int status) noexcept {
+    return status == 500 || status == 502 || status == 503 || status == 504;
+}
+inline unsigned transient_server_retry_delay_ms(unsigned attempt) noexcept {
+    return attempt == 1 ? 750u : attempt == 2 ? 1500u : 0u;
+}
 // Optional preview fetches consume only an unambiguous complete HTTP success,
 // never a 404/429 JSON error document or a 206 partial body.
 inline bool usable_preview_http_response(std::string_view status_line) noexcept {

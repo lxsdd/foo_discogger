@@ -30,6 +30,14 @@ inline std::atomic<unsigned> response_items{0};
 inline std::atomic<unsigned> parsed_masters{0};
 inline std::atomic<unsigned> parsed_releases{0};
 inline std::atomic<unsigned> query_limit{0};
+// Non-secret phase codes for failures after an API response:
+// 1=primary fetch, 2=primary parse, 3=fallback fetch,
+// 4=fallback parse, 5=preview, 6=post-preview, 7=complete.
+inline std::atomic<unsigned> worker_phase{0};
+inline std::atomic<unsigned> fallback_attempts{0};
+inline std::atomic<unsigned> preview_attempts{0};
+inline std::atomic<unsigned> preview_successes{0};
+inline std::atomic<unsigned> http_server_retries{0};
 inline void reset() noexcept {
     button.store(0);
     input_nonempty.store(0);
@@ -56,6 +64,11 @@ inline void reset() noexcept {
     parsed_masters.store(0);
     parsed_releases.store(0);
     query_limit.store(0);
+    worker_phase.store(0);
+    fallback_attempts.store(0);
+    preview_attempts.store(0);
+    preview_successes.store(0);
+    http_server_retries.store(0);
 }
 }
 #endif

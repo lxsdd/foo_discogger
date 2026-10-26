@@ -2438,6 +2438,30 @@ assert "[int]$matrixCounts['WORKER_ERROR']" in native_gui_script
 assert "[int]$matrixCounts['WORKER_ABORT']" in native_gui_script
 assert "[int]$matrixCounts['RESPONSE_PAGES']" in native_gui_script
 assert "Native GUI matrix worker failed or aborted." not in native_gui_script
+
+qa_probe = (root / "tests/native-media-writer-qa.inc").read_text(encoding="utf-8-sig")
+qa_state = (root / "tests/runner-live-search-telemetry.h").read_text(encoding="utf-8-sig")
+qa_iface = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+qa_fetcher = (root / "fetcher.cpp").read_text(encoding="utf-8-sig")
+qa_http = (root / "http_status_util.h").read_text(encoding="utf-8-sig")
+for marker in ("WORKER_PHASE", "FALLBACK_ATTEMPTS", "PREVIEW_ATTEMPTS",
+               "PREVIEW_SUCCESSES", "HTTP_SERVER_RETRIES"):
+    assert f'"{marker}="' in qa_probe
+    assert f"'{marker}'" in native_gui_script
+    assert marker.lower() in qa_state
+assert "phase={9} fallback={10} previews={11} completed={12} retries={13}" in native_gui_script
+for stage in (1, 2, 3, 4, 5, 6, 7):
+    assert f"discogger_live_search_qa::worker_phase.store({stage});" in qa_iface
+assert qa_iface.count("discogger_live_search_qa::preview_attempts.fetch_add(1);") == 2
+assert qa_iface.count("discogger_live_search_qa::preview_successes.fetch_add(1);") == 2
+assert "retryable_discogs_server_status(int status)" in qa_http
+assert "transient_server_retry_delay_ms(unsigned attempt)" in qa_http
+assert "catch (const http_exception& e)" in qa_fetcher
+assert "discogger_live_search_qa::http_server_retries.fetch_add(1);" in qa_fetcher
+assert "discogger_net::interruptible_wait(delay, p_abort);" in qa_fetcher
+assert "catch (http_429_exception)" in qa_fetcher
+print("PASS: bounded transient GET retries and numeric worker-stage reporting.")
+
 # A previous protected run failed because the PowerShell parser matched
 # [A-Z_]+, excluding PAGE2 keys. Ensure numeric marker names are accepted,
 # and only exact whitelisted nonnegative values can enter the QA counters.

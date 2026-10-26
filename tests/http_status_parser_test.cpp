@@ -1,5 +1,6 @@
 #include "../http_status_util.h"
 #include <cassert>
+#include <initializer_list>
 
 int main() {
     using discogger_net::parse_http_status_code;
@@ -7,6 +8,16 @@ int main() {
     assert(parse_http_status_code("HTTP/2 200\r\n") == 200);
     assert(parse_http_status_code("HTTP/2 429\r\n") == 429);
     assert(parse_http_status_code("HTTP/1.1 503 Service Unavailable\r\n") == 503);
+    using discogger_net::retryable_discogs_server_status;
+    using discogger_net::transient_server_retry_delay_ms;
+    for (int status : {500, 502, 503, 504}) assert(retryable_discogs_server_status(status));
+    for (int status : {0, 200, 201, 301, 400, 401, 403, 404, 408, 409, 425, 429, 501, 505, 599})
+        assert(!retryable_discogs_server_status(status));
+    assert(transient_server_retry_delay_ms(0) == 0u);
+    assert(transient_server_retry_delay_ms(1) == 750u);
+    assert(transient_server_retry_delay_ms(2) == 1500u);
+    assert(transient_server_retry_delay_ms(3) == 0u);
+    assert(transient_server_retry_delay_ms(999) == 0u);
     assert(parse_http_status_code("HTTP/3 200") == 200);
     assert(parse_http_status_code("HTTP/2\t429") == 429);
     assert(parse_http_status_code("X-Proxy 200 OK") == 0);

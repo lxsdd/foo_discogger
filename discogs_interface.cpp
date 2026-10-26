@@ -281,7 +281,13 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 
 				//* * * * * * * *
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::preview_attempts.fetch_add(1);
+#endif
 				mr->load_preview(p_status, p_abort, false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                discogger_live_search_qa::preview_successes.fetch_add(1);
+#endif
 
 				//* * * * * * * *
 
@@ -466,7 +472,13 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 
 					//* * * * * * * *
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                    discogger_live_search_qa::preview_attempts.fetch_add(1);
+#endif
 					r->load_preview(p_status, p_abort, false);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+                    discogger_live_search_qa::preview_successes.fetch_add(1);
+#endif
 
 					//* * * * * * * *
 
@@ -695,6 +707,9 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
     }
 #endif
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(1);
+#endif
 	bool bCacheSaved = true;
 	bool bmark_pending = false;
 
@@ -725,6 +740,9 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 		//need preview working to avoid unloaded duplicated masters erasing valid data 
 		parse_amt_page(fake_artist, pages[i], pai, p_status, p_abort);
 	}
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(2);
+#endif
 
     // A nonempty structured response is not necessarily a usable release:
     // e.g. a broad artist query can return only unrelated release titles.
@@ -782,6 +800,10 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             pfc::string8 fallback_url("https://api.discogs.com/database/search");
             pfc::string8 fallback_params(fallback_query.c_str());
             size_t fallback_max = HIWORD(CONF.query_max);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::fallback_attempts.fetch_add(1);
+            discogger_live_search_qa::worker_phase.store(3);
+#endif
             pfc::array_t<JSONParser_ptr> fallback_pages =
                 get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,
                     "Fetching bounded Discogs fallback candidates...", p_status);
@@ -809,6 +831,9 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                 p_abort.check();
                 parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
             }
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::worker_phase.store(4);
+#endif
             // A duplicate ID from fallback must not demote an otherwise
             // unchanged original candidate into the review-only bucket.
             const bool have_new_candidates =
@@ -848,8 +873,14 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         presentation_query, map_found_artists, set_bad_artists, mva_masters,
         exact_matches, other_matches, qry_m_r_found
     };
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(5);
+#endif
     process_amt_parsed_fake_artist(fake_artist, presentation_pai, true, true,
         va_res_cap, va_done_cap, p_status, p_abort);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(6);
+#endif
 
 	size_t cmatches = pai.other_matches.get_count();
 
@@ -872,6 +903,9 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 
 	pfc::list_to_array(om, lp);
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    discogger_live_search_qa::worker_phase.store(7);
+#endif
 	return rppair_t({ va_res_cap }, { va_done_cap });
 
 }
