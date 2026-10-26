@@ -764,6 +764,10 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         // additional Discogs candidates and never writes tags.
         const auto plans = discogger_search::build_fallback_plan(
             original_artist, release_title, original_track);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+        discogger_live_search_qa::fallback_entered.fetch_add(1);
+        discogger_live_search_qa::fallback_planned.store(static_cast<unsigned>(plans.size()));
+#endif
         discogger_search::fallback_query_budget budget(plans.size());
         for (const auto& candidate : plans) {
             p_abort.check();
@@ -774,6 +778,15 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                 discogger_search::encode_fallback_query(candidate);
             if (fallback_query.empty()) continue;
             if (!budget.begin()) break;
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::fallback_requested.fetch_add(1);
+            if (!candidate.artist_filter.empty())
+                discogger_live_search_qa::fallback_primary.fetch_add(1);
+            else if (!candidate.title.empty())
+                discogger_live_search_qa::fallback_partner.fetch_add(1);
+            else
+                discogger_live_search_qa::fallback_broad.fetch_add(1);
+#endif
 
             pfc::string8 status(original_has_candidates
                 ? "No plausible release-title match: " : "No exact result: ");
@@ -785,6 +798,9 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             pfc::array_t<JSONParser_ptr> fallback_pages =
                 get_all_pages(fallback_url, fallback_params, fallback_max, p_abort,
                     "Fetching bounded Discogs fallback candidates...", p_status);
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+            discogger_live_search_qa::fallback_completed.fetch_add(1);
+#endif
             if (fallback_max > max_to_abort) {
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
                 discogger_live_search_qa::query_limit.fetch_add(1);
