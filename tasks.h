@@ -318,6 +318,7 @@ private:
 	pfc::string8 m_offlineArtist_id;
 	int m_query_mode;
     HWND m_owner_window = nullptr; // Exact window captured before worker dispatch.
+    std::uint64_t m_search_ticket = 0; // Reject a master expansion from a previous search.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
@@ -345,6 +346,8 @@ private:
 	bool m_force_redraw;
 	bool m_force_rebuild;
     HWND m_owner_window = nullptr; // Only the originating live dialog may be updated.
+    std::uint64_t m_search_ticket = 0;
+    std::uint64_t m_filter_ticket = 0; // Later edits supersede delayed filter callbacks.
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;
