@@ -2304,6 +2304,78 @@ static void runner_qa_native_cache_json_rollback() {
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 // Run the real Jansson master-version parser inside both original foobar
 // hosts. All objects and JSON are synthetic; no provider or user-media I/O.
+// Real Jansson positive/negative page-2 and abort transaction coverage.
+ // The production stage function is used by the real MasterRelease loader.
+static void runner_qa_native_master_page_transaction() {
+    json_error_t error = {};
+    json_t* first = json_loads(
+        R"({"versions":[{"id":"410996","title":"Updated partial"},{"id":"410997","title":"Second version"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* second = json_loads(
+        R"({"versions":[{"id":"410998","title":"Third version"}]})",
+        JSON_DECODE_ANY, &error);
+    json_t* invalid = json_loads(
+        R"({"versions":[{"id":"not-an-id","title":"Invalid page two"}]})",
+        JSON_DECODE_ANY, &error);
+    if (!first || !second || !invalid) {
+        if (first) json_decref(first);
+        if (second) json_decref(second);
+        if (invalid) json_decref(invalid);
+        throw std::runtime_error("Native master page-transaction JSON fixture failed.");
+    }
+    try {
+        MasterRelease original("901996");
+        Release_ptr visible_child = std::make_shared<Release>("410996");
+        visible_child->title = "Visible before page one";
+        original.sub_releases.append_single(visible_child);
+        const std::vector<json_t*> good{first, second};
+        MasterRelease_ptr staged = Discogs::stageMasterVersionPages(
+            original, good, 0, []() {});
+        if (original.loaded_releases || original.sub_releases.get_count() != 1 ||
+            original.sub_releases[0] != visible_child ||
+            visible_child->title != "Visible before page one" ||
+            staged->sub_releases.get_count() != 3 ||
+            staged->sub_releases[0] == visible_child ||
+            staged->sub_releases[0]->title != "Updated partial" ||
+            staged->sub_releases[1]->id != "410997" ||
+            staged->sub_releases[2]->id != "410998")
+            throw std::runtime_error("Native master version stage mutated visible child or lost page two.");
+
+        bool rejected = false;
+        try {
+            const std::vector<json_t*> bad{first, invalid};
+            (void)Discogs::stageMasterVersionPages(original, bad, 0, []() {});
+        } catch (const foo_discogs_exception&) { rejected = true; }
+        if (!rejected || original.sub_releases.get_count() != 1 ||
+            visible_child->title != "Visible before page one")
+            throw std::runtime_error("Native invalid master page two leaked partial data.");
+
+        for (int stop_at : {2, 3}) {
+            int checks = 0;
+            rejected = false;
+            try {
+                (void)Discogs::stageMasterVersionPages(original, good, 0, [&]() {
+                    if (++checks == stop_at) throw exception_aborted();
+                });
+            } catch (const exception_aborted&) { rejected = true; }
+            if (!rejected || original.sub_releases.get_count() != 1 ||
+                visible_child->title != "Visible before page one")
+                throw std::runtime_error("Native aborted master pagination leaked partial data.");
+        }
+        original.sub_releases = std::move(staged->sub_releases);
+        original.loaded_releases = true;
+        if (original.sub_releases.get_count() != 3 ||
+            original.sub_releases[0]->title != "Updated partial" ||
+            visible_child->title != "Visible before page one")
+            throw std::runtime_error("Native complete master page commit failed.");
+    } catch (...) {
+        json_decref(first); json_decref(second); json_decref(invalid);
+        throw;
+    }
+    json_decref(first); json_decref(second); json_decref(invalid);
+    log_msg("DISCOGGER_NATIVE_MASTER_PAGE_TRANSACTION_QA=PASS");
+}
+
 static void runner_qa_native_master_child_isolation() {
     MasterRelease_ptr visible_master = std::make_shared<MasterRelease>("901991");
     Release_ptr visible_child = std::make_shared<Release>("410991");
@@ -2411,6 +2483,7 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
     runner_qa_native_cache_json_rollback();
+    runner_qa_native_master_page_transaction();
     runner_qa_native_master_child_isolation();
     runner_qa_native_search_preview_fields();
     // Exercise the same bounded fallback controller used by the real search

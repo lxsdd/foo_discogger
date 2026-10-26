@@ -42,3 +42,27 @@ its actual header definition was absent. Commit
 and a source contract requiring it. This historical failed run does not
 qualify the fix; use only a subsequent CI run at the exact current SHA
 for PASS claims.
+
+## Staged master-version page transaction (staging candidate, not product acceptance)
+
+The legacy `MasterRelease::load_releases` path parsed each page directly into
+the visible master and could mutate cached child-release previews before a
+later page failed. The staging candidate validates **all child IDs and page
+arrays** and parses into a deep-copied master snapshot with no canonical
+release-cache access; it commits the entire child list only after the final
+abort check. Partial advanced-search versions are matched by ID. A failed
+page-2 parse, invalid ID, missing array, or cancellation must preserve the
+previous visible master and original child pointers.
+
+`tests/master_page_transaction_test.cpp` covers positive completion,
+page-2 validation failure, between-page/final abort, and empty input on
+portable C++17 and MSVC x86/x64. The QA-only Jansson fixture
+`runner_qa_native_master_page_transaction` invokes the same production
+stage function in original Win32/x64 foobar hosts with real JSON objects,
+positive two-page commit and negative invalid-ID/abort cases.
+
+This work is intentionally staged **outside** Draft PR #10 while its
+`f3ac723a...` product SHA is pinned by owner-approved infrastructure
+PR #48. Staging CI is not protected OAuth qualification. No clean private
+owner-machine installation, post-I/O physical rollback, or redistribution
+permission is established by this change.
