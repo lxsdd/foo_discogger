@@ -2821,6 +2821,7 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 				pfc::string8 release_id = JSONAttributeString(rel, "id");
 
 				Release_ptr release;
+                MasterRelease_ptr master;
 				size_t lkey;
 				size_t found_i = SIZE_MAX;
 
@@ -2871,8 +2872,7 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
     				//mr from any artist
     				lkey = encode_mr(0, atol(master_release->id));
     				//..
-                    MasterRelease_ptr master;
-                if (!isolated_versions) master = discogs_interface->get_master_release(lkey);
+                    master = discogs_interface->get_master_release(lkey);
     
                 }
 
