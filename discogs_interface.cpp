@@ -738,8 +738,12 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
     bool original_title_plausible = false;
     if (original_has_candidates) {
         for (const auto& master : fake_artist->master_releases) {
-            if (master && discogger_search::plausible_release_title(
-                    release_title, master->title.c_str())) {
+            if (master && discogger_search::plausible_release_group_title(
+                    release_title, master->title.c_str(), master->sub_releases,
+                    [](const Release_ptr& child) -> std::string_view {
+                        return child ? std::string_view(child->title.c_str())
+                                     : std::string_view{};
+                    })) {
                 original_title_plausible = true;
                 break;
             }
