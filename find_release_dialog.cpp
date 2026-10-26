@@ -2398,6 +2398,18 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     fallback_budget.observe(false);
     if (!fallback_budget.begin() || fallback_budget.can_continue())
         throw std::runtime_error("Native fallback query bound or continuation failed.");
+    // The native original-host fixture exercises the production discovery
+    // gate, including a nonempty but irrelevant first-page title. Neither
+    // this heuristic nor fallback candidates authorize a metadata write.
+    if (!discogger_search::plausible_release_title(
+            "Sun & Moon", "Above & Beyond - Sun & Moon") ||
+        !discogger_search::plausible_release_title(
+            "Only You (Extended Mix)", "Matt Fax - Only You") ||
+        discogger_search::plausible_release_title(
+            "Sun & Moon", "Above & Beyond - Sun & Moonlight") ||
+        discogger_search::plausible_release_title(
+            "1000 Years", "Unrelated Artist - 2000 Years"))
+        throw std::runtime_error("Native structured-title fallback confidence gate failed.");
     const size_t previous_mode = m_query_mode;
     m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
 
