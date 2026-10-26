@@ -372,6 +372,23 @@ parsed_releases = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 release_section = parsed_releases[parsed_releases.index("void Discogs::parseArtistReleases("):
                                   parsed_releases.index("void Discogs::parseMasterVersions(")]
 assert release_section.count("if (!present)") >= 2
+# A repeated Discogs result must not demote a Main release or append
+# duplicate role labels. The actual parser is exercised in native host QA.
+assert "static void merge_search_result_role(" in parsed_releases
+assert "if (!seen) target.search_roles.add_item(incoming);" in parsed_releases
+assert '(incoming.equals("Main") && !target.search_role.equals("Main"))' in parsed_releases
+assert "merge_search_result_role(*release, JSONAttributeString(rel, \"role\"));" in parsed_releases
+assert "merge_search_result_role(*walk_master_release," in release_section
+assert "merge_search_result_role(*walk_release," in release_section
+assert 'if (!walk_release->id.equals("Main"))' not in release_section
+# External Discogs format arrays may contain null/number/object entries;
+# do not construct strings from null, and retain descriptor order/dedup.
+assert "if (!json_is_string(name)) continue;" in parsed_releases
+assert "if (!json_is_string(desc)) continue;" in parsed_releases
+assert "seen_minors.emplace(value).second" in parsed_releases
+assert "std::vector<std::string> ordered_minors;" in parsed_releases
+assert "(--sminors.end())" not in parsed_releases
+
 plan = (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
 cache_pages_contract = (root / "discogger_cache_pages.h").read_text(encoding="utf-8-sig")
 assert "pages != 1 + (items - 1) / per_page" in cache_pages_contract
@@ -2180,6 +2197,11 @@ assert "master = discogs_interface->get_master_release(lkey);" in master_parser
 assert "MasterRelease_ptr master;" in master_parser
 native_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 assert "runner_qa_native_master_child_isolation();" in native_dialog
+assert "runner_qa_native_search_preview_fields();" in native_dialog
+assert "DISCOGGER_NATIVE_SEARCH_PREVIEW_FIELDS_QA=PASS" in native_dialog
+assert "Discogs::parseArtistReleases(root, artist.get(), SearchMode::AT, masters);" in native_dialog
+assert "parse_release_search_fields(root, release);" in native_dialog
+
 assert "DISCOGGER_NATIVE_MASTER_CHILD_ISOLATION_QA=PASS" in native_dialog
 print("PASS: worker-owned master children, native Jansson partial/full isolation contract.")
 
