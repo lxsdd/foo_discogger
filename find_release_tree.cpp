@@ -1788,6 +1788,15 @@ void CFindReleaseTree::on_expand_master_release_done(const MasterRelease_ptr& ma
         if (!staged_master->loaded_releases || staged_master->id != master_release->id)
             return;
         if (!master_release->loaded_releases) {
+            // Rebind each private preview to the accepted visible master on
+            // the UI thread. The worker deliberately never holds or mutates
+            // this canonical parent; tree/tag presentation still needs it.
+            for (const Release_ptr& child : staged_master->sub_releases) {
+                if (child) {
+                    child->master_release = master_release;
+                    child->master_id = master_release->id;
+                }
+            }
             master_release->sub_releases = staged_master->sub_releases;
             master_release->loaded_releases = true;
         }
@@ -1889,7 +1898,9 @@ bool CFindReleaseTree::runner_qa_staged_master_publication() {
         // Positive: the exact live master row receives the staged versions.
         on_expand_master_release_done(master, static_cast<int>(index), status, abort, staged);
         if (!master->loaded_releases || master->sub_releases.get_count() != 1 ||
-            master->sub_releases[0] != version) return false;
+            master->sub_releases[0] != version ||
+            version->master_release != master ||
+            version->master_id != master->id) return false;
         // Negative: an older concurrent completion cannot replace the result.
         MasterRelease_ptr older = std::make_shared<MasterRelease>(master->id.get_ptr());
         older->sub_releases.append_single(std::make_shared<Release>("410100"));
