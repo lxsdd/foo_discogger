@@ -2520,3 +2520,32 @@ for callback in ("on_abort", "on_error"):
         "\n}", 1)[0]
     assert "if (owner_is_current()) m_dialog->show();" in block
 print("PASS: release detail UI-thread ownership, stale selection/abort denial and same-HWND supersession are wired.")
+
+# Async GUI completion must reject stale master expansions, rapid filter
+# edits (including A->B->A) and stale aborts, not merely compare HWND/text.
+filter_dialog = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+filter_header = (root / "find_release_dialog.h").read_text(encoding="utf-8-sig")
+filter_tasks = (root / "tasks.cpp").read_text(encoding="utf-8-sig")
+filter_task_header = (root / "tasks.h").read_text(encoding="utf-8-sig")
+assert "m_filter_request_epoch.begin();" in filter_dialog
+assert "is_current_filter_request(std::uint64_t ticket)" in filter_header
+assert "m_filter_request_epoch" in filter_header
+for name, end in (("expand_master_release_process_callback", "tree_apply_filter_process_callback"),
+                  ("tree_apply_filter_process_callback", "on_search_artist_done_process_callback")):
+    block = filter_tasks.split("void " + name + "::start(", 1)[1].split("void " + end + "::start(", 1)[0]
+    assert "current_search_request()" in block
+    assert "is_current_search_request(m_search_ticket)" in block
+filter_block = filter_tasks.split("void tree_apply_filter_process_callback::start(", 1)[1].split(
+    "void on_search_artist_done_process_callback::start(", 1)[0]
+assert "current_filter_request()" in filter_block
+assert filter_block.count("is_current_filter_request(m_filter_ticket)") >= 2
+assert "std::uint64_t m_filter_ticket = 0;" in filter_task_header
+assert "Native filter generation failed on live foobar controls." in filter_dialog
+assert "Native master expansion generation was not superseded." in filter_dialog
+artist_worker = filter_tasks.split("void get_artist_process_callback::safe_run(", 1)[1].split(
+    "void get_artist_process_callback::on_success(", 1)[0]
+assert "if (!m_artist)" in artist_worker
+artist_completion = filter_tasks.split("void get_artist_process_callback::on_success(", 1)[1].split(
+    "void get_artist_process_callback::on_abort(", 1)[0]
+assert artist_completion.count("is_current_search_request(m_search_ticket)") >= 3
+print("PASS: async artist/master/filter UI lifecycle and stale callback gates.")
