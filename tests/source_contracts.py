@@ -2461,6 +2461,18 @@ assert "discogger_live_search_qa::http_server_retries.fetch_add(1);" in qa_fetch
 assert "discogger_net::interruptible_wait(delay, p_abort);" in qa_fetcher
 assert "catch (http_429_exception)" in qa_fetcher
 print("PASS: bounded transient GET retries and numeric worker-stage reporting.")
+# An optional discovery HTTP failure must not discard already parsed
+# original results. Cancellation remains an exceptional exit.
+optional_fallback = qa_iface.split("const auto plans = discogger_search::build_fallback_plan(", 1)[1].split(
+    "va_res_cap.first = fake_artist->master_releases.get_count();", 1)[0]
+assert "catch (const exception_aborted&)" in optional_fallback
+assert "throw; // User cancellation" in optional_fallback
+assert "catch (const foo_discogs_exception&)" in optional_fallback
+assert "budget.observe(false);" in optional_fallback
+assert "continue;" in optional_fallback
+assert "Optional Discogs discovery unavailable; preserving search results." in optional_fallback
+print("PASS: optional fallback errors preserve original candidates and propagate user abort.")
+
 
 # A previous protected run failed because the PowerShell parser matched
 # [A-Z_]+, excluding PAGE2 keys. Ensure numeric marker names are accepted,

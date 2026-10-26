@@ -12,6 +12,7 @@ on:
       # Temporary secret-free SHA qualification of staging PR #20 only.
       # Remove this trigger before integration into the product work branch.
       - fix/discogger-worker-resilience-20261026
+      - fix/discogger-optional-fallback-failure-20261026
   pull_request:
     branches:
       - master
