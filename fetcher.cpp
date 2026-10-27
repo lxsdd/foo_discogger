@@ -213,7 +213,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 		int tries = 1; //3x on error loading resource
 
 		while (1) {
-
+            pfc::string8 retry_after_header;
 			try {
 
 				file::ptr f;
@@ -290,6 +290,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 						if (is_search) throw http_401_Search_exception();
 						throw http_401_exception();
 					case 429:
+                        r->get_http_header("Retry-After", retry_after_header);
 						throw http_429_exception();
 					case 0:
 						throw http_exception(0, "Malformed HTTP status line");
@@ -341,14 +342,17 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 				break;
 			}
 			catch (http_429_exception) {
-
-				if (tries > 20) throw;
-
-				pfc::string8 error_msg;
-				error_msg << "Rate-limited. Retrying: " << tries;
-				log_msg(error_msg);
-				discogger_net::interruptible_wait(2000u * tries, p_abort);
-			}
+                // Previously 20 retries waited up to 462 seconds, including
+                // requests made against a server-provided longer cooldown.
+                // Respect bounded numeric Retry-After; fail closed on
+                // unsupported/oversized values and preserve cancellation.
+                const unsigned delay = discogger_net::discogs_429_retry_delay_ms(
+                    static_cast<unsigned>(tries), retry_after_header.c_str());
+                out.set_size(0);
+                if (!delay) throw;
+                log_msg("Discogs HTTP 429; bounded retry (URL redacted).");
+                discogger_net::interruptible_wait(delay, p_abort);
+            }
 			catch (const http_exception& e) {
                 // Retry only transient HTTP 5xx for the existing idempotent
                 // GET. Fail closed after two bounded, cancellation-aware

@@ -2491,6 +2491,20 @@ assert "catch (const http_exception& e)" in qa_fetcher
 assert "discogger_live_search_qa::http_server_retries.fetch_add(1);" in qa_fetcher
 assert "discogger_net::interruptible_wait(delay, p_abort);" in qa_fetcher
 assert "catch (http_429_exception)" in qa_fetcher
+# HTTP 429 is a bounded retry, not a twenty-attempt UI hang; the server's
+# Retry-After must be validated before sleeping or sending another request.
+rate_limit_fetch = qa_fetcher.split("void Fetcher::fetch_url(", 1)[1].split(
+    "void Fetcher::fetch_html_simple_log(", 1)[0]
+assert 'r->get_http_header("Retry-After", retry_after_header);' in rate_limit_fetch
+assert "discogger_net::discogs_429_retry_delay_ms(" in rate_limit_fetch
+assert "if (!delay) throw;" in rate_limit_fetch
+assert "interruptible_wait(delay, p_abort);" in rate_limit_fetch
+assert "if (tries > 20) throw;" not in rate_limit_fetch
+assert "2000u * tries" not in rate_limit_fetch
+assert "discogs_429_retry_delay_ms(unsigned attempt," in qa_http
+assert "stop_optional_discovery_on_http_status(int status)" in qa_http
+print("PASS: bounded, Retry-After-aware and abort-responsive HTTP 429 retries.")
+
 print("PASS: bounded transient GET retries and numeric worker-stage reporting.")
 # An optional discovery HTTP failure must not discard already parsed
 # original results. Cancellation remains an exceptional exit.
@@ -2502,6 +2516,10 @@ assert "catch (const foo_discogs_exception&)" in optional_fallback
 assert "budget.observe(false);" in optional_fallback
 assert "continue;" in optional_fallback
 assert "Optional Discogs discovery unavailable; preserving search results." in optional_fallback
+assert "catch (const http_exception& e)" in optional_fallback
+assert "discogger_net::stop_optional_discovery_on_http_status(e.get_status())" in optional_fallback
+assert "budget.stop();" in optional_fallback
+assert "Discogs rate limit or authorization blocked optional search; preserving results." in optional_fallback
 print("PASS: optional fallback errors preserve original candidates and propagate user abort.")
 
 

@@ -50,6 +50,28 @@ inline double discogs_rate_interval(std::size_t maximum) noexcept {
     return 60.0 / static_cast<double>(maximum == 0 ? 1 : maximum);
 }
 
+// Discogs 429 retries are bounded and cancellation-aware. Retry-After is
+// untrusted: accept only decimal seconds up to 60. HTTP dates, overflow,
+// negative values or requests for longer waits stop retries rather than
+// issuing speculative follow-up requests against an exhausted quota.
+inline unsigned discogs_429_retry_delay_ms(unsigned attempt,
+                                           std::string_view retry_after = {}) noexcept {
+    const unsigned fallback = attempt == 1 ? 2000u :
+                              attempt == 2 ? 4000u :
+                              attempt == 3 ? 8000u : 0u;
+    if (!fallback || retry_after.empty()) return fallback;
+    std::size_t seconds = 0;
+    if (!parse_discogs_rate_header(retry_after, 60, seconds)) return 0;
+    const unsigned requested = static_cast<unsigned>(seconds) * 1000u;
+    return requested > fallback ? requested : fallback;
+}
+// Optional broad searches must not multiply requests after authorization
+// denial or exhausted rate limits. Other optional errors can be contained
+// while retaining already parsed original candidates.
+inline bool stop_optional_discovery_on_http_status(int status) noexcept {
+    return status == 401 || status == 403 || status == 429;
+}
+
 // OAuth headers may contain signed credentials. Never attach them to
 // untrusted resource URLs merely because their path/query mentions "api".
 // Restrict signing to the exact HTTPS Discogs API origin.

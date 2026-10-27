@@ -812,6 +812,21 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             catch (const exception_aborted&) {
                 throw; // User cancellation must never become a successful search.
             }
+            catch (const http_exception& e) {
+                // A failed optional discovery is never worth another query
+                // when authorization is denied or Discogs is rate-limiting.
+                // Keep original results; preserve cancellation and stop the
+                // remaining optional requests rather than multiplying 429s.
+                p_abort.check();
+                if (discogger_net::stop_optional_discovery_on_http_status(e.get_status())) {
+                    p_status.set_item("Discogs rate limit or authorization blocked optional search; preserving results.");
+                    budget.stop();
+                    break;
+                }
+                p_status.set_item("Optional Discogs discovery unavailable; preserving search results.");
+                budget.observe(false);
+                continue;
+            }
             catch (const foo_discogs_exception&) {
                 // These are optional discovery suggestions. An unavailable or
                 // malformed fallback page must not discard the original

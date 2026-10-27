@@ -124,5 +124,27 @@ int main() {
     assert(acceptable_http_decoded_size(max_http_response_bytes));
     assert(!acceptable_http_decoded_size(max_http_response_bytes + 1));
     assert(!acceptable_http_decoded_size(static_cast<std::size_t>(-1)));
+    // 429 policy: three bounded, abort-responsive retries; malformed or
+    // excessive server cooldowns must not trigger speculative requests.
+    using discogger_net::discogs_429_retry_delay_ms;
+    assert(discogs_429_retry_delay_ms(0) == 0u);
+    assert(discogs_429_retry_delay_ms(1) == 2000u);
+    assert(discogs_429_retry_delay_ms(2) == 4000u);
+    assert(discogs_429_retry_delay_ms(3) == 8000u);
+    assert(discogs_429_retry_delay_ms(4) == 0u);
+    assert(discogs_429_retry_delay_ms(1, " 10 ") == 10000u);
+    assert(discogs_429_retry_delay_ms(2, "1") == 4000u);
+    assert(discogs_429_retry_delay_ms(1, "60") == 60000u);
+    assert(discogs_429_retry_delay_ms(1, "0") == 2000u);
+    assert(discogs_429_retry_delay_ms(1, "61") == 0u);
+    assert(discogs_429_retry_delay_ms(1, "120") == 0u);
+    assert(discogs_429_retry_delay_ms(1, "Wed, 21 Oct 2015 07:28:00 GMT") == 0u);
+    assert(discogs_429_retry_delay_ms(1, "-1") == 0u);
+    assert(discogs_429_retry_delay_ms(1, "1junk") == 0u);
+    assert(discogs_429_retry_delay_ms(1, "18446744073709551616") == 0u);
+    using discogger_net::stop_optional_discovery_on_http_status;
+    for (int status : {401, 403, 429}) assert(stop_optional_discovery_on_http_status(status));
+    for (int status : {0, 200, 400, 404, 408, 500, 503})
+        assert(!stop_optional_discovery_on_http_status(status));
     return 0;
 }
