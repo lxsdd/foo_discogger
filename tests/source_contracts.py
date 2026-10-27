@@ -268,8 +268,16 @@ release_entity = entity_source.split(
 for entity in (artist_entity, release_entity):
     assert "discogger_cache::persist_optional_cache<exception_aborted>(" in entity
     assert entity.index("discogger_cache::persist_optional_cache<exception_aborted>(") < entity.rindex("loaded = true;")
-    assert "p_abort.check();\n        loaded = true;" in entity
+    assert "loaded = true;" in entity
 assert "ol::get_offline_path(\n                        id, ol::GetFrom::Artist, \"\", true)" in artist_entity
+assert "discogger_cache::stage_artist_profile(staged," in artist_entity
+assert "commit_artist_profile(*this, target);" in artist_entity
+assert "discogger_cache::same_artist_profile_identity(" in artist_entity
+assert "discogs_interface->delete_artist_cache(id);" not in artist_entity
+assert "p_abort.check();\n        loaded = true;" in release_entity
+assert "stage_artist_profile(staged," in entity_source.split("void Discogs::Artist::load_mem_only(", 1)[1].split("void Discogs::Release::load(", 1)[0]
+assert "same_artist_profile_identity" in (root / "discogger_artist_profile_transaction.h").read_text(encoding="utf-8-sig")
+assert "stage_artist_profile" in (root / "tests/cache_persist_test.cpp").read_text(encoding="utf-8-sig")
 assert "artists.get_count() && artists[0]" in release_entity
 assert "discogger_cache::release_cache_artist_id(" in release_entity
 assert "if (cache_artist.empty()) return false;" in release_entity

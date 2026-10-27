@@ -14,6 +14,7 @@
 #include "ol_cache.h"
 #include "discogger_cache_pages.h"  // paginated release list completeness guard
 #include "discogger_cache_persist.h"  // best-effort disk writes after validated online results
+#include "discogger_artist_profile_transaction.h"  // profile parse/abort rollback
 #include "discogger_master_versions.h"
 #include "discogger_master_page_transaction.h"
 #include "discogger_release_id.h"
@@ -3054,6 +3055,20 @@ void initialize_null_artist(Artist *artist) {
 	artist->loaded = true;
 }
 
+// Publish only complete profile fields; the canonical Artist object, its
+// release lists, search role and refresh-generation state retain identity.
+static void commit_artist_profile(Artist& visible, Artist& staged) {
+    visible.name = std::move(staged.name);
+    visible.profile = std::move(staged.profile);
+    visible.realname = std::move(staged.realname);
+    visible.anvs = std::move(staged.anvs);
+    visible.urls = std::move(staged.urls);
+    visible.images = std::move(staged.images);
+    visible.aliases = std::move(staged.aliases);
+    visible.ingroups = std::move(staged.ingroups);
+    visible.members = std::move(staged.members);
+}
+
 void Discogs::ReleaseArtist::load(threaded_process_status& p_status, abort_callback& p_abort, bool throw_all) {
 
 	if (!preload || loaded) { loaded = true; return; }
@@ -3118,19 +3133,24 @@ void Discogs::Artist::load(threaded_process_status &p_status, abort_callback &p_
 		else {
 			if (offline_avail_data) {
 				pfc::string8 empty_release_id;
-                discogs_interface->get_entity_offline_cache(ol::GetFrom::Artist, id, empty_release_id, json, p_abort, "Fetching offline cache artist releases...", p_status);
-
-				if (json.get_length()) {
-					offline_can_write = false;
-				}
-				else {
-					pfc::string8 msg;
-					msg << "Error loading disk cache, deleting invalid cache (artist_id:" << id << ") ...";
-					log_msg(msg);
-					discogs_interface->delete_artist_cache(id);
-					url << "https://api.discogs.com/artists/" << id;
-					discogs_interface->fetcher->fetch_html(url, "", json, p_abort);
-				}
+                try {
+                    discogs_interface->get_entity_offline_cache(ol::GetFrom::Artist, id, empty_release_id,
+                        json, p_abort, "Fetching offline artist profile...", p_status);
+                } catch (const exception_aborted&) { throw; }
+                catch (const std::exception&) {
+                    // A failed optional cache read must not erase a valid
+                    // rollback or poison the canonical artist profile.
+                    json = "";
+                }
+                if (json.get_length()) {
+                    offline_can_write = false;
+                } else {
+                    p_abort.check();
+                    p_status.set_item("Offline artist profile unavailable; fetching online...");
+                    url << "https://api.discogs.com/artists/" << id;
+                    discogs_interface->fetcher->fetch_html(url, "", json, p_abort);
+                    btransient = true;
+                }
 			}
 		}
 
@@ -3142,10 +3162,16 @@ void Discogs::Artist::load(threaded_process_status &p_status, abort_callback &p_
 		// parse json and artist
 
 		JSONParser jp(json);
-		parseArtist(this, jp.root);
-
-		//..
-
+        Artist staged(id.c_str());
+        discogger_cache::stage_artist_profile(staged,
+            [&](Artist& target) {
+                parseArtist(&target, jp.root);
+                if (!discogger_cache::same_artist_profile_identity(
+                        id.c_str(), target.id.c_str()) || !target.name.get_length())
+                    throw foo_discogs_exception(
+                        "Invalid artist profile identity/name; keeping previous profile.");
+            },
+            [&]() {
         // Disk persistence is optional; a complete parsed artist must remain
         // usable when a cache directory is read-only or staging fails.
         p_abort.check();
@@ -3164,7 +3190,10 @@ void Discogs::Artist::load(threaded_process_status &p_status, abort_callback &p_
                     return tx.publish("");
                 }, [&]() { p_abort.check(); });
         }
-        p_abort.check();
+
+            },
+            [&]() { p_abort.check(); },
+            [&](Artist& target) { commit_artist_profile(*this, target); });
         loaded = true;
 	}
 	catch (http_404_exception &e) {
@@ -3223,8 +3252,19 @@ void Discogs::Artist::load_mem_only(threaded_process_status& p_status, abort_cal
 		// parse json and artist
 
 		JSONParser jp(json);
-		parseArtist(this, jp.root);
-		loaded = true;
+        Artist staged(id.c_str());
+        discogger_cache::stage_artist_profile(staged,
+            [&](Artist& target) {
+                parseArtist(&target, jp.root);
+                if (!discogger_cache::same_artist_profile_identity(
+                        id.c_str(), target.id.c_str()) || !target.name.get_length())
+                    throw foo_discogs_exception(
+                        "Invalid artist profile identity/name; keeping previous profile.");
+            },
+            []() {}, // Memory-only loads never write disk caches.
+            [&]() { p_abort.check(); },
+            [&](Artist& target) { commit_artist_profile(*this, target); });
+        loaded = true;
 
 	}
 	catch (http_404_exception& e) {
