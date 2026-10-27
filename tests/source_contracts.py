@@ -56,6 +56,9 @@ assert "m_find_release_artists.resize(base + cadd)" not in artist_projection
 assert "m_find_release_artists = m_artist_exact_matches;" in artist_projection
 assert "m_find_release_artists.append(m_artist_other_matches);" in artist_projection
 assert "std::unordered_map<std::string, size_t> prior_roles;" in artist_projection
+assert "std::unordered_map<std::string, Artist_ptr> prior_previews;" in artist_projection
+assert "prior_previews.emplace(key, previous_artist);" in artist_projection
+assert "projected = union_search_artist_payload(prior->second, projected);" in artist_projection
 assert "prior_roles.emplace(key, previous_artist->search_role_list_pos);" in artist_projection
 assert "current_artist->search_role_list_pos =" in artist_projection
 assert "previous != prior_roles.end() && previous->second" in artist_projection

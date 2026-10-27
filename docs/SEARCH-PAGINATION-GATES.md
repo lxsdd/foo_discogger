@@ -127,3 +127,9 @@ Portable C++17, MSVC Win32/x64 and original foobar native GUI tests cover
 positive/negative IDs, padded aliases, duplicate/invalid phases, stable roles,
 partial catalog ownership and repeat no-ops. This remains review-only and
 does not prove authenticated live search or authorize media/tag/CUE writes.
+
+Repeated append callbacks now reuse the previous search-only Artist projection
+pointer when the cumulative provider result adds no new typed child identity.
+A newly discovered release or master still creates a fresh isolated union.
+This avoids invalidating native owner-data selection and roles on duplicate
+pagination/fallback callbacks while leaving canonical Artist caches untouched.

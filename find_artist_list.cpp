@@ -328,13 +328,16 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
     // including the exact-only checkbox, and allocate new roles only for
     // identities not previously shown.
     std::unordered_map<std::string, size_t> prior_roles;
+    std::unordered_map<std::string, Artist_ptr> prior_previews;
     if (append && (op == 0 || op == 3)) {
         for (const auto& previous_artist : m_find_release_artists) {
             if (previous_artist) {
                 const auto key = discogger_search::artist_preview_identity(
                     previous_artist->id.get_ptr());
-                if (!key.empty())
+                if (!key.empty()) {
                     prior_roles.emplace(key, previous_artist->search_role_list_pos);
+                    prior_previews.emplace(key, previous_artist);
+                }
             }
         }
     }
@@ -379,6 +382,19 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
                 const size_t index = inserted.first->second;
                 unique_artists[index] =
                     union_search_artist_payload(unique_artists[index], candidate);
+            }
+        }
+        // Rebuilding cumulative buckets must not replace an unchanged
+        // search-only projection on every duplicate callback. Use the
+        // previous projection as the retained side of the same typed-ID
+        // union, adding genuinely new children without mutating caches.
+        if (append) {
+            for (auto& projected : unique_artists) {
+                const auto key = discogger_search::artist_preview_identity(
+                    projected->id.get_ptr());
+                const auto prior = prior_previews.find(key);
+                if (prior != prior_previews.end())
+                    projected = union_search_artist_payload(prior->second, projected);
             }
         }
         m_find_release_artists = unique_artists;
