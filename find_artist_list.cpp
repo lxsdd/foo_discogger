@@ -6,6 +6,7 @@
 #include "find_release_dialog.h"
 #include "find_artist_list.h"
 #include "discogger_artist_activation.h"
+#include "discogger_artist_projection.h"
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
@@ -30,25 +31,29 @@ void queue_artist_redraw(HWND window) {
 // Identical/repeated payload is a strict no-op: preserve the original pointer.
 Artist_ptr union_search_artist_payload(const Artist_ptr& retained,
                                        const Artist_ptr& delta) {
-    if (!retained || !delta || !retained->id.equals(delta->id))
+    if (!retained || !delta ||
+        !discogger_search::same_artist_preview_identity(
+            retained->id.get_ptr(), delta->id.get_ptr()))
         return retained;
 
     std::unordered_set<std::string> known_releases, known_masters;
     for (const auto& release : retained->releases)
-        if (release && release->id.get_length())
-            known_releases.emplace(release->id.get_ptr());
+        if (release)
+            discogger_search::insert_preview_release_identity(
+                known_releases, release->id.get_ptr());
     for (const auto& master : retained->master_releases)
-        if (master && master->id.get_length())
-            known_masters.emplace(master->id.get_ptr());
+        if (master)
+            discogger_search::insert_preview_release_identity(
+                known_masters, master->id.get_ptr());
 
     bool adds_new = false;
     for (const auto& release : delta->releases)
-        if (release && release->id.get_length() &&
-            known_releases.emplace(release->id.get_ptr()).second)
+        if (release && discogger_search::insert_preview_release_identity(
+                known_releases, release->id.get_ptr()))
             adds_new = true;
     for (const auto& master : delta->master_releases)
-        if (master && master->id.get_length() &&
-            known_masters.emplace(master->id.get_ptr()).second)
+        if (master && discogger_search::insert_preview_release_identity(
+                known_masters, master->id.get_ptr()))
             adds_new = true;
     if (!adds_new) return retained;
 
@@ -71,15 +76,15 @@ Artist_ptr union_search_artist_payload(const Artist_ptr& retained,
 
     std::unordered_set<std::string> emitted_releases, emitted_masters;
     auto add_release = [&](const Release_ptr& release) {
-        if (release && release->id.get_length() &&
-            emitted_releases.emplace(release->id.get_ptr()).second) {
+        if (release && discogger_search::insert_preview_release_identity(
+                emitted_releases, release->id.get_ptr())) {
             merged->releases.append_single(release);
             merged->search_order_master.append_single(false);
         }
     };
     auto add_master = [&](const MasterRelease_ptr& master) {
-        if (master && master->id.get_length() &&
-            emitted_masters.emplace(master->id.get_ptr()).second) {
+        if (master && discogger_search::insert_preview_release_identity(
+                emitted_masters, master->id.get_ptr())) {
             merged->master_releases.append_single(master);
             merged->search_order_master.append_single(true);
         }
@@ -325,9 +330,12 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
     std::unordered_map<std::string, size_t> prior_roles;
     if (append && (op == 0 || op == 3)) {
         for (const auto& previous_artist : m_find_release_artists) {
-            if (previous_artist)
-                prior_roles.emplace(previous_artist->id.get_ptr(),
-                                    previous_artist->search_role_list_pos);
+            if (previous_artist) {
+                const auto key = discogger_search::artist_preview_identity(
+                    previous_artist->id.get_ptr());
+                if (!key.empty())
+                    prior_roles.emplace(key, previous_artist->search_role_list_pos);
+            }
         }
     }
 
@@ -360,9 +368,11 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
         pfc::array_t<Artist_ptr> unique_artists;
         for (const auto& candidate : m_find_release_artists) {
             if (!candidate) continue;
-            if (!candidate->id.get_length()) continue;
+            const auto key = discogger_search::artist_preview_identity(
+                candidate->id.get_ptr());
+            if (key.empty()) continue;
             const auto inserted = visible_positions.emplace(
-                candidate->id.get_ptr(), unique_artists.get_count());
+                key, unique_artists.get_count());
             if (inserted.second) {
                 unique_artists.append_single(candidate);
             } else {
@@ -379,7 +389,8 @@ void CArtistList::switch_find_releases(size_t op, bool append) {
         if (!append) {
             current_artist->search_role_list_pos = get_next_role_pos();
         } else if (op == 0 || op == 3) {
-            const auto previous = prior_roles.find(current_artist->id.get_ptr());
+            const auto previous = prior_roles.find(
+                discogger_search::artist_preview_identity(current_artist->id.get_ptr()));
             current_artist->search_role_list_pos =
                 previous != prior_roles.end() && previous->second
                     ? previous->second : get_next_role_pos();
@@ -665,7 +676,8 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
         const Artist_ptr current_artist = get_selected_artist();
         if (!discogger_ui::valid_artist_context_target(
                 list_index, GetSingleSel(),
-                artist && current_artist && current_artist->id.equals(artist->id)))
+                artist && current_artist && discogger_search::same_artist_preview_identity(
+                    current_artist->id.get_ptr(), artist->id.get_ptr())))
             return;
 
 		switch (cmd)

@@ -1602,7 +1602,8 @@ assert "const size_t incoming_other = valid_count(valid_other);" in frag
 # cumulative append and native list/tree presentation. The runner exercises
 # empty-ID exact fallback plus an empty-ID late append against real Win32 UI.
 assert "const auto valid_rows =" in frag
-assert "if (artist && artist->id.get_length())" in frag
+assert "discogger_search::artist_preview_identity(" in frag
+assert "if (artist && artist->id.get_length())" not in frag
 assert "const auto valid_exact = valid_rows(p_artist_exact_matches);" in frag
 assert "const auto valid_other = valid_rows(p_artist_other_matches);" in frag
 assert frag.count("m_alist.set_artists(b_chk_exact_matches, append, nullptr, valid_exact, valid_other);") == 2
@@ -1645,6 +1646,25 @@ assert "pos == ~0 || pos >= m_find_release_artists.get_count()" in artist_list
 assert "artist_activation_test.cpp" in test_script
 assert "artist_activation_test.cpp" in validate
 print("PASS: row-only artist double-click wired to guarded Enter/default action.")
+
+# Numeric Discogs artist aliases are one preview identity; releases and
+# masters deduplicate independently without mutating canonical cached objects.
+projection = (root / "discogger_artist_projection.h").read_text(encoding="utf-8-sig")
+assert 'if (id == "0") return "0";' in projection
+assert "canonical_release_id(id)" in projection
+assert "same_artist_preview_identity(" in projection
+assert "insert_preview_release_identity(" in projection
+assert "discogger_search::same_artist_preview_identity(" in artist_list
+assert artist_list.count("discogger_search::insert_preview_release_identity(") >= 6
+assert "visible_positions.emplace(" in artist_list
+assert "discogger_search::artist_preview_identity(" in artist_list
+assert "return identities.size();" in artist_header
+assert "Native padded artist aliases duplicated search rows or child identities." in uic
+assert "Native repeated padded artist aliases changed a stable search projection." in uic
+assert "artist_projection_test.cpp" in test_script
+assert "artist_projection_test.cpp" in validate
+print("PASS: canonical artist preview and typed child identity unions wired to native Win32/x64 GUI.")
+
 
 
 # Every direct-ID path enters trigger_release; that boundary must reject

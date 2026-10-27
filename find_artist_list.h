@@ -3,6 +3,8 @@
 #include "resource.h"
 #include "libPPUI/CListControlOwnerData.h"
 #include "find_release_utils.h"
+#include "discogger_artist_projection.h"
+#include <unordered_set>
 
 class CArtistList : public CListControlOwnerData {
 
@@ -78,10 +80,14 @@ public:
 
 private:
     static size_t count_valid_artists(const pfc::array_t<Artist_ptr>& artists) {
-        size_t count = 0;
-        for (const auto& artist : artists)
-            if (artist) ++count;
-        return count;
+        std::unordered_set<std::string> identities;
+        for (const auto& artist : artists) {
+            if (!artist) continue;
+            const auto key = discogger_search::artist_preview_identity(
+                artist->id.get_ptr());
+            if (!key.empty()) identities.emplace(key);
+        }
+        return identities.size();
     }
 
 	size_t get_size();

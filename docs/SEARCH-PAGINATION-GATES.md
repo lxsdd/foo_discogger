@@ -111,3 +111,19 @@ The same publication barrier is exercised by portable C++17 and MSVC x86/x64
 negative/positive tests and by actual original-foobar native Win32/x64 GUI QA
 using SDK `pfc::array_t<Artist_ptr>`. Protected OAuth live-search acceptance
 remains separate from these synthetic source/host checks.
+
+## Native artist preview identity and typed child union
+
+The owner-data artist list now treats padded and canonical decimal artist IDs
+as one search-only preview identity. It retains the first row, search role and
+existing cached pointers while merging genuinely new release and master child
+IDs from later original/fallback phases. Release and master namespaces remain
+distinct; padded child aliases do not duplicate rows. Invalid artist IDs are
+rejected before exact-only visibility or selection. The existing synthetic
+aggregate ID "0" is preserved solely for the multi-release preview, never as
+a confirmed Discogs artist/cache identity.
+
+Portable C++17, MSVC Win32/x64 and original foobar native GUI tests cover
+positive/negative IDs, padded aliases, duplicate/invalid phases, stable roles,
+partial catalog ownership and repeat no-ops. This remains review-only and
+does not prove authenticated live search or authorize media/tag/CUE writes.

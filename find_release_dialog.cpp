@@ -15,6 +15,7 @@
 #endif
 #include "discogger_release_id.h"
 #include "discogger_artist_activation.h"
+#include "discogger_artist_projection.h"
 #include "discogger_artist_refresh.h"
 #include "discogs_interface.h"
 #include "discogger_search_visibility.h"
@@ -1310,7 +1311,8 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
     const auto valid_rows = [](const pfc::array_t<Artist_ptr>& rows) {
         pfc::array_t<Artist_ptr> result;
         for (const auto& artist : rows)
-            if (artist && artist->id.get_length())
+            if (artist && !discogger_search::artist_preview_identity(
+                    artist->id.get_ptr()).empty())
                 result.append_single(artist);
         return result;
     };
@@ -1323,10 +1325,14 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
     // cumulative buckets, otherwise a late alternative silently unchecks
     // an exact-only filter even while exact matches are still present.
     const auto valid_count = [](const pfc::array_t<Artist_ptr>& artists) {
-        size_t count = 0;
-        for (const auto& artist : artists)
-            if (artist) ++count;
-        return count;
+        std::unordered_set<std::string> identities;
+        for (const auto& artist : artists) {
+            if (!artist) continue;
+            const auto key = discogger_search::artist_preview_identity(
+                artist->id.get_ptr());
+            if (!key.empty()) identities.emplace(key);
+        }
+        return identities.size();
     };
     const size_t incoming_exact = valid_count(valid_exact);
     const size_t incoming_other = valid_count(valid_other);
@@ -2743,6 +2749,54 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     ShowArtistSearchResults(merged_same_id_rows[0]);
     if (m_dctree.Get_Size() != 4)
         throw std::runtime_error("Native manually selected same-ID artist lost a late release or master.");
+
+    // A later provider may use padded numeric aliases for the same artist,
+    // release and master. Merge only the genuinely new typed child identities,
+    // retain first-seen preview pointers, and reject malformed artist IDs.
+    Artist_ptr padded_alias = std::make_shared<Artist>("000101");
+    padded_alias->name = "Padded alias";
+    Release_ptr padded_old_release = std::make_shared<Release>("00002844");
+    padded_old_release->loaded_preview = true;
+    padded_alias->releases.append_single(padded_old_release);
+    padded_alias->search_order_master.append_single(false);
+    Release_ptr padded_new_release = std::make_shared<Release>("000410003");
+    padded_new_release->title = "New alias release";
+    padded_new_release->loaded_preview = true;
+    padded_alias->releases.append_single(padded_new_release);
+    padded_alias->search_order_master.append_single(false);
+    MasterRelease_ptr padded_old_master = std::make_shared<MasterRelease>("000901");
+    padded_old_master->loaded_preview = true;
+    padded_alias->master_releases.append_single(padded_old_master);
+    padded_alias->search_order_master.append_single(true);
+    MasterRelease_ptr padded_new_master = std::make_shared<MasterRelease>("000410004");
+    padded_new_master->title = "New alias master";
+    padded_new_master->loaded_preview = true;
+    padded_alias->master_releases.append_single(padded_new_master);
+    padded_alias->search_order_master.append_single(true);
+    pfc::array_t<Artist_ptr> padded_rows;
+    padded_rows.append_single(padded_alias);
+    padded_rows.append_single(std::make_shared<Artist>("not-a-number"));
+    on_search_artist_done(padded_rows, exact, true);
+    auto alias_rows = m_alist.Get_Artists();
+    if (alias_rows.get_count() != 2 ||
+        alias_rows[0]->releases.get_count() != 3 ||
+        alias_rows[0]->master_releases.get_count() != 3 ||
+        alias_rows[0]->search_order_master.get_count() != 6 ||
+        alias_rows[0]->search_role_list_pos != same_id_original_role ||
+        alias_rows[0]->loaded_releases ||
+        first->releases.get_count() != 1 || first->master_releases.get_count() != 1 ||
+        padded_alias->releases.get_count() != 2 ||
+        padded_alias->master_releases.get_count() != 2)
+        throw std::runtime_error("Native padded artist aliases duplicated search rows or child identities.");
+    const Artist_ptr retained_alias_projection = alias_rows[0];
+    on_search_artist_done(padded_rows, exact, true);
+    alias_rows = m_alist.Get_Artists();
+    if (alias_rows.get_count() != 2 ||
+        alias_rows[0] != retained_alias_projection ||
+        alias_rows[0]->releases.get_count() != 3 ||
+        alias_rows[0]->master_releases.get_count() != 3 ||
+        alias_rows[0]->search_role_list_pos != same_id_original_role)
+        throw std::runtime_error("Native repeated padded artist aliases changed a stable search projection.");
 
     // Exact-only remains a distinct visible projection, including a late
     // same-ID exact update, without introducing alternative-only artists.
