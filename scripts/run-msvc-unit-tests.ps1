@@ -27,6 +27,7 @@ $Sources = @(
     'mapping_snapshot_test.cpp',
     'collaboration_fallback_test.cpp',
     'search_visibility_test.cpp',
+    'artist_search_pages_test.cpp',
     'artist_activation_test.cpp',
     'search_request_epoch_test.cpp',
     'preview_selection_test.cpp',

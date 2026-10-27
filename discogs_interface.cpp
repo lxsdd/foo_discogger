@@ -1,5 +1,8 @@
 #include "stdafx.h"
 #include "discogger_search_fallback.h"
+#include "discogger_artist_search_pages.h"
+#include <array>
+#include <unordered_set>
 #include "http_status_util.h"
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 #include "tests/runner-live-search-telemetry.h"
@@ -187,46 +190,92 @@ Artist_ptr DiscogsInterface::get_artist(const pfc::string8 &artist_id, bool _loa
 }
 
 void DiscogsInterface::search_artist(const pfc::string8 &query, pfc::array_t<Artist_ptr> &exact_matches, pfc::array_t<Artist_ptr> &other_matches, threaded_process_status &p_status, abort_callback &p_abort) {
+    // A bounded artist-name preview can search later Discogs pages when
+    // page one contains only irrelevant names. No tag or artist ID is approved.
+    // Validate every complete page before exposing any candidate.
+    pfc::string8 params;
+    params << "type=artist&q=" << urlEscape(query) << "&per_page=100";
+    const pfc::string8 lowercase_query = lowercase(query);
+    const pfc::string8 stripped_query = strip_artist_name(query);
+    std::vector<discogger_search::artist_search_hit> candidates;
+    std::unordered_set<std::string> seen_ids;
+    size_t first_pages = 0, first_per_page = 0, first_items = 0;
+    bool exact_name_found = false;
+    for (size_t page = 1; page <= discogger_search::max_artist_search_pages; ++page) {
+        p_abort.check();
+        pfc::string8 status("Searching Discogs artist names, page ");
+        status << page << "/" << (first_pages ? first_pages : 1);
+        p_status.set_item(status);
+        pfc::string8 page_params;
+        page_params << params << "&page=" << page;
+        pfc::string8 json;
+        fetcher->fetch_html("https://api.discogs.com/database/search", page_params, json, p_abort);
+        JSONParser jp(json);
+        const size_t returned_page = jp.get_object_int("pagination", "page");
+        const size_t returned_pages = jp.get_object_int("pagination", "pages");
+        const size_t per_page = jp.get_object_int("pagination", "per_page");
+        const size_t items = jp.get_object_int("pagination", "items");
+        if (!discogger_cache::valid_online_page(page, returned_page, returned_pages,
+                per_page, items, first_pages, first_per_page, first_items))
+            throw foo_discogs_exception("Artist search pagination changed; refine and retry.");
+        const json_t* rows = json_object_get(jp.root, "results");
+        if (!json_is_array(rows) || !discogger_cache::valid_online_payload_count(
+                page, returned_pages, per_page, items, json_array_size(rows)))
+            throw foo_discogs_exception("Artist search returned an incomplete page; refine and retry.");
+        if (page == 1) {
+            first_pages = returned_pages;
+            first_per_page = per_page;
+            first_items = items;
+        }
+        for (size_t index = 0; index < json_array_size(rows); ++index) {
+            p_abort.check();
+            json_t* row = json_array_get(rows, index);
+            if (!json_is_object(row))
+                throw foo_discogs_exception("Artist search returned a malformed row; retaining prior results.");
+            const pfc::string8 id = JSONAttributeString(row, "id");
+            const pfc::string8 title = JSONAttributeString(row, "title");
+            if (discogger_search::stage_artist_search_hit(
+                    candidates, seen_ids, id.c_str(), title.c_str()) &&
+                lowercase(title) == lowercase_query)
+                exact_name_found = true;
+        }
+        if (!discogger_search::continue_artist_search(page, returned_pages, exact_name_found)) {
+            if (page < returned_pages && !exact_name_found)
+                p_status.set_item("Artist search limited to five pages; refine the artist name.");
+            break;
+        }
+    }
+    p_abort.check();
 
-	pfc::string8 json;
-
-	exact_matches.force_reset();
-	other_matches.force_reset();
-
-	pfc::array_t<Artist_ptr> good_matches;
-	pfc::array_t<Artist_ptr> wtf_matches;
-	pfc::array_t<Artist_ptr> matches;
-
-	pfc::string8 params;
-	params << "type=artist&q=" << urlEscape(query) << "&per_page=100";
-
-	fetcher->fetch_html("https://api.discogs.com/database/search", params, json, p_abort);
-
-	JSONParser jp(json);
-	parseArtistResults(jp.root, matches);
-
-	pfc::string8 lowercase_query = lowercase(query);
-	pfc::string8 stripped_query = strip_artist_name(query);
-
-	for (size_t i = 0; i < matches.get_size() && i < MAX_ARTISTS; i++) {
-		Artist_ptr &artist = matches[i];
-		pfc::string8 lowercase_name = lowercase(artist->name);
-		pfc::string8 stripped_name = strip_artist_name(artist->name);
-		if (lowercase_query == lowercase_name) {
-			exact_matches.append_single(std::move(artist));
-		}
-		else if (stripped_query == stripped_name) {
-			good_matches.append_single(std::move(artist));
-		}
-		else if (lowercase_name.find_first(stripped_query) != pfc::infinite_size) {
-			other_matches.append_single(std::move(artist));
-		}
-		else {
-			wtf_matches.append_single(std::move(artist));
-		}
-	}
-	exact_matches.append(good_matches);
-	other_matches.append(wtf_matches);
+    // Rank the entire bounded scan before applying the existing MAX_ARTISTS
+    // display cap. An exact name on a later page beats page-one noise.
+    std::array<std::vector<discogger_search::artist_search_hit>, 4> ranked;
+    for (const auto& hit : candidates) {
+        const pfc::string8 name(hit.title.c_str());
+        const pfc::string8 lower = lowercase(name);
+        const pfc::string8 stripped = strip_artist_name(name);
+        const size_t rank = lower == lowercase_query ? 0 :
+            stripped == stripped_query ? 1 :
+            lower.find_first(stripped_query) != pfc::infinite_size ? 2 : 3;
+        ranked[rank].push_back(hit);
+    }
+    pfc::array_t<Artist_ptr> staged_exact, staged_other;
+    size_t emitted = 0;
+    for (size_t rank = 0; rank < ranked.size(); ++rank) {
+        for (const auto& hit : ranked[rank]) {
+            if (emitted >= MAX_ARTISTS) break;
+            p_abort.check();
+            // Search-only projections never mutate canonical artist caches.
+            Artist_ptr artist = std::make_shared<Artist>(hit.id.c_str());
+            artist->name = hit.title.c_str();
+            if (rank <= 1) staged_exact.append_single(std::move(artist));
+            else staged_other.append_single(std::move(artist));
+            ++emitted;
+        }
+    }
+    p_abort.check();
+    exact_matches = std::move(staged_exact);
+    other_matches = std::move(staged_other);
 }
 
 void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, parse_amt_info& pai, bool load_master_preview, bool load_release_preview,

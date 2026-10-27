@@ -76,12 +76,35 @@ inline std::string without_terminal_mix_suffix(std::string_view title) {
         " (original mix)", " (radio edit)", " (club mix)",
         " (extended remix)", " (instrumental mix)", " (dub mix)",
         " (original version)", " [original mix]", " [extended version]",
-        " [dj version]", " [extended mix]", " [radio edit]"
+        " [dj version]", " [extended mix]", " [radio edit]",
+        " - extended mix", " - original mix", " - radio edit",
+        " - club mix", " - extended remix", " (deluxe edition)",
+        " [deluxe edition]", " (special edition)", " [special edition]",
+        " (remastered)", " [remastered]"
     };
     for (const auto suffix : suffixes) {
         if (lower.size() > suffix.size() && lower.compare(
             lower.size() - suffix.size(), suffix.size(), suffix) == 0)
             return trim_copy(std::string_view(clean).substr(0, clean.size() - suffix.size()));
+    }
+    // Artist-named remixes and year-labelled remasters are useful bounded
+    // discovery hints, not exact release identities. Keep other parentheses.
+    if (lower.size() > 5 && lower.back() == ')') {
+        const auto open = lower.rfind(" (");
+        if (open != std::string::npos && open > 0 &&
+            lower.size() - open <= 80) {
+            const std::string_view inner(lower.data() + open + 2,
+                                         lower.size() - open - 3);
+            const auto ends = [](std::string_view value, std::string_view suffix) {
+                return value.size() > suffix.size() &&
+                    value.substr(value.size() - suffix.size()) == suffix;
+            };
+            if (inner == "remix" || inner == "remaster" ||
+                ends(inner, " remix") || ends(inner, " remaster") ||
+                (inner.size() > 11 && inner.substr(0, 11) == "remastered ")) {
+                return trim_copy(std::string_view(clean).substr(0, open));
+            }
+        }
     }
     return clean;
 }

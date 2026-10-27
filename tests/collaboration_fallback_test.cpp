@@ -27,6 +27,17 @@ int main() {
     assert(without_terminal_mix_suffix("1000 Years (DJ Version)") == "1000 Years");
     assert(without_terminal_mix_suffix("Only You (Extended Mix)") == "Only You");
     assert(without_terminal_mix_suffix("1000 Years (Live)") == "1000 Years (Live)");
+    assert(without_terminal_mix_suffix("Only You (John Smith Remix)") == "Only You");
+    assert(without_terminal_mix_suffix("Till You Let Go (2026 Remaster)") == "Till You Let Go");
+    assert(without_terminal_mix_suffix("Consciousness EP [Deluxe Edition]") == "Consciousness EP");
+    assert(without_terminal_mix_suffix("Only You - Extended Mix") == "Only You");
+    assert(without_terminal_mix_suffix("Only You (Live at Home)") == "Only You (Live at Home)");
+    assert(plausible_release_title("Only You (John Smith Remix)", "Matt Fax - Only You"));
+    assert(plausible_release_title("Till You Let Go (2026 Remaster)", "Till You Let Go"));
+    auto edition = build_fallback_plan("Quivver", "Consciousness EP [Deluxe Edition]", "");
+    assert(edition.size() == 1 && edition[0].q == "Consciousness EP");
+    auto named_remix = build_fallback_plan("Matt Fax", "Only You (John Smith Remix)", "");
+    assert(named_remix.size() == 1 && named_remix[0].q == "Only You");
     assert(without_terminal_mix_suffix("Version") == "Version");
 
     // Known user-facing misses: these are deterministic SEARCH-PLAN

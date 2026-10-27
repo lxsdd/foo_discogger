@@ -2794,3 +2794,23 @@ assert "Native Unicode review-only title discovery failed." in native_preview
 print("PASS: provider ID preflight, cancellation and native Unicode search fixtures.")
 print("PASS: master expansion filter generation, row identity, and live native supersession.")
 print("PASS: async artist/master/filter UI lifecycle and stale callback gates.")
+
+# Artist-name search must use the bounded multi-page provider path, validate
+# every page before staging and publish only after a final abort check.
+artist_source = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+artist_block = artist_source.split("void DiscogsInterface::search_artist(", 1)[1].split(
+    "void DiscogsInterface::process_amt_parsed_fake_artist(", 1)[0]
+assert "discogger_search::max_artist_search_pages" in artist_block
+assert "discogger_cache::valid_online_page(" in artist_block
+assert "discogger_cache::valid_online_payload_count(" in artist_block
+assert "discogger_search::stage_artist_search_hit(" in artist_block
+assert "discogger_search::continue_artist_search(" in artist_block
+assert "std::make_shared<Artist>(hit.id.c_str())" in artist_block
+assert "get_artist(hit.id.c_str())" not in artist_block
+assert artist_block.index("p_abort.check();\n    exact_matches =") > artist_block.index(
+    "std::array<std::vector<discogger_search::artist_search_hit>, 4> ranked;")
+assert "max_artist_search_hits = max_artist_search_pages * 100" in (
+    root / "discogger_artist_search_pages.h").read_text(encoding="utf-8-sig")
+for name in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
+    assert "artist_search_pages_test.cpp" in (root / name).read_text(encoding="utf-8-sig")
+print("PASS: native artist-name search uses bounded complete-page validation, isolated ranked staging and cancellation-safe publication.")

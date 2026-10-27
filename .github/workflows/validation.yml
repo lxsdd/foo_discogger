@@ -57,6 +57,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_visibility_test.cpp -o /tmp/discogger-search-visibility && /tmp/discogger-search-visibility
       - name: Compile and run same-dialog stale search request regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/search_request_epoch_test.cpp -o /tmp/discogger-search-epoch && /tmp/discogger-search-epoch
+      - name: Bounded multi-page artist search, strict IDs and rollback staging
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_search_pages_test.cpp -o /tmp/discogger-artist-pages && /tmp/discogger-artist-pages
       - name: Compile and run artist double-click selection regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_activation_test.cpp -o /tmp/discogger-artist-activate && /tmp/discogger-artist-activate
       - name: Reject stale enabled-track approval and collapsed-value alignment
