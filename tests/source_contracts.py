@@ -56,7 +56,7 @@ assert "m_find_release_artists.resize(base + cadd)" not in artist_projection
 assert "m_find_release_artists = m_artist_exact_matches;" in artist_projection
 assert "m_find_release_artists.append(m_artist_other_matches);" in artist_projection
 assert "std::unordered_map<std::string, size_t> prior_roles;" in artist_projection
-assert "prior_roles.emplace(previous_artist->id.get_ptr()," in artist_projection
+assert "prior_roles.emplace(key, previous_artist->search_role_list_pos);" in artist_projection
 assert "current_artist->search_role_list_pos =" in artist_projection
 assert "previous != prior_roles.end() && previous->second" in artist_projection
 assert "if (append && (op == 0 || op == 3))" in artist_projection
@@ -88,7 +88,7 @@ assert "Get_Exact_Artist_Count() const" in artist_header
 assert "Get_Other_Artist_Count() const" in artist_header
 assert "std::unordered_map<std::string, size_t> visible_positions;" in artist_projection
 assert "if (!candidate) continue;" in artist_projection
-assert "if (!candidate->id.get_length()) continue;" in artist_projection
+assert "if (key.empty()) continue;" in artist_projection
 assert "union_search_artist_payload(unique_artists[index], candidate)" in artist_projection
 assert "m_find_release_artists = unique_artists;" in artist_projection
 # The original Artist/cache objects must not be extended in place by a
@@ -103,8 +103,8 @@ for required in (
     "merged->search_role_list_pos = retained->search_role_list_pos;",
     "merged->releases.append_single(release);",
     "merged->master_releases.append_single(master);",
-    "emitted_releases.emplace(release->id.get_ptr()).second",
-    "emitted_masters.emplace(master->id.get_ptr()).second",
+    "emitted_releases, release->id.get_ptr()))",
+    "emitted_masters, master->id.get_ptr()))",
 ):
     assert required in artist_union
 assert "retained->releases.append_single" not in artist_union
