@@ -435,12 +435,23 @@ inline std::vector<fallback_candidate> build_fallback_plan(
             plan.push_back({"artist and release title (review required)",
                 "", "", indexed_artist, key});
     }
+    // When the requested edition/remix is indexed only under the base
+    // release title, a second *artist-scoped release-only* query is much
+    // more precise than the broad q index. Preserve the exact version as
+    // the first request and retain broad discovery as the final request.
+    // A collaboration already uses its three distinct phases, so do not
+    // displace its partner/title query or exceed the provider budget.
+    const std::string broad = without_terminal_mix_suffix(key);
+    if (!using_track_title && partner.empty() && broad.size() >= 3 &&
+        broad != key && !plan.empty()) {
+        plan.push_back({"artist and base release title (review required)",
+            "", "", release_discovery_artist(initial_artist), broad});
+    }
     if (!using_track_title && !partner.empty() && partner != initial_artist)
         plan.push_back({"collaboration partner and title", partner, key});
     // Deliberately broaden to a review-only Discogs 'q', keeping the exact
     // structured query untouched. A track title must not masquerade as the
     // release title; only the broad text index is queried in that case.
-    const std::string broad = without_terminal_mix_suffix(key);
     // Even when the partner text equals the title, these are two *different*
     // Discogs queries: q=partner&title=title versus q=title. Omitting the
     // broad request hides relevant releases after an empty partner search.

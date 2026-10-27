@@ -45,9 +45,23 @@ int main() {
     assert(plausible_release_title("Only You (John Smith Remix)", "Matt Fax - Only You"));
     assert(plausible_release_title("Till You Let Go (2026 Remaster)", "Till You Let Go"));
     auto edition = build_fallback_plan("Quivver", "Consciousness EP [Deluxe Edition]", "");
-    assert(edition.size() == 2 && edition[0].artist_filter == "Quivver" && edition[1].q == "Consciousness EP");
+    assert(edition.size() == 3 && edition[0].artist_filter == "Quivver" &&
+           edition[0].release_title_filter == "Consciousness EP [Deluxe Edition]" &&
+           edition[1].artist_filter == "Quivver" &&
+           edition[1].release_title_filter == "Consciousness EP" &&
+           edition[2].q == "Consciousness EP");
     auto named_remix = build_fallback_plan("Matt Fax", "Only You (John Smith Remix)", "");
-    assert(named_remix.size() == 2 && named_remix[0].artist_filter == "Matt Fax" && named_remix[1].q == "Only You");
+    assert(named_remix.size() == 3 && named_remix[0].artist_filter == "Matt Fax" &&
+           named_remix[0].release_title_filter == "Only You (John Smith Remix)" &&
+           named_remix[1].artist_filter == "Matt Fax" &&
+           named_remix[1].release_title_filter == "Only You" &&
+           named_remix[2].q == "Only You");
+    assert(encode_fallback_query(named_remix[1]) ==
+           "artist=Matt%20Fax&release_title=Only%20You&type=release");
+    // Non-version subtitles are not silently stripped or queried as a base.
+    const auto live_title = build_fallback_plan("Matt Fax", "Only You (Live)", "");
+    assert(live_title.size() == 2 && live_title[0].release_title_filter == "Only You (Live)" &&
+           live_title[1].q == "Only You (Live)");
     assert(without_terminal_mix_suffix("Version") == "Version");
 
     // Known user-facing misses: these are deterministic SEARCH-PLAN
@@ -170,7 +184,10 @@ int main() {
         "Kyau & Albert x Maywave", "1000 Years", "1000 Years (DJ Version)");
     assert(normal_release.size() == 3 && normal_release[0].artist_filter == "Kyau & Albert" && normal_release[1].title == "1000 Years");
     auto mix = build_fallback_plan("Matt Fax", "Only You (Extended Mix)", "");
-    assert(mix.size() == 2 && mix[0].artist_filter == "Matt Fax" && mix[1].q == "Only You");
+    assert(mix.size() == 3 && mix[0].artist_filter == "Matt Fax" &&
+           mix[1].artist_filter == "Matt Fax" &&
+           mix[1].release_title_filter == "Only You" &&
+           mix[2].q == "Only You");
     assert(build_fallback_plan("", "Only You", "").empty());
     assert(build_fallback_plan("Matt Fax", "X", "").empty());
     assert(build_fallback_plan("Matt Fax", "", "Till You Let Go").size() == 1);
@@ -325,6 +342,14 @@ int main() {
     assert(without_terminal_mix_suffix("Only You — Radio Edit") == "Only You");
     assert(without_terminal_mix_suffix("Only You – Live") == "Only You – Live");
     assert(without_terminal_mix_suffix("Only You [Live]") == "Only You [Live]");
+    const auto unicode_version = build_fallback_plan(
+        "Estiva", "Café – L’Été (Extended Mix)", "");
+    assert(unicode_version.size() == 3 &&
+           unicode_version[0].release_title_filter == "Café – L’Été (Extended Mix)" &&
+           unicode_version[1].release_title_filter == "Café – L’Été" &&
+           unicode_version[2].q == "Café – L’Été");
+    assert(encode_fallback_query(unicode_version[1]) ==
+           "artist=Estiva&release_title=Caf%C3%A9%20%E2%80%93%20L%E2%80%99%C3%89t%C3%A9&type=release");
     const auto unicode_title = build_fallback_plan("Estiva", "Café – L’Été", "");
     assert(unicode_title.size() == 3 && unicode_title[0].artist_filter == "Estiva");
     assert(unicode_title[1].q == "Café – L’Été");

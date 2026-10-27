@@ -68,6 +68,19 @@ UTF-8 values are encoded as independent fields. No result is auto-approved;
 all identities and editions remain REVIEW_REQUIRED. Five known release-ID
 plan regressions do not constitute authenticated native live acceptance.
 
+## Version-specific artist-scoped discovery
+
+When an exact edition, named remix or remaster has no plausible original hit,
+a solo artist now receives a second targeted `artist + release_title +
+type=release` query using the recognized base title, before the broad
+`q` query. The original full version is queried first and never discarded.
+For collaborations, the existing artist, partner/title and broad phases
+remain intact. Track-only requests never enter the release-title index.
+The three-request ceiling, UTF-8 percent encoding, manual REVIEW_REQUIRED
+classification and original media/tag no-write boundaries remain unchanged.
+Portable positive/negative tests and native Win32/x64 foobar host fixtures
+exercise the real planner; live OAuth acceptance is still separate.
+
 ## Numeric identity aliases and atomic master pages
 
 Discogs IDs are decimal identities, not distinct strings with optional leading

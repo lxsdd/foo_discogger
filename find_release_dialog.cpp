@@ -2535,6 +2535,19 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     fallback_budget.observe(false);
     if (!fallback_budget.begin() || fallback_budget.can_continue())
         throw std::runtime_error("Native fallback query bound or continuation failed.");
+    // Verify the production native planner searches a named remix under
+    // both its exact edition and the base artist-scoped release index
+    // before a bounded broad-title request. No candidate is auto-approved.
+    const auto edition_plan = discogger_search::build_fallback_plan(
+        "Matt Fax", "Only You (John Smith Remix)", "");
+    if (edition_plan.size() != 3 ||
+        edition_plan[0].release_title_filter != "Only You (John Smith Remix)" ||
+        edition_plan[1].artist_filter != "Matt Fax" ||
+        edition_plan[1].release_title_filter != "Only You" ||
+        edition_plan[2].q != "Only You" ||
+        discogger_search::encode_fallback_query(edition_plan[1]) !=
+            "artist=Matt%20Fax&release_title=Only%20You&type=release")
+        throw std::runtime_error("Native edition base-title index fallback gate failed.");
     // The native original-host fixture exercises the production discovery
     // gate, including a nonempty but irrelevant first-page title. Neither
     // this heuristic nor fallback candidates authorize a metadata write.

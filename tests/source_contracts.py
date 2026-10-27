@@ -527,6 +527,10 @@ assert 'candidate.release_title_filter.empty()) return {};' in plan
 assert "if (!using_track_title) {" in plan
 assert 'plan.push_back({"artist and release title (review required)",' in plan
 assert plan.index('plan.push_back({"artist and release title (review required)",') < plan.index('plan.push_back({"collaboration partner and title",')
+assert '"artist and base release title (review required)"' in plan
+assert 'broad != key && !plan.empty()' in plan
+assert plan.index('plan.push_back({"artist and base release title (review required)",') < plan.index('plan.push_back({"collaboration partner and title",')
+assert 'Native edition base-title index fallback gate failed.' in native_fallback
 assert plan.index("if (!using_track_title) {") < plan.index("const std::string indexed_artist = release_discovery_artist(initial_artist);")
 # A guest/title query can return an unrelated release and stop the fallback.
 # Therefore the stricter, authenticated primary-artist query comes FIRST.
