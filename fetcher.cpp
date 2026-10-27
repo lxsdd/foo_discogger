@@ -342,7 +342,7 @@ void Fetcher::fetch_url(const pfc::string8 &url, const pfc::string8 &params, pfc
 				break;
 			}
 			catch (http_429_exception) {
-                // Previously 20 retries waited up to 462 seconds, including
+                // Previously 20 retries waited over 400 seconds, including
                 // requests made against a server-provided longer cooldown.
                 // Respect bounded numeric Retry-After; fail closed on
                 // unsupported/oversized values and preserve cancellation.

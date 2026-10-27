@@ -2516,6 +2516,7 @@ assert "catch (const foo_discogs_exception&)" in optional_fallback
 assert "budget.observe(false);" in optional_fallback
 assert "continue;" in optional_fallback
 assert "Optional Discogs discovery unavailable; preserving search results." in optional_fallback
+assert '#include "http_status_util.h"' in qa_iface
 assert "catch (const http_exception& e)" in optional_fallback
 assert "discogger_net::stop_optional_discovery_on_http_status(e.get_status())" in optional_fallback
 assert "budget.stop();" in optional_fallback

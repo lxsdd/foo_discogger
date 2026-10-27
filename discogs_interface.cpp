@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "discogger_search_fallback.h"
+#include "http_status_util.h"
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 #include "tests/runner-live-search-telemetry.h"
 #endif
