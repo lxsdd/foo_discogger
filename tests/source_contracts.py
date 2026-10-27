@@ -2737,7 +2737,8 @@ search_parser = (root / "discogs.cpp").read_text(encoding="utf-8-sig").split(
 assert search_parser.count("discogger_search::valid_release_id(") >= 3
 assert search_parser.index("valid_release_id(master_id.c_str())") < search_parser.index(
     "check_in_master(master_id")
-assert search_parser.index("valid_release_id(dbid.c_str())") < search_parser.index(
+release_parser = search_parser.split('else if (STR_EQUAL(type, "release"))', 1)[1]
+assert release_parser.index("valid_release_id(dbid.c_str())") < release_parser.index(
     "get_release(lkey")
 assert "catch (const exception_aborted&)" in search_parser
 native_preview = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
