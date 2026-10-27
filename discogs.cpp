@@ -13,6 +13,7 @@
 #include "discogs.h"
 #include "ol_cache.h"
 #include "discogger_cache_pages.h"  // paginated release list completeness guard
+#include "discogger_cache_persist.h"  // best-effort disk writes after validated online results
 #include "discogger_master_versions.h"
 #include "discogger_master_page_transaction.h"
 #include "discogger_release_id.h"
@@ -3486,25 +3487,26 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 
         bool cache_ready = !btransient;
         if (btransient && offline_can_write) {
-            discogger_cache::directory_cache_transaction tx(
-                std::filesystem::u8path(n8_rel_path.c_str()),
-                ol::cache_payload_is_valid_json);
-            if (tx.ready()) {
-                bool saved = true;
-                for (size_t page = 0; page < count; ++page) {
-                    p_abort.check();
-                    saved = discogs_interface->offline_cache_save(
-                        ol::staged_cache_json_path(tx, page), pages[page]->root);
-                    if (!saved) break;
-                }
-                if (saved) {
+            // An optional disk failure cannot discard complete online data.
+            // Cancellation and allocation failures remain fatal.
+            cache_ready = discogger_cache::persist_optional_cache<exception_aborted>(
+                [&]() -> bool {
+                    discogger_cache::directory_cache_transaction tx(
+                        std::filesystem::u8path(n8_rel_path.c_str()),
+                        ol::cache_payload_is_valid_json);
+                    if (!tx.ready()) return false;
+                    for (size_t page = 0; page < count; ++page) {
+                        p_abort.check();
+                        if (!discogs_interface->offline_cache_save(
+                                ol::staged_cache_json_path(tx, page), pages[page]->root))
+                            return false;
+                    }
                     const pfc::string8 marker = JSONString(
                         json_object_get(pages[0]->root, "items"));
-                    cache_ready = tx.publish(marker.c_str());
-                }
-            }
+                    p_abort.check();
+                    return tx.publish(marker.c_str());
+                }, [&]() { p_abort.check(); });
         }
-
 
         p_abort.check();
         master_releases = std::move(staged.master_releases);
@@ -3603,27 +3605,28 @@ void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, ab
         MasterRelease_ptr staged = stageMasterVersionPages(
             *this, roots, query_mode, [&p_abort]() { p_abort.check(); });
         if (btransient && offline_can_write) {
-            discogger_cache::directory_cache_transaction tx(
-                std::filesystem::u8path(n8_rel_path.c_str()),
-                ol::cache_payload_is_valid_json);
-            if (tx.ready()) {
-                bool saved = true;
-                for (size_t page = 0; page < cPages; ++page) {
-                    p_abort.check();
-                    saved = discogs_interface->offline_cache_save(
-                        ol::staged_cache_json_path(tx, page), pages[page]->root);
-                    if (!saved) break;
-                }
-                if (saved) {
+            // A failed optional disk save cannot suppress a valid staged
+            // master-version snapshot; user cancellation still propagates.
+            (void)discogger_cache::persist_optional_cache<exception_aborted>(
+                [&]() -> bool {
+                    discogger_cache::directory_cache_transaction tx(
+                        std::filesystem::u8path(n8_rel_path.c_str()),
+                        ol::cache_payload_is_valid_json);
+                    if (!tx.ready()) return false;
+                    for (size_t page = 0; page < cPages; ++page) {
+                        p_abort.check();
+                        if (!discogs_interface->offline_cache_save(
+                                ol::staged_cache_json_path(tx, page), pages[page]->root))
+                            return false;
+                    }
                     const pfc::string8 marker = JSONString(
                         json_object_get(pages[0]->root, "items"));
-                    tx.publish(marker.c_str());
-                }
-            }
+                    p_abort.check();
+                    return tx.publish(marker.c_str());
+                }, [&]() { p_abort.check(); });
         }
-        // Only a fully parsed and cancellation-checked snapshot becomes
-        // visible. Disk publication is independent; a failed offline save
-        // never exposes a partially parsed master-version list.
+        // Only fully parsed, cancellation-checked results become visible.
+        // Failed disk publication never exposes a partial version list.
         p_abort.check();
         sub_releases = std::move(staged->sub_releases);
 		loaded_releases = true;

@@ -1453,6 +1453,28 @@ assert "json_decref(parsed);" in cache_atomic
 assert "atomic_cache_file_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 print("PASS: atomic JSON cache publication and non-destructive parse failure.")
 
+# Optional cache persistence is best effort for validated online results.
+persist_header = (root / "discogger_cache_persist.h").read_text(encoding="utf-8-sig")
+assert "catch (const AbortException&)" in persist_header
+assert "catch (const std::bad_alloc&)" in persist_header
+assert "check_abort();" in persist_header
+persist_source = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+assert '#include "discogger_cache_persist.h"' in persist_source
+assert persist_source.count("persist_optional_cache<exception_aborted>(") == 2
+artist_stage = persist_source.split("bool cache_ready = !btransient;", 1)[1].split(
+    "master_releases = std::move(staged.master_releases);", 1)[0]
+master_stage = persist_source.split("MasterRelease_ptr staged = stageMasterVersionPages(", 1)[1].split(
+    "sub_releases = std::move(staged->sub_releases);", 1)[0]
+for stage in (artist_stage, master_stage):
+    assert "persist_optional_cache<exception_aborted>(" in stage
+    assert "return tx.publish(marker.c_str());" in stage
+    assert "p_abort.check();" in stage
+assert "cache_persist_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "cache_persist_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+print("PASS: optional disk cache failures cannot discard validated online artist/master results.")
+
+
+
 
 # Full cache directory publication uses isolated staging, a completed marker,
 # two-phase rename, recovery, and negative portable/MSVC tests.

@@ -45,6 +45,7 @@ $Sources = @(
     'artist_load_ownership_test.cpp',
     'cache_pages_test.cpp',
     'atomic_cache_file_test.cpp',
+    'cache_persist_test.cpp',
     'directory_cache_transaction_test.cpp',
     'cfg_snapshot_ops_test.cpp',
     'async_write_lease_test.cpp',
