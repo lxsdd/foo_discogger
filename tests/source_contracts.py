@@ -256,6 +256,27 @@ assert "parseMasterVersions(roots[page], staged.get(), query_mode, true);" in ma
 assert "runner_qa_native_master_page_transaction();" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 for test_runner in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
     assert "master_page_transaction_test.cpp" in (root / test_runner).read_text(encoding="utf-8-sig")
+# Both single-entity loaders are production-wired to the same optional
+# cache fail-soft contract as paginated lists. Disk errors never mask valid
+# online artist/release metadata; cancellation and bad_alloc stay fatal.
+entity_source = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+artist_entity = entity_source.split("void Discogs::Artist::load(", 1)[1].split(
+    "void Discogs::Artist::load_mem_only(", 1)[0]
+release_entity = entity_source.split(
+    "void Discogs::Release::load(threaded_process_status &p_status, abort_callback &p_abort, bool throw_all, pfc::string8 offlineArtistId", 1)[1].split(
+    "void Discogs::Release::load_my_rating(", 1)[0]
+for entity in (artist_entity, release_entity):
+    assert "discogger_cache::persist_optional_cache<exception_aborted>(" in entity
+    assert entity.index("discogger_cache::persist_optional_cache<exception_aborted>(") < entity.rindex("loaded = true;")
+    assert "p_abort.check();\n        loaded = true;" in entity
+assert "ol::get_offline_path(\n                        id, ol::GetFrom::Artist, \"\", true)" in artist_entity
+assert "artists.get_count() && artists[0]" in release_entity
+assert "discogger_cache::release_cache_artist_id(" in release_entity
+assert "if (cache_artist.empty()) return false;" in release_entity
+assert "cache_persist_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "cache_persist_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+print("PASS: single artist/release cache failure preserves parsed online metadata.")
+
 artist_load = artist_load[artist_load.index("void Discogs::Artist::load_releases("):artist_load.index("void Discogs::MasterRelease::load_releases(")]
 assert "const bool explicit_refresh = release_refresh.take();" in artist_load
 # The canonical explicit online refresh must not use the search-result fast path.

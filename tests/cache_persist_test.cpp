@@ -8,6 +8,16 @@ struct canceled : std::runtime_error {
 };
 int main() {
     using discogger_cache::persist_optional_cache;
+    using discogger_cache::release_cache_artist_id;
+    // A release with no parsed artist must still load, but cannot create an
+    // ambiguous disk-cache directory. A valid supplied ID takes precedence.
+    assert(release_cache_artist_id("194", "355") == "194");
+    assert(release_cache_artist_id("", "355") == "355");
+    assert(release_cache_artist_id("0", "37332711") == "37332711");
+    assert(release_cache_artist_id("999999999999999999", "38012673") == "38012673");
+    assert(release_cache_artist_id("-1", "") == "");
+    assert(release_cache_artist_id("", "") == "");
+    assert(release_cache_artist_id("12oops", "bad") == "");
     bool abort = false;
     int checks = 0;
     const auto check = [&] { ++checks; if (abort) throw canceled{}; };

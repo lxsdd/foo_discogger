@@ -3146,15 +3146,26 @@ void Discogs::Artist::load(threaded_process_status &p_status, abort_callback &p_
 
 		//..
 
-		loaded = true;
+        // Disk persistence is optional; a complete parsed artist must remain
+        // usable when a cache directory is read-only or staging fails.
+        p_abort.check();
         if (btransient && offline_can_write) {
-            discogger_cache::directory_cache_transaction tx(
-                std::filesystem::u8path(n8_rel_path.c_str()),
-                ol::cache_payload_is_valid_json);
-            if (tx.ready() && discogs_interface->offline_cache_save(
-                    ol::staged_cache_json_path(tx), jp.root))
-                tx.publish("");
+            (void)discogger_cache::persist_optional_cache<exception_aborted>(
+                [&]() -> bool {
+                    const pfc::string8 cache_path = ol::get_offline_path(
+                        id, ol::GetFrom::Artist, "", true);
+                    discogger_cache::directory_cache_transaction tx(
+                        std::filesystem::u8path(cache_path.c_str()),
+                        ol::cache_payload_is_valid_json);
+                    if (!tx.ready() || !discogs_interface->offline_cache_save(
+                            ol::staged_cache_json_path(tx), jp.root))
+                        return false;
+                    p_abort.check();
+                    return tx.publish("");
+                }, [&]() { p_abort.check(); });
         }
+        p_abort.check();
+        loaded = true;
 	}
 	catch (http_404_exception &e) {
 		throw;
@@ -3304,28 +3315,44 @@ void Discogs::Release::load(threaded_process_status &p_status, abort_callback &p
 		parseRelease(this, jp.root);
 		//..
 
-		loaded = true;
-        // Stable, explicitly narrow UTF-8 stamp; the pfc formatter cannot stream string8 objects directly.
-        pfc::string8 cache_stamp;
-        cache_stamp << date_added.get_ptr() << " " << date_changed.get_ptr();
-
+        // The online release is already parsed. A missing artist identity,
+        // read-only cache or failed disk publish must not turn it into a
+        // failed search. Cancellation and allocation failure still propagate.
+        p_abort.check();
         if (btransient && offline_can_write) {
-            if (atoi(offlineArtistId) == pfc_infinite || !offlineArtistId.get_length()) {
-                offlineArtistId = artists[0]->id;
-                pfc::string8 alt_path;
-                bool alt_expired = false;
-                if (ol::is_data_avail(offlineArtistId, id, ol::GetFrom::Release,
-                        alt_path, true, alt_expired) && !offline_can_ovr)
-                    return;
-            }
-            n8_rel_path = ol::get_offline_path(offlineArtistId, ol::GetFrom::Release, id, true);
-            discogger_cache::directory_cache_transaction tx(
-                std::filesystem::u8path(n8_rel_path.c_str()),
-                ol::cache_payload_is_valid_json);
-            if (tx.ready() && discogs_interface->offline_cache_save(
-                    ol::staged_cache_json_path(tx), jp.root))
-                tx.publish(cache_stamp.c_str());
+            (void)discogger_cache::persist_optional_cache<exception_aborted>(
+                [&]() -> bool {
+                    const std::string first_artist =
+                        artists.get_count() && artists[0]
+                            ? std::string(artists[0]->id.c_str()) : std::string();
+                    const std::string cache_artist =
+                        discogger_cache::release_cache_artist_id(
+                            offlineArtistId.c_str(), first_artist);
+                    if (cache_artist.empty()) return false;
+                    const pfc::string8 selected_artist(cache_artist.c_str());
+                    if (cache_artist != offlineArtistId.c_str() && !offline_can_ovr) {
+                        pfc::string8 alt_path;
+                        bool alt_expired = false;
+                        if (ol::is_data_avail(selected_artist, id,
+                                ol::GetFrom::Release, alt_path, true, alt_expired))
+                            return false;
+                    }
+                    const pfc::string8 cache_path = ol::get_offline_path(
+                        selected_artist, ol::GetFrom::Release, id, true);
+                    discogger_cache::directory_cache_transaction tx(
+                        std::filesystem::u8path(cache_path.c_str()),
+                        ol::cache_payload_is_valid_json);
+                    if (!tx.ready() || !discogs_interface->offline_cache_save(
+                            ol::staged_cache_json_path(tx), jp.root))
+                        return false;
+                    pfc::string8 cache_stamp;
+                    cache_stamp << date_added.get_ptr() << " " << date_changed.get_ptr();
+                    p_abort.check();
+                    return tx.publish(cache_stamp.c_str());
+                }, [&]() { p_abort.check(); });
         }
+        p_abort.check();
+        loaded = true;
 	}
 	catch (foo_discogs_exception &e) {
 		if (throw_all) {
