@@ -1494,7 +1494,7 @@ assert "catch (const std::bad_alloc&)" in persist_header
 assert "check_abort();" in persist_header
 persist_source = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
 assert '#include "discogger_cache_persist.h"' in persist_source
-assert persist_source.count("persist_optional_cache<exception_aborted>(") == 2
+assert persist_source.count("persist_optional_cache<exception_aborted>(") == 4
 artist_stage = persist_source.split("bool cache_ready = !btransient;", 1)[1].split(
     "master_releases = std::move(staged.master_releases);", 1)[0]
 master_stage = persist_source.split("MasterRelease_ptr staged = stageMasterVersionPages(", 1)[1].split(
