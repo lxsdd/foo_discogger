@@ -24,6 +24,16 @@ int main() {
     assert(primary_artist_before_featuring("Artist featuring Singer") == "Artist");
     assert(primary_artist_before_featuring("Producer x Guest").empty());
     assert(primary_artist_before_featuring("Kyau & Albert").empty());
+    assert(primary_artist_before_explicit_collaboration("Kyau & Albert × Maywave") == "Kyau & Albert");
+    assert(primary_artist_before_explicit_collaboration("Maywave x Kyau & Albert") == "Maywave");
+    assert(primary_artist_before_explicit_collaboration("Artist VS. Guest") == "Artist");
+    assert(primary_artist_before_explicit_collaboration("Artist versus Guest") == "Artist");
+    assert(primary_artist_before_explicit_collaboration("X Japan").empty());
+    assert(primary_artist_before_explicit_collaboration("Kyau & Albert").empty());
+    assert(primary_artist_before_explicit_collaboration("Artist x   ").empty());
+    assert(release_discovery_artist("Kyau & Albert x Maywave feat. Singer") == "Kyau & Albert");
+    assert(release_discovery_artist("Kyau & Albert") == "Kyau & Albert");
+    assert(release_discovery_artist("Above & Beyond feat. Richard Bedford") == "Above & Beyond");
     assert(without_terminal_mix_suffix("1000 Years (DJ Version)") == "1000 Years");
     assert(without_terminal_mix_suffix("Only You (Extended Mix)") == "Only You");
     assert(without_terminal_mix_suffix("1000 Years (Live)") == "1000 Years (Live)");
@@ -35,24 +45,27 @@ int main() {
     assert(plausible_release_title("Only You (John Smith Remix)", "Matt Fax - Only You"));
     assert(plausible_release_title("Till You Let Go (2026 Remaster)", "Till You Let Go"));
     auto edition = build_fallback_plan("Quivver", "Consciousness EP [Deluxe Edition]", "");
-    assert(edition.size() == 1 && edition[0].q == "Consciousness EP");
+    assert(edition.size() == 2 && edition[0].artist_filter == "Quivver" && edition[1].q == "Consciousness EP");
     auto named_remix = build_fallback_plan("Matt Fax", "Only You (John Smith Remix)", "");
-    assert(named_remix.size() == 1 && named_remix[0].q == "Only You");
+    assert(named_remix.size() == 2 && named_remix[0].artist_filter == "Matt Fax" && named_remix[1].q == "Only You");
     assert(without_terminal_mix_suffix("Version") == "Version");
 
     // Known user-facing misses: these are deterministic SEARCH-PLAN
     // regressions only, not unverified claims of live API/host availability.
-    struct known { const char* id; const char* artist; const char* title; };
+    struct known { const char* id; const char* artist; const char* title; const char* indexed_artist; };
     const known fixture[] = {
-        {"38012673", "Estiva", "Via Balearia"},
-        {"37332711", "Kyau & Albert x Maywave", "1000 Years"},
-        {"36397609", "Matt Fax", "Only You"},
-        {"36819730", "Matt Fax", "Till You Let Go"},
-        {"35534398", "Quivver", "Consciousness EP"}
+        {"38012673", "Estiva", "Via Balearia", "Estiva"},
+        {"37332711", "Kyau & Albert x Maywave", "1000 Years", "Kyau & Albert"},
+        {"36397609", "Matt Fax", "Only You", "Matt Fax"},
+        {"36819730", "Matt Fax", "Till You Let Go", "Matt Fax"},
+        {"35534398", "Quivver", "Consciousness EP", "Quivver"}
     };
     for (const auto& example : fixture) {
         const auto plan = build_fallback_plan(example.artist, example.title, "");
-        assert(!plan.empty() && plan.size() <= 3);
+        assert(plan.size() >= 2 && plan.size() <= 3);
+        assert(plan.front().artist_filter == example.indexed_artist &&
+               plan.front().release_title_filter == example.title);
+        assert(encode_fallback_query(plan.front()).find("&release_title=") != std::string::npos);
         assert(plan.back().q == example.title && plan.back().title.empty());
         assert(std::string(example.id).size() >= 8);
     }
@@ -80,19 +93,19 @@ int main() {
     assert(encode_fallback_query({"q-only", "Via Balearia", ""}) ==
            "q=%22Via%20Balearia%22");
     auto collab = build_fallback_plan("Kyau & Albert X Maywave", "1000 Years", "1000 Years (DJ Version)");
-    assert(collab.size() == 2);
-    assert(collab[0].q == "Maywave" && collab[0].title == "1000 Years");
-    assert(collab[1].q == "1000 Years" && collab[1].title.empty());
+    assert(collab.size() == 3 && collab[0].artist_filter == "Kyau & Albert");
+    assert(collab[1].q == "Maywave" && collab[1].title == "1000 Years");
+    assert(collab[2].q == "1000 Years" && collab[2].title.empty());
     auto ampersand = build_fallback_plan("Producer & Vocalist", "A New Day", "");
-    assert(ampersand.size() == 2);
-    assert(ampersand[0].q == "Vocalist" && ampersand[0].title == "A New Day");
-    assert(ampersand[1].q == "A New Day" && ampersand[1].title.empty());
-    assert(encode_fallback_query(ampersand[0]) ==
+    assert(ampersand.size() == 3 && ampersand[0].artist_filter == "Producer & Vocalist");
+    assert(ampersand[1].q == "Vocalist" && ampersand[1].title == "A New Day");
+    assert(ampersand[2].q == "A New Day" && ampersand[2].title.empty());
+    assert(encode_fallback_query(ampersand[1]) ==
            "q=%22Vocalist%22&title=A%20New%20Day");
     // A permanent duo is never silently accepted as a match:
     // these remain bounded, manual-review fallback candidates.
     auto duo = build_fallback_plan("Kyau & Albert", "1000 Years", "");
-    assert(duo.size() == 2 && duo[0].q == "Albert");
+    assert(duo.size() == 3 && duo[0].artist_filter == "Kyau & Albert" && duo[1].q == "Albert");
 
     // Identical partner and title values do not make these requests
     // interchangeable: prefer the proven featured-primary release-only
@@ -121,11 +134,11 @@ int main() {
         "Producer x Sunrise", "Sunrise (Extended Mix)", "");
     // An "x" collaboration alone must not invent a canonical primary
     // artist; the strict release-only query is reserved for featuring.
-    assert(same_partner_version.size() == 2);
-    assert(same_partner_version[0].title == "Sunrise (Extended Mix)");
-    assert(same_partner_version[1].q == "Sunrise" &&
+    assert(same_partner_version.size() == 3 && same_partner_version[0].artist_filter == "Producer");
+    assert(same_partner_version[1].title == "Sunrise (Extended Mix)");
+    assert(same_partner_version[2].q == "Sunrise" &&
            same_partner_version[1].title.empty());
-    assert(same_partner_version[1].artist_filter.empty());
+    assert(same_partner_version[2].artist_filter.empty());
     // Short/generic release titles must not suppress a useful track search.
     // In particular, the Discogs title= filter refers to the RELEASE title,
     // not to the supplied track title. Such fallbacks must remain review-only.
@@ -155,9 +168,9 @@ int main() {
     // A substantive release title retains the existing partner + title plan.
     auto normal_release = build_fallback_plan(
         "Kyau & Albert x Maywave", "1000 Years", "1000 Years (DJ Version)");
-    assert(normal_release.size() == 2 && normal_release[0].title == "1000 Years");
+    assert(normal_release.size() == 3 && normal_release[0].artist_filter == "Kyau & Albert" && normal_release[1].title == "1000 Years");
     auto mix = build_fallback_plan("Matt Fax", "Only You (Extended Mix)", "");
-    assert(mix.size() == 1 && mix[0].q == "Only You");
+    assert(mix.size() == 2 && mix[0].artist_filter == "Matt Fax" && mix[1].q == "Only You");
     assert(build_fallback_plan("", "Only You", "").empty());
     assert(build_fallback_plan("Matt Fax", "X", "").empty());
     assert(build_fallback_plan("Matt Fax", "", "Till You Let Go").size() == 1);
@@ -251,11 +264,12 @@ int main() {
            !limited.has_candidates());
     fallback_query_budget empty(0);
     assert(!empty.begin() && !empty.has_candidates());
-    fallback_query_budget two_phases(collab.size());
-    assert(two_phases.begin());
-    two_phases.observe(true);
-    assert(two_phases.begin()); // wrong nonempty partner cannot hide title
-    assert(!two_phases.begin());
+    fallback_query_budget three_collab_phases(collab.size());
+    assert(three_collab_phases.begin());
+    three_collab_phases.observe(true);
+    assert(three_collab_phases.begin()); // wrong nonempty partner cannot hide title
+    assert(three_collab_phases.begin()); // partner cannot hide broad title
+    assert(!three_collab_phases.begin());
     std::vector<std::string> ids;
     assert(!already_seen_release_id(ids, "36397609"));
     assert(already_seen_release_id(ids, "36397609"));
@@ -281,9 +295,9 @@ int main() {
     assert(!plausible_release_title("Only You", "Only Yourself"));
     auto unicode_partner = build_fallback_plan("Kyau & Albert × Maywave",
         "1000 Years (Extended Remix)", "");
-    assert(unicode_partner.size() == 2);
-    assert(unicode_partner[0].q == "Maywave");
-    assert(unicode_partner[1].q == "1000 Years");
+    assert(unicode_partner.size() == 3 && unicode_partner[0].artist_filter == "Kyau & Albert");
+    assert(unicode_partner[1].q == "Maywave");
+    assert(unicode_partner[2].q == "1000 Years");
     // Explicitly mismatched artist credits cannot suppress fallback merely
     // because an unrelated release has the requested title.
     assert(plausible_original_release_title("Matt Fax", "Only You",
@@ -312,19 +326,19 @@ int main() {
     assert(without_terminal_mix_suffix("Only You – Live") == "Only You – Live");
     assert(without_terminal_mix_suffix("Only You [Live]") == "Only You [Live]");
     const auto unicode_title = build_fallback_plan("Estiva", "Café – L’Été", "");
-    assert(unicode_title.size() == 2);
-    assert(unicode_title[0].q == "Café – L’Été");
-    assert(unicode_title[1].q == "cafe l ete");
-    assert(unicode_title[1].label == "unicode-folded title discovery (review required)");
+    assert(unicode_title.size() == 3 && unicode_title[0].artist_filter == "Estiva");
+    assert(unicode_title[1].q == "Café – L’Été");
+    assert(unicode_title[2].q == "cafe l ete");
+    assert(unicode_title[2].label == "unicode-folded title discovery (review required)");
     assert(encode_fallback_query(unicode_title[1]) == "q=%22cafe%20l%20ete%22");
     const auto unicode_collab = build_fallback_plan(
         "Kyau & Albert × Maywave", "Café – L’Été", "");
     assert(unicode_collab.size() == 3);
-    assert(unicode_collab[0].q == "Maywave");
-    assert(unicode_collab[1].q == "Café – L’Été");
-    assert(unicode_collab[2].q == "cafe l ete");
+    assert(unicode_collab[0].artist_filter == "Kyau & Albert" && unicode_collab[1].q == "Maywave");
+    assert(unicode_collab[2].q == "Café – L’Été");
+    assert(unicode_collab[2].artist_filter.empty());
     const auto other_script = build_fallback_plan("Artist", "東京", "");
-    assert(other_script.size() == 1 && other_script[0].q == "東京");
+    assert(other_script.size() == 2 && other_script[0].artist_filter == "Artist" && other_script[1].q == "東京");
     fallback_query_budget unicode_budget(unicode_collab.size());
     assert(unicode_budget.begin() && unicode_budget.begin() && unicode_budget.begin());
     assert(!unicode_budget.begin());

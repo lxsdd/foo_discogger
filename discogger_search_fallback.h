@@ -66,6 +66,34 @@ inline std::string primary_artist_before_featuring(std::string_view artist) {
     return first == std::string_view::npos
         ? std::string() : trim_copy(artist.substr(0, first));
 }
+// Explicit collaboration credits can use the first participant as a
+// review-only release-title index hint. Never split an ampersand-only duo.
+inline std::string primary_artist_before_explicit_collaboration(std::string_view artist) {
+    const std::string lowered = ascii_lower(artist);
+    constexpr std::string_view joins[] = {" x ", " × ", " vs. ", " vs ", " versus "};
+    std::size_t first = std::string_view::npos, offset = 0;
+    for (const auto join : joins) {
+        const auto pos = lowered.find(join);
+        if (pos != std::string_view::npos &&
+            (first == std::string_view::npos || pos < first)) {
+            first = pos;
+            offset = join.size();
+        }
+    }
+    if (first == std::string_view::npos) return {};
+    const std::string left = trim_copy(artist.substr(0, first));
+    const std::string right = trim_copy(artist.substr(first + offset));
+    return left.size() >= 2 && right.size() >= 2 ? left : std::string();
+}
+inline std::string release_discovery_artist(std::string_view artist) {
+    const std::string featured = primary_artist_before_featuring(artist);
+    const std::string collaborating = primary_artist_before_explicit_collaboration(artist);
+    if (!featured.empty() && !collaborating.empty())
+        return featured.size() < collaborating.size() ? featured : collaborating;
+    if (!featured.empty()) return featured;
+    if (!collaborating.empty()) return collaborating;
+    return trim_copy(artist);
+}
 // Only strip a *recognized, terminal* version descriptor. Preserve the
 // user's exact title and version for all later track matching and tagging.
 inline std::string without_terminal_mix_suffix(std::string_view title) {
@@ -378,8 +406,9 @@ inline std::string encode_fallback_query(const fallback_candidate& candidate) {
     return params;
 }
 // At most three bounded fallback *queries*, after an empty original
-// search or one with no plausible release-title match: a guest-artist hint, an optional explicitly featured MAIN artist
-// plus release title, and broad title discovery. All remain review-only.
+// search or one with no plausible release-title match: a dedicated artist +
+// release_title lookup, an optional partner/title hint, and broad discovery.
+// All remain review-only.
 // No unqualified short/empty title or broad artist-only search.
 inline std::vector<fallback_candidate> build_fallback_plan(
     std::string_view artist, std::string_view title, std::string_view track) {
@@ -397,17 +426,14 @@ inline std::vector<fallback_candidate> build_fallback_plan(
     if (key.size() < 3) return plan;
     const std::string partner = trailing_collaborator(initial_artist);
     if (!using_track_title) {
-        const std::string primary = primary_artist_before_featuring(initial_artist);
-        if (primary.size() >= 2 && primary != initial_artist) {
-            // Authenticated Discogs evidence: broad "Sun & Moon" did not
-            // contain release 2783977 on pages 1-2, but an artist +
-            // release_title + type=release query found it on page 1.
-            // Put this *first* for featuring credits: the existing guest
-            // lookup stops after ANY nonempty result, even a wrong release.
-            // Do not broaden title=track; no automatic identity acceptance.
-            plan.push_back({"featured primary artist and release title (review required)",
-                "", "", primary, key});
-        }
+        // The dedicated release_title index is distinct from the original
+        // title query and broad q index. Try it for single-artist misses as
+        // well as featuring/x/×/vs credits; keep full source metadata.
+        // A track title must never masquerade as a release_title.
+        const std::string indexed_artist = release_discovery_artist(initial_artist);
+        if (indexed_artist.size() >= 2)
+            plan.push_back({"artist and release title (review required)",
+                "", "", indexed_artist, key});
     }
     if (!using_track_title && !partner.empty() && partner != initial_artist)
         plan.push_back({"collaboration partner and title", partner, key});

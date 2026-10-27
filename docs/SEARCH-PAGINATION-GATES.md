@@ -54,3 +54,16 @@ its actual header definition was absent. Commit
 and a source contract requiring it. This historical failed run does not
 qualify the fix; use only a subsequent CI run at the exact current SHA
 for PASS claims.
+
+## Release-title index fallback (review-only)
+
+After an original structured search with no plausible release-title hit,
+Discogger now first queries the dedicated Discogs `artist` +
+`release_title` + `type=release` index, including for single artists.
+Featuring/x/×/vs collaborations use the first credited participant as a
+search hint; ampersand-only duos retain the full credit. The optional
+partner/title and broad-title phases remain separate, with at most three
+requests total. Track-only discovery never uses the release-title filter.
+UTF-8 values are encoded as independent fields. No result is auto-approved;
+all identities and editions remain REVIEW_REQUIRED. Five known release-ID
+plan regressions do not constitute authenticated native live acceptance.
