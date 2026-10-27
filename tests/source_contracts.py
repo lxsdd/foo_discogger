@@ -1584,6 +1584,12 @@ assert "discogger_search::valid_release_id(release_id.c_str())" in trigger
 assert "std::atoi(release_id)" not in trigger
 assert "release_id_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "release_id_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
+assert "discogger_search::parse_discogs_reference(out.c_str(), kind, parsed)" in ui
+assert "discogger_search::discogs_reference_kind::release" in ui
+assert "discogger_search::valid_release_id(release_id.c_str())" in ui
+assert "extract_max_number(buffer, mode_param" not in ui
+assert "Enter a valid Discogs release ID or release URL." in ui
+assert "https://www.discogs.com/release/38012673-1000-Years-2026" in (root / "tests/release_id_test.cpp").read_text(encoding="utf-8-sig")
 print("PASS: direct release IDs validated before preview/load callbacks.")
 
 # Thumbnail cache reads are untrusted: no unchecked artist index, no signed

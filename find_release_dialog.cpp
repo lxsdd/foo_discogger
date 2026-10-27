@@ -318,10 +318,13 @@ LRESULT CFindReleaseDialog::OnButtonNext(WORD /*wNotifyCode*/, WORD wID, HWND /*
 	pfc::string8 release_id;
 	release_id = trim(uGetWindowText(m_edit_release).c_str());
 
-	if (is_number(release_id.c_str()) || id_from_url(m_edit_release, release_id)) {
-
+	if (discogger_search::valid_release_id(release_id.c_str()) ||
+		id_from_url(m_edit_release, release_id)) {
 		trigger_release(release_id);
-
+	}
+	else {
+		uMessageBox(m_hWnd, "Enter a valid Discogs release ID or release URL.",
+			"foo_discogger: Invalid release", MB_APPLMODAL | MB_ICONWARNING);
 	}
 
 	return TRUE;
@@ -1897,71 +1900,15 @@ void CFindReleaseDialog::route_artist_search(pfc::string8 artistname, bool dlgbu
 // utils
 
 bool CFindReleaseDialog::id_from_url(HWND hwndCtrl, pfc::string8& out) {
-	pfc::string8 prefix;
-	pfc::string8 suffix = "]";
-	pfc::string8 url = "https://www.discogs.com/";
-	std::string tmpstr = out.c_str();
-	auto urlpos = tmpstr.find(url);
-	bool is_dc_url = urlpos != std::string::npos;
-
-	if (is_dc_url) {
-		out.remove_chars(0, urlpos + url.get_length());
-	}
-
-	char mode_param;
-	pfc::string8 buffer = trim(out);
-
-	if (hwndCtrl == m_edit_artist) {
-
-		if (buffer.has_prefix("[a=")) {
-
-			out = out.subString(3, buffer.get_length() - 4);
-			return is_number(out.get_ptr());
-		}
-
-		prefix = "[a";
-		mode_param = buffer.has_prefix("artist/") ? 'w' : 'a';
-
-	}
-	else if (hwndCtrl == m_edit_release) {
-
-		prefix = "[r";
-		url << "release/";
-		mode_param = buffer.has_prefix("release/") ? 'w' : 'r';
-	}
-	else {
-
-		return false;
-	}
-
-	if (mode_param != 'w' && is_dc_url) {
-		if (mode_param == 'a' && !buffer.startsWith("artist")) {
-			out = "";
-			return false;
-		}
-		else if (mode_param == 'r' && !buffer.startsWith("release")) {
-			out = "";
-			return false;
-		}
-
-		if ((buffer = extract_max_number(buffer, 'w', true)).get_length()) {
-
-			out = buffer.c_str();
-			return true;
-		}
-	}
-	else {
-
-		if (mode_param == 'w' || (buffer.has_prefix(prefix) && buffer.has_suffix(suffix))) {
-
-			if ((buffer = extract_max_number(buffer, mode_param, true)).get_length()) {
-
-				out = buffer.c_str();
-				return true;
-			}
-		}
-	}
-	return false;
+    if (hwndCtrl != m_edit_artist && hwndCtrl != m_edit_release) return false;
+    std::string parsed;
+    const auto kind = hwndCtrl == m_edit_release
+        ? discogger_search::discogs_reference_kind::release
+        : discogger_search::discogs_reference_kind::artist;
+    if (!discogger_search::parse_discogs_reference(out.c_str(), kind, parsed))
+        return false;
+    out = parsed.c_str();
+    return true;
 }
 //..
 
