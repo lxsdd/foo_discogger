@@ -27,7 +27,7 @@ inline std::string ascii_lower(std::string_view value) {
 inline std::string trailing_collaborator(std::string_view artist) {
     const auto lowered = ascii_lower(artist);
     constexpr std::string_view joins[] = {
-        " x ", " vs. ", " vs ", " feat. ", " feat ", " featuring ", " ft. ", " ft "
+        " x ", " × ", " vs. ", " vs ", " feat. ", " feat ", " featuring ", " ft. ", " ft "
     };
     std::size_t position = std::string_view::npos, offset = 0;
     for (const auto join : joins) {
@@ -74,6 +74,8 @@ inline std::string without_terminal_mix_suffix(std::string_view title) {
     constexpr std::string_view suffixes[] = {
         " (dj version)", " (extended mix)", " (extended version)",
         " (original mix)", " (radio edit)", " (club mix)",
+        " (extended remix)", " (instrumental mix)", " (dub mix)",
+        " (original version)", " [original mix]", " [extended version]",
         " [dj version]", " [extended mix]", " [radio edit]"
     };
     for (const auto suffix : suffixes) {
@@ -88,17 +90,86 @@ inline std::string without_terminal_mix_suffix(std::string_view title) {
  // contains the requested release title as whole words. Discogs may prefix
  // the result with artist credits or append a mix/version. This is a
  // conservative discovery gate, NOT an identity match or tag approval.
+// A review-only discovery fold: normalize common Latin diacritics,
+// decomposed accents and Unicode punctuation without changing stored tags,
+// query bytes or release identities. Other scripts remain byte-exact.
 inline std::string fold_title_words(std::string_view text) {
     std::string out;
-    for (unsigned char ch : text) {
-        const bool word = (ch >= 'A' && ch <= 'Z') ||
-            (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch >= 0x80;
-        if (word) {
-            out.push_back(ch >= 'A' && ch <= 'Z'
-                ? static_cast<char>(ch - 'A' + 'a') : static_cast<char>(ch));
-        } else if (!out.empty() && out.back() != ' ') {
-            out.push_back(' ');
+    auto add_word = [&](std::string_view value) {
+        out.append(value.data(), value.size());
+    };
+    auto add_boundary = [&]() {
+        if (!out.empty() && out.back() != ' ') out.push_back(' ');
+    };
+    for (std::size_t i = 0; i < text.size();) {
+        const unsigned char ch = static_cast<unsigned char>(text[i]);
+        if (ch < 0x80) {
+            if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+                (ch >= '0' && ch <= '9')) {
+                out.push_back(ch >= 'A' && ch <= 'Z'
+                    ? static_cast<char>(ch - 'A' + 'a')
+                    : static_cast<char>(ch));
+            } else {
+                add_boundary();
+            }
+            ++i;
+            continue;
         }
+        if (i + 1 < text.size()) {
+            const unsigned char next = static_cast<unsigned char>(text[i + 1]);
+            if (ch == 0xC2 && next == 0xA0) {
+                add_boundary(); i += 2; continue; // nonbreaking space
+            }
+            if (ch == 0xC3) {
+                std::string_view mapped;
+                if ((next >= 0x80 && next <= 0x85) ||
+                    (next >= 0xA0 && next <= 0xA5)) mapped = "a";
+                else if (next == 0x86 || next == 0xA6) mapped = "ae";
+                else if (next == 0x87 || next == 0xA7) mapped = "c";
+                else if ((next >= 0x88 && next <= 0x8B) ||
+                         (next >= 0xA8 && next <= 0xAB)) mapped = "e";
+                else if ((next >= 0x8C && next <= 0x8F) ||
+                         (next >= 0xAC && next <= 0xAF)) mapped = "i";
+                else if (next == 0x90 || next == 0xB0) mapped = "d";
+                else if (next == 0x91 || next == 0xB1) mapped = "n";
+                else if ((next >= 0x92 && next <= 0x96) ||
+                         (next >= 0xB2 && next <= 0xB6) ||
+                         next == 0x98 || next == 0xB8) mapped = "o";
+                else if ((next >= 0x99 && next <= 0x9C) ||
+                         (next >= 0xB9 && next <= 0xBC)) mapped = "u";
+                else if (next == 0x9D || next == 0xBD ||
+                         next == 0xBF) mapped = "y";
+                else if (next == 0x9E || next == 0xBE) mapped = "th";
+                else if (next == 0x9F) mapped = "ss";
+                if (!mapped.empty()) {
+                    add_word(mapped); i += 2; continue;
+                }
+                if (next == 0x97 || next == 0xB7) {
+                    add_boundary(); i += 2; continue; // multiplication/division
+                }
+            }
+            if (ch == 0xC5 && (next == 0x92 || next == 0x93 ||
+                               next == 0xB8)) {
+                add_word(next == 0xB8 ? "y" : "oe");
+                i += 2; continue;
+            }
+            // U+0300..U+036F: combining accents, not word separators.
+            if ((ch == 0xCC && next >= 0x80 && next <= 0xBF) ||
+                (ch == 0xCD && next >= 0x80 && next <= 0xAF)) {
+                i += 2; continue;
+            }
+        }
+        if (i + 2 < text.size() && ch == 0xE2) {
+            const unsigned char second = static_cast<unsigned char>(text[i + 1]);
+            const unsigned char third = static_cast<unsigned char>(text[i + 2]);
+            if ((second == 0x80 && third >= 0x90 && third <= 0xAF) ||
+                (second == 0x88 && third == 0x92)) {
+                add_boundary(); i += 3; continue; // curly quotes/dashes/minus
+            }
+        }
+        // Do not invent transliterations for non-Latin scripts.
+        out.push_back(static_cast<char>(ch));
+        ++i;
     }
     if (!out.empty() && out.back() == ' ') out.pop_back();
     return out;

@@ -2728,5 +2728,21 @@ assert "m_find_release_artist->master_releases[selected_row.master_ndx] != maste
 assert master_completion.index("selected_row.is_master()") < master_completion.index("set_node_expanded(")
 assert "myparam.master_ndx != static_cast<size_t>(master_i)" in master_completion
 assert "DISCOGGER_NATIVE_MASTER_FILTER_SUPERSESSION_QA=PASS" in filter_dialog
+# Provider IDs are validated before any cache lookup or result insertion.
+# An aborted parser must preserve the original cancellation exception so
+# optional fallback handling cannot report a cancelled search as success.
+search_parser = (root / "discogs.cpp").read_text(encoding="utf-8-sig").split(
+    "void Discogs::parseArtistReleases(", 1)[1].split(
+    "void Discogs::parseMasterVersions(", 1)[0]
+assert search_parser.count("discogger_search::valid_release_id(") >= 3
+assert search_parser.index("valid_release_id(master_id.c_str())") < search_parser.index(
+    "check_in_master(master_id")
+assert search_parser.index("valid_release_id(dbid.c_str())") < search_parser.index(
+    "get_release(lkey")
+assert "catch (const exception_aborted&)" in search_parser
+native_preview = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "Native parser admitted invalid provider release IDs." in native_preview
+assert "Native Unicode review-only title discovery failed." in native_preview
+print("PASS: provider ID preflight, cancellation and native Unicode search fixtures.")
 print("PASS: master expansion filter generation, row identity, and live native supersession.")
 print("PASS: async artist/master/filter UI lifecycle and stale callback gates.")

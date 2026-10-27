@@ -2654,9 +2654,12 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 					//..
 					if (STR_EQUAL(type, "master")) {
 						// MASTER TYPE
+						// Never let malformed provider IDs enter the cache or
+						// masquerade as a valid Discogs release/master identity.
+						pfc::string8 master_id = trim(JSONAttributeString(rel, "id"), " ");
+						if (!discogger_search::valid_release_id(master_id.c_str())) continue;
 						++qry_mr_found.first;
 						// CHECK-IN MASTER
-						pfc::string8 master_id = trim(JSONAttributeString(rel, "id"), " ");
 
 						MasterRelease_ptr release = check_in_master(master_id, mva_masters, artist, query_mode);
 
@@ -2672,7 +2675,8 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 							}
 							release->genres = JSONAttributeStringArray(rel, "genre");
 							release->styles = JSONAttributeStringArray(rel, "style");
-							size_t lkey = encode_mr(artist->search_role_list_pos, main_release);
+							size_t lkey = discogger_search::valid_release_id(main_release.c_str())
+								? encode_mr(artist->search_role_list_pos, main_release) : 0;
 
 							if (lkey) {
 								//..
@@ -2719,7 +2723,13 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 					else if (STR_EQUAL(type, "release")) {
 
 						// NON-MASTER RELASE & RELEASES
-						pfc::string8 dbid = JSONAttributeString(rel, "id");
+						pfc::string8 dbid = trim(JSONAttributeString(rel, "id"), " ");
+						if (!discogger_search::valid_release_id(dbid.c_str())) continue;
+						pfc::string8 incoming_master_id = trim(
+							JSONAttributeString(rel, "master_id"), " ");
+						if (incoming_master_id.get_length() &&
+							!incoming_master_id.equals("0") &&
+							!discogger_search::valid_release_id(incoming_master_id.c_str())) continue;
 
 						size_t lkey = encode_mr(artist->search_role_list_pos, dbid);
 
@@ -2729,7 +2739,7 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 						//..
 
 						if (query_mode ||(!release->loaded_preview && !release->loaded)) {
-							release->master_id = JSONAttributeString(rel, "master_id");
+							release->master_id = incoming_master_id;
 							if (!atoi(release->master_id)) release->master_id = "";
 							if (!atoi(release->master_id)) {
 								bool duplicate = false;
@@ -2818,6 +2828,9 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 				}
 			}
 		}
+	}
+	catch (const exception_aborted&) {
+		throw; // Never turn user cancellation into an optional fallback failure.
 	}
 	catch (...) {
 		foo_discogs_exception ex;

@@ -2179,6 +2179,37 @@ static void runner_qa_native_search_preview_fields() {
             "Only You", grouped_master->title.c_str(),
             grouped_master->sub_releases, grouped_title))
         throw std::runtime_error("Native grouped version original-result fallback gate failed.");
+    // Malformed provider identities must be rejected before cache lookups:
+    // no phantom master, child, or standalone release may reach the UI.
+    Artist_ptr invalid_artist = std::make_shared<Artist>("991997");
+    std::map<std::string, MasterRelease_ptr> invalid_masters;
+    root = parse(R"INVALID({"results":[
+        {"type":"master","id":"-1","title":"Bad master"},
+        {"type":"master","id":"2147483648","title":"Overflow master"},
+        {"type":"release","id":"0","title":"Zero release"},
+        {"type":"release","id":"123oops","title":"Partial ID"},
+        {"type":"release","id":"410997","master_id":"not-an-id","title":"Bad parent"},
+        {"type":"release","id":"99999999999999999999","title":"Overflow release"}
+    ]})INVALID");
+    try {
+        Discogs::parseArtistReleases(root, invalid_artist.get(), SearchMode::AT, invalid_masters);
+    } catch (...) {
+        json_decref(root);
+        throw;
+    }
+    json_decref(root);
+    if (invalid_artist->master_releases.get_count() ||
+        invalid_artist->releases.get_count() || !invalid_masters.empty())
+        throw std::runtime_error("Native parser admitted invalid provider release IDs.");
+    // UTF-8 punctuation, Latin accents and terminal DJ versions are
+    // discovery-only equivalences; the original tags remain untouched.
+    if (!discogger_search::plausible_release_title(
+            "Café – L’Été", "Cafe - L'Ete (Extended Remix)") ||
+        !discogger_search::plausible_release_title(
+            "Only You (Instrumental Mix)", "Only You") ||
+        discogger_search::plausible_release_title(
+            "Café", "Cafeteria"))
+        throw std::runtime_error("Native Unicode review-only title discovery failed.");
     log_msg("DISCOGGER_NATIVE_SEARCH_PREVIEW_FIELDS_QA=PASS");
 }
 #endif

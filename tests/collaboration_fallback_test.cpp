@@ -220,5 +220,26 @@ int main() {
     assert(!already_seen_release_id(ids, "35534398"));
     assert(already_seen_release_id(ids, ""));
     assert(ids.size() == 3);
+    // Common Unicode display variants are discovery-only; never alter tags.
+    assert(trailing_collaborator("Kyau & Albert × Maywave") == "Maywave");
+    assert(without_terminal_mix_suffix("Only You (Extended Remix)") == "Only You");
+    assert(without_terminal_mix_suffix("Only You (Instrumental Mix)") == "Only You");
+    assert(without_terminal_mix_suffix("Only You (Live)") == "Only You (Live)");
+    assert(plausible_release_title("Café – L’Été", "Cafe - L'Ete (Extended Remix)"));
+    assert(plausible_release_title("Música", "Musica"));
+    assert(plausible_release_title("Äther", "Ather"));
+    assert(plausible_release_title("Æther", "Aether"));
+    assert(plausible_release_title("Straße", "Strasse"));
+    assert(plausible_release_title("Café", "Café")); // decomposed combining accent
+    assert(plausible_release_title("Only You (Extended Remix)", "Only You"));
+    assert(plausible_release_title("Only You (Instrumental Mix)", "Only You"));
+    assert(!plausible_release_title("Café", "Cafeteria"));
+    assert(!plausible_release_title("Café", "Cafeine"));
+    assert(!plausible_release_title("Only You", "Only Yourself"));
+    auto unicode_partner = build_fallback_plan("Kyau & Albert × Maywave",
+        "1000 Years (Extended Remix)", "");
+    assert(unicode_partner.size() == 2);
+    assert(unicode_partner[0].q == "Maywave");
+    assert(unicode_partner[1].q == "1000 Years");
     return 0;
 }
