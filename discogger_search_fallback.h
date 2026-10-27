@@ -89,8 +89,8 @@ inline std::string without_terminal_mix_suffix(std::string_view title) {
     }
     // Artist-named remixes and year-labelled remasters are useful bounded
     // discovery hints, not exact release identities. Keep other parentheses.
-    if (lower.size() > 5 && lower.back() == ')') {
-        const auto open = lower.rfind(" (");
+    if (lower.size() > 5 && (lower.back() == ')' || lower.back() == ']')) {
+        const auto open = lower.rfind(lower.back() == ')' ? " (" : " [");
         if (open != std::string::npos && open > 0 &&
             lower.size() - open <= 80) {
             const std::string_view inner(lower.data() + open + 2,
@@ -105,6 +105,30 @@ inline std::string without_terminal_mix_suffix(std::string_view title) {
                 return trim_copy(std::string_view(clean).substr(0, open));
             }
         }
+    }
+    // Discogs and user tags also use Unicode en/em dashes as version
+    // separators. Strip only a recognized terminal descriptor; never
+    // discard an arbitrary subtitle such as " - Live".
+    constexpr std::string_view separators[] = {" - ", " – ", " — "};
+    constexpr std::string_view terminal_versions[] = {
+        "extended mix", "original mix", "radio edit", "club mix",
+        "extended remix", "instrumental mix", "dub mix", "dj version",
+        "deluxe edition", "special edition", "remastered"
+    };
+    for (const auto separator : separators) {
+        const auto at = lower.rfind(separator);
+        if (at == std::string::npos || at == 0) continue;
+        const std::string_view tail(lower.data() + at + separator.size(),
+                                    lower.size() - at - separator.size());
+        bool recognized = false;
+        for (const auto version : terminal_versions)
+            if (tail == version) { recognized = true; break; }
+        if (!recognized &&
+            ((tail.size() > 6 && tail.substr(tail.size() - 6) == " remix") ||
+             (tail.size() > 9 && tail.substr(tail.size() - 9) == " remaster")))
+recognized = true;
+        if (recognized)
+            return trim_copy(std::string_view(clean).substr(0, at));
     }
     return clean;
 }
@@ -211,6 +235,50 @@ inline bool plausible_release_title(std::string_view requested, std::string_view
     }
     return false;
 }
+// A title-only match under a *different explicitly credited artist* is not
+// sufficient evidence to suppress bounded discovery. Keep the original
+// preview, but continue review-only fallback when the result has a clear
+// "Artist - Release" prefix that conflicts with the requested artist.
+// Titles without a parseable credit remain plausible, not auto-approved.
+inline bool plausible_original_release_title(
+    std::string_view artist, std::string_view title, std::string_view result) {
+    if (!plausible_release_title(title, result)) return false;
+    std::size_t separator_at = std::string_view::npos;
+    for (const auto separator : {std::string_view(" - "),
+                                 std::string_view(" – "),
+                                 std::string_view(" — ")}) {
+        const auto at = result.find(separator);
+        if (at != std::string_view::npos &&
+            (separator_at == std::string_view::npos || at < separator_at))
+            separator_at = at;
+    }
+    if (separator_at == std::string_view::npos) return true;
+    const auto prefix = trim_copy(result.substr(0, separator_at));
+    // "Only You - Extended Mix" has no artist prefix; do not misclassify
+    // the title itself as a conflicting artist credit.
+    if (plausible_release_title(title, prefix)) return true;
+    const auto credited = fold_title_words(prefix);
+    const auto requested = fold_title_words(artist);
+    if (credited.empty() || requested.empty() || credited == requested)
+        return true;
+    const auto featured_primary = primary_artist_before_featuring(artist);
+    return !featured_primary.empty() &&
+        credited == fold_title_words(featured_primary);
+}
+
+template <typename Children, typename ChildTitle>
+inline bool plausible_original_release_group_title(
+    std::string_view artist, std::string_view title,
+    std::string_view master_title, const Children& children,
+    ChildTitle title_of) {
+    if (plausible_original_release_title(artist, title, master_title))
+        return true;
+    for (const auto& child : children)
+        if (plausible_original_release_title(artist, title, title_of(child)))
+            return true;
+    return false;
+}
+
 
 
  // A database-search release can be grouped under a differently titled
@@ -322,9 +390,21 @@ inline std::vector<fallback_candidate> build_fallback_plan(
     // Even when the partner text equals the title, these are two *different*
     // Discogs queries: q=partner&title=title versus q=title. Omitting the
     // broad request hides relevant releases after an empty partner search.
-    if (broad.size() >= 3)
+    if (broad.size() >= 3) {
         plan.push_back({using_track_title ? "track-title discovery (review required)"
                                           : "title-only discovery (review required)", broad, ""});
+        // A Unicode-normalized spelling is a distinct, review-only search
+        // hint, not a replacement for the exact UTF-8 query. Never exceed
+        // the three-request provider budget or transliterate other scripts.
+        const bool non_ascii = std::any_of(broad.begin(), broad.end(),
+            [](unsigned char ch) { return ch >= 0x80; });
+        if (non_ascii && plan.size() < 3) {
+            const std::string folded = fold_title_words(broad);
+            if (folded.size() >= 3 && folded != ascii_lower(broad))
+                plan.push_back({"unicode-folded title discovery (review required)",
+                                folded, ""});
+        }
+    }
     return plan;
 }
 

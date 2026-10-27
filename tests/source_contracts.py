@@ -412,8 +412,10 @@ assert "budget.stop();" in fallback_loop
 assert "budget.observe(have_new_candidates);" in fallback_loop
 assert "used_broad_fallback = true;" in fallback_loop
 assert "const bool original_has_candidates =" in amt_search
-assert "discogger_search::plausible_release_title(" in amt_search
-assert "discogger_search::plausible_release_group_title(" in amt_search
+assert "discogger_search::plausible_original_release_title(" in amt_search
+assert "discogger_search::plausible_original_release_group_title(" in amt_search
+assert "original_artist, release_title, master->title.c_str()" in amt_search
+assert "original_artist, release_title, release->title.c_str()" in amt_search
 assert "master->sub_releases" in amt_search
 assert "Native grouped version original-result fallback gate failed." in (
     root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
@@ -466,6 +468,9 @@ assert artist_release_loader.index("valid_cache_payload_count(") < artist_releas
 assert "discogger_cache::valid_online_page(" in search
 assert "without_terminal_mix_suffix" in plan
 assert "build_fallback_plan(" in plan
+assert "unicode-folded title discovery (review required)" in plan
+assert "plausible_original_release_title(" in plan
+assert "plausible_original_release_group_title(" in plan
 assert "if (key.size() < 3) return plan;" in plan
 assert "title-only discovery (review required)" in plan
 # Real authenticated Discogs probe for release 2783977 established a strict

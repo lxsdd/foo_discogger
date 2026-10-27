@@ -252,5 +252,49 @@ int main() {
     assert(unicode_partner.size() == 2);
     assert(unicode_partner[0].q == "Maywave");
     assert(unicode_partner[1].q == "1000 Years");
+    // Explicitly mismatched artist credits cannot suppress fallback merely
+    // because an unrelated release has the requested title.
+    assert(plausible_original_release_title("Matt Fax", "Only You",
+           "Matt Fax - Only You"));
+    assert(!plausible_original_release_title("Matt Fax", "Only You",
+            "Other Artist - Only You"));
+    assert(plausible_original_release_title(
+           "Above & Beyond feat. Richard Bedford", "Sun & Moon",
+           "Above & Beyond - Sun & Moon"));
+    assert(plausible_original_release_title("Matt Fax", "Only You",
+           "Only You - Extended Mix"));
+    assert(plausible_original_release_title("Matt Fax", "Only You",
+           "Only You"));
+    assert(!plausible_original_release_group_title(
+           "Matt Fax", "Only You", "Various - Compilation",
+           std::vector<std::string_view>{"Unrelated Artist - Only You"},
+           [](std::string_view value) { return value; }));
+    assert(plausible_original_release_group_title(
+           "Matt Fax", "Only You", "Various - Compilation",
+           std::vector<std::string_view>{"Matt Fax - Only You"},
+           [](std::string_view value) { return value; }));
+    assert(without_terminal_mix_suffix("Only You [John Smith Remix]") == "Only You");
+    assert(without_terminal_mix_suffix("Till You Let Go [2026 Remaster]") == "Till You Let Go");
+    assert(without_terminal_mix_suffix("Only You – Extended Mix") == "Only You");
+    assert(without_terminal_mix_suffix("Only You — Radio Edit") == "Only You");
+    assert(without_terminal_mix_suffix("Only You – Live") == "Only You – Live");
+    assert(without_terminal_mix_suffix("Only You [Live]") == "Only You [Live]");
+    const auto unicode_title = build_fallback_plan("Estiva", "Café – L’Été", "");
+    assert(unicode_title.size() == 2);
+    assert(unicode_title[0].q == "Café – L’Été");
+    assert(unicode_title[1].q == "cafe l ete");
+    assert(unicode_title[1].label == "unicode-folded title discovery (review required)");
+    assert(encode_fallback_query(unicode_title[1]) == "q=%22cafe%20l%20ete%22");
+    const auto unicode_collab = build_fallback_plan(
+        "Kyau & Albert × Maywave", "Café – L’Été", "");
+    assert(unicode_collab.size() == 3);
+    assert(unicode_collab[0].q == "Maywave");
+    assert(unicode_collab[1].q == "Café – L’Été");
+    assert(unicode_collab[2].q == "cafe l ete");
+    const auto other_script = build_fallback_plan("Artist", "東京", "");
+    assert(other_script.size() == 1 && other_script[0].q == "東京");
+    fallback_query_budget unicode_budget(unicode_collab.size());
+    assert(unicode_budget.begin() && unicode_budget.begin() && unicode_budget.begin());
+    assert(!unicode_budget.begin());
     return 0;
 }
