@@ -67,3 +67,18 @@ requests total. Track-only discovery never uses the release-title filter.
 UTF-8 values are encoded as independent fields. No result is auto-approved;
 all identities and editions remain REVIEW_REQUIRED. Five known release-ID
 plan regressions do not constitute authenticated native live acceptance.
+
+## Numeric identity aliases and atomic master pages
+
+Discogs IDs are decimal identities, not distinct strings with optional leading
+zeros. A URL such as `/release/00038012673-Title` resolves to `38012673`.
+Bounded artist search deduplicates padded/canonical IDs before ranking. The
+actual native advanced-search tree deduplicates release and master IDs
+separately, preserving the first row and search order. Master-version staging
+rejects padded/unpadded duplicates across pages before publication; its
+parser canonicalizes child IDs before lookup. Invalid, zero, overflowing and
+nonnumeric IDs are rejected. Source tags, CUE, media and artwork are untouched.
+
+Portable C++17, MSVC Win32/x64, source-contract and original foobar host
+synthetic GUI checks are required on the final exact SHA. None substitutes
+for protected authenticated native live-search or owner acceptance.

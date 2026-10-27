@@ -237,7 +237,7 @@ assert "discogger_master::stage_master_pages<MasterRelease_ptr>(" in master_stag
 assert "std::make_shared<Release>(*child)" in master_stage
 assert "discogger_search::valid_release_id(child_id.c_str())" in master_stage
 assert "std::unordered_set<std::string> page_release_ids;" in master_stage
-assert "page_release_ids.emplace(child_id.c_str()).second" in master_stage
+assert "discogger_search::canonical_release_id(child_id.c_str())).second" in master_stage
 assert "Duplicate master version ID across pages; retaining prior list." in master_stage
 assert "Native duplicate/incomplete master page leaked partial data." in dialog
 # JSONAttributeString currently accepts json_t*, not const json_t*.
@@ -2860,3 +2860,22 @@ assert "max_artist_search_hits = max_artist_search_pages * 100" in (
 for name in (".github/workflows/validation.yml", "scripts/run-msvc-unit-tests.ps1"):
     assert "artist_search_pages_test.cpp" in (root / name).read_text(encoding="utf-8-sig")
 print("PASS: native artist-name search uses bounded complete-page validation, isolated ranked staging and cancellation-safe publication.")
+
+# Numeric identity aliases are coalesced in native GUI, artist pagination and
+# isolated master-version staging; never use padded provider IDs as new rows.
+identity_header = (root / "discogger_release_id.h").read_text(encoding="utf-8-sig")
+artist_ids = (root / "discogger_artist_search_pages.h").read_text(encoding="utf-8-sig")
+native_preview = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+master_ids = (root / "discogs.cpp").read_text(encoding="utf-8-sig")
+assert "inline std::string canonical_release_id(" in identity_header
+assert identity_header.count("id = canonical_release_id(number);") == 2
+assert "seen.emplace(canonical_id)" in artist_ids
+assert "hits.push_back({canonical_id, std::string(title)})" in artist_ids
+assert "release_id = canonical_id.c_str();" in master_ids
+assert "discogger_search::canonical_release_id(child_id.c_str())).second" in master_ids
+assert "seen_masters.emplace(discogger_search::canonical_release_id(" in native_preview
+assert "seen_releases.emplace(discogger_search::canonical_release_id(" in native_preview
+assert "Native Discogs numeric identity dedup failed." in native_preview
+assert "00038012673" in (root / "tests/release_id_test.cpp").read_text(encoding="utf-8-sig")
+assert "00038012673" in (root / "tests/artist_search_pages_test.cpp").read_text(encoding="utf-8-sig")
+print("PASS: Discogs numeric identities canonical across native artist/master/release preview.")

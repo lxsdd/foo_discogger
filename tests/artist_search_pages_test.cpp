@@ -14,11 +14,16 @@ int main() {
     assert(hits.size() == 5 && seen.size() == 5);
     assert(hits[1].title == "Kyau & Albert × Maywave");
     assert(!stage_artist_search_hit(hits, seen, "38012673", "duplicate"));
+    assert(!stage_artist_search_hit(hits, seen, "00038012673", "padded duplicate"));
+    assert(hits[0].id == "38012673");
+    assert(stage_artist_search_hit(hits, seen, "000000007", "Padded first occurrence"));
+    assert(hits.back().id == "7" && seen.count("7") == 1);
+    assert(!stage_artist_search_hit(hits, seen, "7", "un-padded duplicate"));
     for (auto id : {"", "0", "-1", "+1", "123abc", "2147483648",
                     "999999999999999999999999"})
         assert(!stage_artist_search_hit(hits, seen, id, "invalid"));
     assert(!stage_artist_search_hit(hits, seen, "123", ""));
-    assert(hits.size() == 5 && seen.size() == 5);
+    assert(hits.size() == 6 && seen.size() == 6);
     assert(continue_artist_search(1, 8, false));
     assert(continue_artist_search(4, 8, false));
     assert(!continue_artist_search(5, 8, false));

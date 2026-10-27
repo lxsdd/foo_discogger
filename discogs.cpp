@@ -2857,6 +2857,13 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 				size_t lkey;
 				size_t found_i = SIZE_MAX;
 
+                // Resolve padded provider IDs before any child/cache lookup.
+                const std::string canonical_id =
+                    discogger_search::canonical_release_id(release_id.c_str());
+                if (canonical_id.empty())
+                    throw foo_discogs_exception("Invalid master version ID; retaining prior list.");
+                release_id = canonical_id.c_str();
+
                 // Modeless master expansion must never mutate cached Release
                 // objects or read a live TreeView child's fields on the worker.
                 // The UI thread cloned partial children before dispatch.
@@ -2994,7 +3001,8 @@ MasterRelease_ptr Discogs::stageMasterVersionPages(
                 const pfc::string8 child_id = JSONAttributeString(child, "id");
                 if (!discogger_search::valid_release_id(child_id.c_str()))
                     throw foo_discogs_exception("Invalid master version ID; retaining prior list.");
-                if (!page_release_ids.emplace(child_id.c_str()).second)
+                if (!page_release_ids.emplace(
+                        discogger_search::canonical_release_id(child_id.c_str())).second)
                     throw foo_discogs_exception("Duplicate master version ID across pages; retaining prior list.");
             }
         },

@@ -19,6 +19,13 @@ inline bool valid_release_id(std::string_view id) {
     return value != 0;
 }
 
+// Discogs IDs are numerical identities, not distinct padded spellings.
+// Canonicalize preview/cache keys without altering any user source metadata.
+inline std::string canonical_release_id(std::string_view id) {
+    if (!valid_release_id(id)) return {};
+    return std::string(id.substr(id.find_first_not_of('0')));
+}
+
 // URL navigation is a lookup hint, never a tag or release-identity approval.
 // Extract only the ID immediately following the expected Discogs path kind.
 // In particular, do not choose the largest number from a release title/slug.
@@ -38,7 +45,7 @@ inline bool parse_discogs_reference(std::string_view input,
         auto number = input.substr(2, input.size() - 3);
         if (!number.empty() && number.front() == '=') number.remove_prefix(1);
         if (!valid_release_id(number)) return false;
-        id.assign(number.data(), number.size());
+        id = canonical_release_id(number);
         return true;
     }
 
@@ -93,7 +100,7 @@ inline bool parse_discogs_reference(std::string_view input,
     if (pos < input.size() && input[pos] == '/') ++pos;
     if (pos < input.size() && input[pos] != '?' && input[pos] != '#')
         return false;
-    id.assign(number.data(), number.size());
+    id = canonical_release_id(number);
     return true;
 }
 } // namespace discogger_search

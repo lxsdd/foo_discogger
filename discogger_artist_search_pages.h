@@ -21,12 +21,13 @@ struct artist_search_hit {
 inline bool stage_artist_search_hit(std::vector<artist_search_hit>& hits,
                                     std::unordered_set<std::string>& seen,
                                     std::string_view id, std::string_view title) {
-    if (!valid_release_id(id) || title.empty() ||
+    const std::string canonical_id = canonical_release_id(id);
+    if (canonical_id.empty() || title.empty() ||
         hits.size() >= max_artist_search_hits) return false;
-    const auto inserted = seen.emplace(id);
+    const auto inserted = seen.emplace(canonical_id);
     if (!inserted.second) return false;
     try {
-        hits.push_back({std::string(id), std::string(title)});
+        hits.push_back({canonical_id, std::string(title)});
     } catch (...) {
         seen.erase(inserted.first);
         throw;

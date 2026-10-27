@@ -37,13 +37,15 @@ Artist_ptr combined_advanced_search_preview(const pfc::array_t<Artist_ptr>& arti
     preview->loaded_releases = false;
     std::unordered_set<std::string> seen_masters, seen_releases;
     auto append_master = [&](const MasterRelease_ptr& master) {
-        if (master && seen_masters.emplace(master->id.get_ptr()).second) {
+        if (master && !discogger_search::canonical_release_id(master->id.get_ptr()).empty() &&
+            seen_masters.emplace(discogger_search::canonical_release_id(master->id.get_ptr())).second) {
             preview->master_releases.append_single(master);
             preview->search_order_master.append_single(true);
         }
     };
     auto append_release = [&](const Release_ptr& release) {
-        if (release && seen_releases.emplace(release->id.get_ptr()).second) {
+        if (release && !discogger_search::canonical_release_id(release->id.get_ptr()).empty() &&
+            seen_releases.emplace(discogger_search::canonical_release_id(release->id.get_ptr())).second) {
             preview->releases.append_single(release);
             preview->search_order_master.append_single(false);
         }
@@ -2500,6 +2502,26 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     runner_qa_native_master_page_transaction();
     runner_qa_native_master_child_isolation();
     runner_qa_native_search_preview_fields();
+    // Exercise the production advanced-search preview in original foobar
+    // Win32/x64 hosts with two numerical aliases per release/master identity.
+    pfc::array_t<Artist_ptr> alias_artists;
+    Artist_ptr first_alias = std::make_shared<Artist>("0");
+    first_alias->releases.append_single(std::make_shared<Release>("38012673"));
+    first_alias->search_order_master.append_single(false);
+    first_alias->master_releases.append_single(std::make_shared<MasterRelease>("37332711"));
+    first_alias->search_order_master.append_single(true);
+    Artist_ptr second_alias = std::make_shared<Artist>("0");
+    second_alias->releases.append_single(std::make_shared<Release>("00038012673"));
+    second_alias->search_order_master.append_single(false);
+    second_alias->master_releases.append_single(std::make_shared<MasterRelease>("00037332711"));
+    second_alias->search_order_master.append_single(true);
+    alias_artists.append_single(first_alias);
+    alias_artists.append_single(second_alias);
+    const Artist_ptr alias_preview = combined_advanced_search_preview(alias_artists);
+    if (alias_preview->releases.get_count() != 1 ||
+        alias_preview->master_releases.get_count() != 1 ||
+        alias_preview->search_order_master.get_count() != 2)
+        throw std::runtime_error("Native Discogs numeric identity dedup failed.");
     // Exercise the same bounded fallback controller used by the real search
     // inside each original Win32/x64 foobar host (no network or user media).
     const auto fallback_plan = discogger_search::build_fallback_plan(
