@@ -174,6 +174,38 @@ int main() {
     assert(!plausible_release_title("", "Artist - Only You"));
     assert(!plausible_release_title("Only You", ""));
 
+    // A partial whole-word title is not a valid reason to skip fallback.
+    // Exact editions and named remixes must remain distinct discovery hints.
+    assert(!plausible_release_title("Only You", "Matt Fax - Only You & Me"));
+    assert(!plausible_release_title("Only You", "Matt Fax - I Love Only You"));
+    assert(!plausible_release_title("Only You", "Matt Fax - I Love — Only You"));
+    assert(!plausible_release_title("Only You", "Matt Fax - Only You (Live)"));
+    assert(!plausible_release_title("Only You (Extended Mix)",
+        "Matt Fax - Only You (Radio Edit)"));
+    assert(!plausible_release_title("Only You (John Smith Remix)",
+        "Matt Fax - Only You (Jane Doe Remix)"));
+    assert(plausible_release_title("Only You (Extended Mix)",
+        "Matt Fax — Only You – Extended Mix"));
+    assert(plausible_release_title("Only You (Extended Mix)",
+        "Matt Fax - Only You")); // unsuffixed master is still review-only
+    assert(plausible_release_title("Only You", "Matt Fax - Only You (Extended Mix)"));
+    assert(plausible_release_title("Café – L’Été",
+        "Estiva — Cafe - L'Ete (Extended Remix)"));
+    assert(!plausible_original_release_title("Matt Fax", "Only You",
+        "Matt Fax - Only You & Me"));
+    assert(!plausible_original_release_title("Matt Fax", "Only You (Extended Mix)",
+        "Matt Fax - Only You (Radio Edit)"));
+    assert(plausible_original_release_title("Matt Fax", "Only You (Extended Mix)",
+        "Matt Fax - Only You (Extended Mix)"));
+    const auto child_title = [](std::string_view value) { return value; };
+    assert(!plausible_original_release_group_title("Matt Fax", "Only You (Extended Mix)",
+        "Matt Fax - Only You (Radio Edit)",
+        std::vector<std::string_view>{"Matt Fax - Only You (Radio Edit)"}, child_title));
+    assert(plausible_original_release_group_title("Matt Fax", "Only You (Extended Mix)",
+        "Matt Fax - Only You (Radio Edit)",
+        std::vector<std::string_view>{"Matt Fax - Only You (Extended Mix)"}, child_title));
+
+
     // Original Discogs results may group a requested version below a
     // compilation/master with a different title. The matching child is a
     // plausible original hit and must not trigger extra fallback requests.

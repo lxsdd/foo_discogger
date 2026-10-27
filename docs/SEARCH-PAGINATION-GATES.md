@@ -24,6 +24,18 @@ no-result matches; the caller can retry after a temporary server failure.
 - Linux C++17 and MSVC Win32/x64 unit tests are part of the ordinary Draft
   PR workflow, followed by the existing full DLL/real host/GUI hard gate.
 
+## Conservative original-result confidence
+
+The original search may contain a complete but unrelated title (for example,
+"Only You & Me" while requesting "Only You") or a different named remix.
+Such results must **not** suppress the bounded review-only fallback. The
+production search helper now compares the full normalized title, or the full
+title following the *first* Discogs artist/title separator, and rejects
+conflicting explicit version suffixes. An unsuffixed master remains a
+possible review-only hit; no heuristic can authorize a tag write or confirm
+a release identity. Positive/negative native and portable regression cases
+cover artist credits, Unicode punctuation, remixes and master children.
+
 ## Limits
 
 These tests do not prove that all four user-reported missing Discogs releases

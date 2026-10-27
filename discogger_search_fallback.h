@@ -222,18 +222,46 @@ inline std::string fold_title_words(std::string_view text) {
     return out;
 }
 inline bool plausible_release_title(std::string_view requested, std::string_view result) {
-    const std::string needle = fold_title_words(without_terminal_mix_suffix(requested));
+    // Only suppress bounded discovery for a complete title, optionally
+    // preceded by a Discogs artist credit. A title occurring inside a
+    // different title ("Only You & Me", "I Love Only You") is NOT evidence.
+    const std::string requested_clean = trim_copy(requested);
+    const std::string result_clean = trim_copy(result);
+    const std::string requested_base = without_terminal_mix_suffix(requested_clean);
+    const std::string result_base = without_terminal_mix_suffix(result_clean);
+    const std::string needle = fold_title_words(requested_base);
     if (needle.size() < 3) return false;
-    const std::string haystack = fold_title_words(result);
-    std::size_t at = haystack.find(needle);
-    while (at != std::string::npos) {
-        if ((at == 0 || haystack[at - 1] == ' ') &&
-            (at + needle.size() == haystack.size() ||
-             haystack[at + needle.size()] == ' '))
-            return true;
-        at = haystack.find(needle, at + 1);
+
+    // Two explicitly named but different edits/remixes must not prevent a
+    // later search for the requested edition. A bare master/title can still
+    // be a useful original hit; identity always remains REVIEW_REQUIRED.
+    const std::string requested_version = fold_title_words(
+        std::string_view(requested_clean).substr(requested_base.size()));
+    const std::string result_version = fold_title_words(
+        std::string_view(result_clean).substr(result_base.size()));
+    if (!requested_version.empty() && !result_version.empty() &&
+        requested_version != result_version) return false;
+
+    const std::string candidate = fold_title_words(result_base);
+    if (candidate == needle) return true;
+    // The FIRST artist/title delimiter must introduce the entire requested
+    // title. Do not match a later nested delimiter in a different title.
+    std::size_t separator_at = std::string_view::npos;
+    std::size_t separator_size = 0;
+    for (const auto separator : {std::string_view(" - "),
+                                 std::string_view(" – "),
+                                 std::string_view(" — ")}) {
+        const auto at = result_base.find(separator);
+        if (at != std::string::npos &&
+            (separator_at == std::string_view::npos || at < separator_at)) {
+            separator_at = at;
+            separator_size = separator.size();
+        }
     }
-    return false;
+    if (separator_at == std::string_view::npos) return false;
+    const std::string candidate_tail = fold_title_words(
+        std::string_view(result_base).substr(separator_at + separator_size));
+    return candidate_tail == needle;
 }
 // A title-only match under a *different explicitly credited artist* is not
 // sufficient evidence to suppress bounded discovery. Keep the original

@@ -470,6 +470,14 @@ assert "without_terminal_mix_suffix" in plan
 assert "build_fallback_plan(" in plan
 assert "unicode-folded title discovery (review required)" in plan
 assert "plausible_original_release_title(" in plan
+confidence = plan.split("inline bool plausible_release_title(", 1)[1].split(
+    "// A title-only match", 1)[0]
+assert "requested_version != result_version" in confidence
+assert "candidate == needle" in confidence
+assert "candidate_tail == needle" in confidence
+assert "separator_at == std::string_view::npos || at < separator_at" in confidence
+assert "haystack.find(needle)" not in confidence
+
 assert "plausible_original_release_group_title(" in plan
 assert "if (key.size() < 3) return plan;" in plan
 assert "title-only discovery (review required)" in plan
