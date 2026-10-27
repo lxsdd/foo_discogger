@@ -1,5 +1,7 @@
 #include "../discogger_search_fallback.h"
+#include "../discogger_search_transaction.h"
 #include <cassert>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -367,5 +369,28 @@ int main() {
     fallback_query_budget unicode_budget(unicode_collab.size());
     assert(unicode_budget.begin() && unicode_budget.begin() && unicode_budget.begin());
     assert(!unicode_budget.begin());
+    // Real search output is not cleared or partially replaced when a later
+    // optional fallback page, preview or abort fails after staging candidates.
+    std::vector<int> previous_exact{101}, previous_other{202};
+    bool aborted = false;
+    try {
+        staged_search_result_pair<std::vector<int>> partial;
+        partial.exact.push_back(303);
+        partial.other.push_back(404);
+        throw std::runtime_error("synthetic late provider failure");
+    } catch (const std::runtime_error&) {
+        aborted = true;
+    }
+    assert(aborted && previous_exact == std::vector<int>{101} &&
+           previous_other == std::vector<int>{202});
+    staged_search_result_pair<std::vector<int>> completed;
+    completed.exact.push_back(505);
+    completed.other.push_back(606);
+    completed.publish(previous_exact, previous_other);
+    assert(previous_exact == std::vector<int>{505} &&
+           previous_other == std::vector<int>{606});
+    staged_search_result_pair<std::vector<int>> no_results;
+    no_results.publish(previous_exact, previous_other);
+    assert(previous_exact.empty() && previous_other.empty());
     return 0;
 }

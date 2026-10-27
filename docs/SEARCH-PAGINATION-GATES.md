@@ -95,3 +95,19 @@ nonnumeric IDs are rejected. Source tags, CUE, media and artwork are untouched.
 Portable C++17, MSVC Win32/x64, source-contract and original foobar host
 synthetic GUI checks are required on the final exact SHA. None substitutes
 for protected authenticated native live-search or owner acceptance.
+
+## Advanced artist/title search output transaction
+
+The real `DiscogsInterface::search_amt_artist` now stages both exact and
+alternative artist buckets throughout original and optional release search,
+bounded pagination, native preview loading and sorting. The two buckets are
+published only after the final cancellation check. Malformed pages, exhausted
+HTTP 429 retries, preview errors or user abort cannot expose partially
+assembled output arrays to the caller. A completed zero-result search replaces
+old rows with empty buckets. This protects the caller-facing result transaction;
+it does not authorize tag writes or claim rollback of unrelated external caches.
+
+The same publication barrier is exercised by portable C++17 and MSVC x86/x64
+negative/positive tests and by actual original-foobar native Win32/x64 GUI QA
+using SDK `pfc::array_t<Artist_ptr>`. Protected OAuth live-search acceptance
+remains separate from these synthetic source/host checks.

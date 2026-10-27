@@ -2883,3 +2883,24 @@ assert "Native Discogs numeric identity dedup failed." in native_preview
 assert "00038012673" in (root / "tests/release_id_test.cpp").read_text(encoding="utf-8-sig")
 assert "00038012673" in (root / "tests/artist_search_pages_test.cpp").read_text(encoding="utf-8-sig")
 print("PASS: Discogs numeric identities canonical across native artist/master/release preview.")
+
+# Advanced artist/title search is a staged two-bucket transaction. Provider
+# errors, malformed fallback pages, preview exceptions and cancellation must
+# never clear previously visible caller arrays before the final commit.
+advanced_source = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+advanced = advanced_source.split("rppair_t DiscogsInterface::search_amt_artist(", 1)[1].split(
+    "pfc::array_t<JSONParser_ptr> DiscogsInterface::get_all_pages(", 1)[0]
+assert '#include "discogger_search_transaction.h"' in advanced_source
+assert "staged_search_result_pair<pfc::array_t<Artist_ptr>> staged_matches;" in advanced
+assert "exact_matches.force_reset();" not in advanced
+assert "other_matches.force_reset();" not in advanced
+assert "staged_matches.exact, staged_matches.other, qry_m_r_found" in advanced
+assert "staged_matches.publish(exact_matches, other_matches);" in advanced
+assert advanced.index("p_abort.check();\n    staged_matches.publish(") > advanced.index(
+    "pfc::list_to_array(om, lp);")
+assert advanced.count("staged_matches.publish(") == 1
+assert "DISCOGGER_NATIVE_SEARCH_RESULT_TRANSACTION_QA=PASS" in (
+    root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+assert "staged_search_result_pair<std::vector<int>>" in (
+    root / "tests/collaboration_fallback_test.cpp").read_text(encoding="utf-8-sig")
+print("PASS: advanced Discogs search publishes complete exact/other buckets only after final abort check.")

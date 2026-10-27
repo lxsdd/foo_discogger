@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "discogger_search_fallback.h"
+#include "discogger_search_transaction.h"
 #include "discogger_artist_search_pages.h"
 #include <array>
 #include <unordered_set>
@@ -703,8 +704,10 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 
 	pfc::string8 json;
 
-	exact_matches.force_reset();
-	other_matches.force_reset();
+    // Keep caller-visible results intact through original/fallback pagination,
+    // preview, provider errors and user cancellation. Empty successful searches
+    // still publish empty buckets at the final completion barrier.
+    discogger_search::staged_search_result_pair<pfc::array_t<Artist_ptr>> staged_matches;
 
 	pfc::string8 params;
 
@@ -781,8 +784,8 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 		map_found_artists,
 		set_bad_artists,
 		mva_masters,
-		exact_matches,
-		other_matches,
+		staged_matches.exact,
+		staged_matches.other,
 		qry_m_r_found
 	};
 
@@ -950,7 +953,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         presentation_query["artist="].first.clear();
     parse_amt_info presentation_pai = {
         presentation_query, map_found_artists, set_bad_artists, mva_masters,
-        exact_matches, other_matches, qry_m_r_found
+        staged_matches.exact, staged_matches.other, qry_m_r_found
     };
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
     discogger_live_search_qa::worker_phase.store(5);
@@ -981,6 +984,12 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
 	lp.reorder(order.get_ptr());
 
 	pfc::list_to_array(om, lp);
+
+    // Publish both buckets only after *all* original and optional phases,
+    // preview loading, sorting and the final cancellation check succeeded.
+    // A late 429, malformed page, failed preview or abort leaves prior output.
+    p_abort.check();
+    staged_matches.publish(exact_matches, other_matches);
 
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
     discogger_live_search_qa::worker_phase.store(7);

@@ -19,6 +19,7 @@
 #include "discogs_interface.h"
 #include "discogger_search_visibility.h"
 #include "discogger_search_fallback.h"
+#include "discogger_search_transaction.h"
 #include <unordered_set>
 #include <iterator>
 
@@ -2502,6 +2503,32 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     runner_qa_native_master_page_transaction();
     runner_qa_native_master_child_isolation();
     runner_qa_native_search_preview_fields();
+    // Actual foobar Win32/x64 pfc::array_t publication barrier: an optional
+    // provider/preview exception cannot expose half-built exact/other rows.
+    pfc::array_t<Artist_ptr> visible_exact, visible_other;
+    visible_exact.append_single(std::make_shared<Artist>("8001"));
+    visible_other.append_single(std::make_shared<Artist>("8002"));
+    bool injected_failure = false;
+    try {
+        discogger_search::staged_search_result_pair<pfc::array_t<Artist_ptr>> discarded;
+        discarded.exact.append_single(std::make_shared<Artist>("8003"));
+        discarded.other.append_single(std::make_shared<Artist>("8004"));
+        throw std::runtime_error("Injected optional provider failure before publication.");
+    } catch (const std::runtime_error&) {
+        injected_failure = true;
+    }
+    if (!injected_failure || visible_exact.get_count() != 1 ||
+        visible_other.get_count() != 1 || visible_exact[0]->id != "8001" ||
+        visible_other[0]->id != "8002")
+        throw std::runtime_error("Native advanced-search failure leaked staged rows.");
+    discogger_search::staged_search_result_pair<pfc::array_t<Artist_ptr>> completed;
+    completed.exact.append_single(std::make_shared<Artist>("8005"));
+    completed.other.append_single(std::make_shared<Artist>("8006"));
+    completed.publish(visible_exact, visible_other);
+    if (visible_exact.get_count() != 1 || visible_other.get_count() != 1 ||
+        visible_exact[0]->id != "8005" || visible_other[0]->id != "8006")
+        throw std::runtime_error("Native advanced-search publication failed.");
+    log_msg("DISCOGGER_NATIVE_SEARCH_RESULT_TRANSACTION_QA=PASS");
     // Exercise the production advanced-search preview in original foobar
     // Win32/x64 hosts with two numerical aliases per release/master identity.
     pfc::array_t<Artist_ptr> alias_artists;
