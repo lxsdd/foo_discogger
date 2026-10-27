@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include <unordered_set>
+#include <string>
 #include <vector>
 #include "jansson/jansson.h"
 
@@ -13,6 +14,8 @@
 #include "ol_cache.h"
 #include "discogger_cache_pages.h"  // paginated release list completeness guard
 #include "discogger_master_versions.h"
+#include "discogger_master_page_transaction.h"
+#include "discogger_release_id.h"
 
 using namespace Discogs;
 
@@ -2843,15 +2846,25 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
                 // objects or read a live TreeView child's fields on the worker.
                 // The UI thread cloned partial children before dispatch.
                 if (isolated_versions) {
-                    if ((query_mode & SearchMode::AT) &&
-                        !master_release->loaded_releases && master_release->sub_releases.get_count()) {
+                    // An isolated snapshot may already contain a partial
+                    // child even in full (query_mode=0) pagination. Update
+                    // that clone by identity instead of silently leaving
+                    // its preview stale. In AT partial-mode, unknown child
+                    // IDs remain excluded; full mode may append new IDs.
+                    if (!master_release->loaded_releases &&
+                        master_release->sub_releases.get_count()) {
                         found_i = discogger_master::find_partial_version_index(
                             master_release->sub_releases.get_count(), [&](size_t candidate) {
                                 const auto& child = master_release->sub_releases[candidate];
                                 return child && child->id.equals(release_id);
                             });
-                        if (found_i == SIZE_MAX) continue;
-                        release = master_release->sub_releases[found_i];
+                        if (found_i != SIZE_MAX) {
+                            release = master_release->sub_releases[found_i];
+                        } else if (query_mode & SearchMode::AT) {
+                            continue;
+                        } else {
+                            release = std::make_shared<Release>(release_id.get_ptr());
+                        }
                     } else {
                         release = std::make_shared<Release>(release_id.get_ptr());
                     }
@@ -2930,6 +2943,52 @@ void Discogs::parseMasterVersions(json_t *root, MasterRelease *master_release, i
 			}
 		}
 	}
+}
+
+
+// The non-modeless master loader also needs the same fail-closed staging
+// contract as the modeless UI path. A later page with invalid child IDs or a
+// cancellation must not leave a half-updated shared master or cached release.
+MasterRelease_ptr Discogs::stageMasterVersionPages(
+    const MasterRelease& current, const std::vector<json_t*>& roots,
+    int query_mode, const std::function<void()>& check_abort) {
+    // Discogs pagination can shift while requests are in flight. Repeated
+    // release identities make the assembled page set ambiguous: abort the
+    // entire transaction rather than silently hiding a missing version.
+    std::unordered_set<std::string> page_release_ids;
+    return discogger_master::stage_master_pages<MasterRelease_ptr>(
+        roots.size(),
+        [&]() {
+            MasterRelease_ptr staged = std::make_shared<MasterRelease>(current.id.c_str());
+            staged->loaded_releases = current.loaded_releases;
+            for (const Release_ptr& child : current.sub_releases) {
+                if (!child)
+                    throw foo_discogs_exception("Null existing master-version child; retaining prior list.");
+                staged->sub_releases.append_single(std::make_shared<Release>(*child));
+            }
+            return staged;
+        },
+        [&](std::size_t page) {
+            const json_t* versions = json_object_get(roots[page], "versions");
+            if (!json_is_array(versions))
+                throw foo_discogs_exception("Missing master versions array; retaining prior list.");
+            for (std::size_t i = 0; i < json_array_size(versions); ++i) {
+                json_t* child = json_array_get(versions, i);
+                if (!json_is_object(child))
+                    throw foo_discogs_exception("Invalid master version object; retaining prior list.");
+                const pfc::string8 child_id = JSONAttributeString(child, "id");
+                if (!discogger_search::valid_release_id(child_id.c_str()))
+                    throw foo_discogs_exception("Invalid master version ID; retaining prior list.");
+                if (!page_release_ids.emplace(child_id.c_str()).second)
+                    throw foo_discogs_exception("Duplicate master version ID across pages; retaining prior list.");
+            }
+        },
+        [&](MasterRelease_ptr& staged, std::size_t page) {
+            // Isolated mode never retrieves/mutates canonical cached Release
+            // objects. Partial AT children are deep-copied by the snapshot.
+            parseMasterVersions(roots[page], staged.get(), query_mode, true);
+        },
+        check_abort);
 }
 
 void Discogs::parseArtist(Artist *artist, json_t *root) {
@@ -3466,6 +3525,9 @@ void Discogs::Artist::load_releases(threaded_process_status &p_status, abort_cal
 }
 
 void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, abort_callback &p_abort, bool throw_all, pfc::string8 offlineArtistId, db_fetcher* dbfetcher, int query_mode, bool isolated_versions) {
+    // Both modeless and legacy callers use a private snapshot; the legacy
+    // cache-backed parsing path could mutate child objects before page 2.
+    (void)isolated_versions;
 
 	if (loaded_releases || !id.get_length()) {
 		return;
@@ -3519,10 +3581,14 @@ void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, ab
 		const size_t cPages = pages.get_count();
         if (!cPages) throw foo_discogs_exception("Master versions pages were empty; retaining previous results.");
 
+        std::vector<json_t*> roots;
+        roots.reserve(cPages);
         for (size_t page = 0; page < cPages; ++page) {
             p_abort.check();
-            parseMasterVersions(pages[page]->root, this, query_mode, isolated_versions);
+            roots.push_back(pages[page]->root);
         }
+        MasterRelease_ptr staged = stageMasterVersionPages(
+            *this, roots, query_mode, [&p_abort]() { p_abort.check(); });
         if (btransient && offline_can_write) {
             discogger_cache::directory_cache_transaction tx(
                 std::filesystem::u8path(n8_rel_path.c_str()),
@@ -3542,6 +3608,11 @@ void Discogs::MasterRelease::load_releases(threaded_process_status &p_status, ab
                 }
             }
         }
+        // Only a fully parsed and cancellation-checked snapshot becomes
+        // visible. Disk publication is independent; a failed offline save
+        // never exposes a partially parsed master-version list.
+        p_abort.check();
+        sub_releases = std::move(staged->sub_releases);
 		loaded_releases = true;
 	}
 	catch (foo_discogs_exception &e) {

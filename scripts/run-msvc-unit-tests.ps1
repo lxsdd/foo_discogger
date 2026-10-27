@@ -34,6 +34,7 @@ $Sources = @(
     'duration_match_test.cpp',
     'result_alignment_test.cpp',
     'release_id_test.cpp',
+    'master_page_transaction_test.cpp',
     'release_tree_snapshot_test.cpp',
     'write_safety_test.cpp',
     'tag_deletion_preflight_test.cpp',
