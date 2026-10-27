@@ -132,12 +132,12 @@ int main() {
     // both requests are still distinct and must never auto-confirm identity.
     auto same_partner_version = build_fallback_plan(
         "Producer x Sunrise", "Sunrise (Extended Mix)", "");
-    // An "x" collaboration alone must not invent a canonical primary
-    // artist; the strict release-only query is reserved for featuring.
+    // An "x" collaboration contributes a review-only first-artist search
+    // hint, never a canonical artist identity or automatic tag match.
     assert(same_partner_version.size() == 3 && same_partner_version[0].artist_filter == "Producer");
     assert(same_partner_version[1].title == "Sunrise (Extended Mix)");
     assert(same_partner_version[2].q == "Sunrise" &&
-           same_partner_version[1].title.empty());
+           same_partner_version[2].title.empty());
     assert(same_partner_version[2].artist_filter.empty());
     // Short/generic release titles must not suppress a useful track search.
     // In particular, the Discogs title= filter refers to the RELEASE title,
@@ -330,7 +330,7 @@ int main() {
     assert(unicode_title[1].q == "Café – L’Été");
     assert(unicode_title[2].q == "cafe l ete");
     assert(unicode_title[2].label == "unicode-folded title discovery (review required)");
-    assert(encode_fallback_query(unicode_title[1]) == "q=%22cafe%20l%20ete%22");
+    assert(encode_fallback_query(unicode_title[2]) == "q=%22cafe%20l%20ete%22");
     const auto unicode_collab = build_fallback_plan(
         "Kyau & Albert × Maywave", "Café – L’Été", "");
     assert(unicode_collab.size() == 3);

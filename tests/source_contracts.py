@@ -510,25 +510,29 @@ assert "haystack.find(needle)" not in confidence
 assert "plausible_original_release_group_title(" in plan
 assert "if (key.size() < 3) return plan;" in plan
 assert "title-only discovery (review required)" in plan
-# Real authenticated Discogs probe for release 2783977 established a strict
-# artist+release_title+type query where broad "Sun & Moon" pages 1-2 failed.
-# Only explicit featuring credits produce this extra review-only fallback,
-# and independent UTF-8 values must be percent-encoded as fields.
+# Authenticated Discogs probe for 2783977 established the dedicated
+# artist+release_title+type index where broad "Sun & Moon" pages 1-2 failed.
+# The same review-only index now precedes broad discovery for all substantive
+# release titles; explicit collaboration credits may use their first artist.
+# Track-only discovery must never be sent to release_title.
 assert "primary_artist_before_featuring(" in plan
-assert 'const std::string primary = primary_artist_before_featuring(initial_artist);' in plan
+assert "primary_artist_before_explicit_collaboration(" in plan
+assert "release_discovery_artist(" in plan
+assert "const std::string indexed_artist = release_discovery_artist(initial_artist);" in plan
 assert '"&release_title="' in plan and '"&type=release"' in plan
 assert "percent_encode_search_value(candidate.artist_filter)" in plan
 assert "percent_encode_search_value(candidate.release_title_filter)" in plan
 assert 'if (!candidate.q.empty() || !candidate.title.empty() ||' in plan
 assert 'candidate.release_title_filter.empty()) return {};' in plan
 assert "if (!using_track_title) {" in plan
-assert 'plan.push_back({"featured primary artist and release title (review required)",' in plan
-assert plan.index('plan.push_back({"featured primary artist and release title (review required)",') < plan.index('plan.push_back({"collaboration partner and title",')
+assert 'plan.push_back({"artist and release title (review required)",' in plan
+assert plan.index('plan.push_back({"artist and release title (review required)",') < plan.index('plan.push_back({"collaboration partner and title",')
+assert plan.index("if (!using_track_title) {") < plan.index("const std::string indexed_artist = release_discovery_artist(initial_artist);")
 # A guest/title query can return an unrelated release and stop the fallback.
 # Therefore the stricter, authenticated primary-artist query comes FIRST.
 assert "if (!original_has_candidates || !original_title_plausible)" in search
 assert 'presentation_query["artist="].first.clear();' in search
-print("PASS: safe, bounded featured-primary fallback follows empty or implausible original release-title results.")
+print("PASS: safe, bounded dedicated release-title index precedes partner and broad fallback.")
 print("PASS: artist refresh, HTTP rate-limit routing and collaboration fallback are wired.")
 print("NOTE: full component compilation and live Discogs/foobar testing are separate gates.")
 
