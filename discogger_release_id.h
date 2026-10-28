@@ -26,6 +26,19 @@ inline std::string canonical_release_id(std::string_view id) {
     return std::string(id.substr(id.find_first_not_of('0')));
 }
 
+// Strict positive integer conversion for master/release cache keys. The
+// numeric result is assigned only on success: malformed provider identities
+// cannot alias the synthetic artist 0 or an existing cached master.
+inline bool parse_positive_discogs_id(std::string_view id,
+                                      unsigned long& result) noexcept {
+    if (!valid_release_id(id)) return false;
+    unsigned long parsed = 0;
+    for (const char digit : id)
+        parsed = parsed * 10UL + static_cast<unsigned long>(digit - '0');
+    result = parsed;
+    return true;
+}
+
 // URL navigation is a lookup hint, never a tag or release-identity approval.
 // Extract only the ID immediately following the expected Discogs path kind.
 // In particular, do not choose the largest number from a release title/slug.
