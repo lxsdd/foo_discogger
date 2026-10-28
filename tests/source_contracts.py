@@ -1624,8 +1624,8 @@ assert "append ? m_alist.Get_Other_Artist_Count() : 0" in frag
 assert "exact_only_requested, total_exact, total_other" in frag
 assert "const bool no_matches = !(total_exact || total_other);" in frag
 assert "const bool incoming_results =" in frag
-assert "(!append || (incoming_results && !m_alist.Get_Selected_Id().get_length()))" in frag
-assert "if (update_preview)" in frag
+assert "if (advanced_mode && (!append || (incoming_results && !artist_selected)))" in frag
+assert "switch (discogger_search::decide_advanced_preview_action(" in frag
 assert "const bool no_matches = !(p_artist_exact_matches.get_count()" not in frag
 assert "search_visibility_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "search_visibility_test.cpp" in wf_gate
