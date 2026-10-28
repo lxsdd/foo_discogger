@@ -1428,8 +1428,15 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
         // A successful new search may return a valid artist but no versions.
         // Clear the previous release tree instead of leaving a stale release
         // available for Next/tagging. Empty append notifications do not clear.
-        cupdRelSrc clear_source(updRelSrc::Undef);
-        m_dctree.on_get_artist_done(clear_source, nullptr);
+        if (preview) {
+            // Keep the validated artist identity and its empty catalog;
+            // this clears the release tree without entering the legacy
+            // null-artist tracker path during a native search callback.
+            ShowArtistSearchResults(preview);
+        } else {
+            cupdRelSrc clear_source(updRelSrc::Undef);
+            m_dctree.on_get_artist_done(clear_source, nullptr);
+        }
         break;
     }
     case discogger_search::advanced_preview_action::keep:
@@ -2662,10 +2669,14 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     empty_artist->loaded_releases = true;
     pfc::array_t<Artist_ptr> empty_artist_rows;
     empty_artist_rows.append_single(empty_artist);
+    log_msg("DISCOGGER_NATIVE_EMPTY_VERSION_BEGIN");
     on_search_artist_done(exact, empty_artist_rows, false);
+    log_msg("DISCOGGER_NATIVE_EMPTY_VERSION_CALLBACK_RETURNED");
     if (m_dctree.Get_Size() != 0 || m_alist.Get_Artists().get_count() != 1)
         throw std::runtime_error("Native empty-version search retained stale selectable release tree.");
+    log_msg("DISCOGGER_NATIVE_EMPTY_VERSION_CLEARED");
     on_search_artist_done(exact, alternatives, false);
+    log_msg("DISCOGGER_NATIVE_EMPTY_VERSION_RESTORED");
     if (m_dctree.Get_Size() != initial_tree)
         throw std::runtime_error("Native release tree failed to restore after empty-version search.");
 
