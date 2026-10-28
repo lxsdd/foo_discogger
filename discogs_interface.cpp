@@ -331,6 +331,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 	ukmArtist->loaded_releases = false;
 
 	for (MasterRelease_ptr mr : fakeArtist->master_releases) {
+        if (!mr || !discogger_search::valid_release_id(mr->id.c_str())) continue;
 
 		bool bskip_preview_and_stats = false;
 
@@ -383,6 +384,9 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 		if (mr->artists.get_count()) {
 
 			for (ReleaseArtist_ptr a : mr->artists) {
+                if (!a || !discogger_search::valid_release_id(a->id.c_str())) continue;
+                const std::string canonical_artist_id =
+                    discogger_search::canonical_release_id(a->id.c_str());
 
 				bool b_add_new_artist = true;
 				bool bexact_name = pfc::stringLite::g_equalsCaseInsensitive(a->name, query_artist.c_str());
@@ -392,7 +396,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 				if (bexact_name) {
 					if (pai.exact_matches.get_count()) {
 						Artist_ptr last_exact = pai.exact_matches[pai.exact_matches.get_count() - 1];
-						b_add_new_artist = atoi(last_exact->id) != atoi(a->id);
+						b_add_new_artist = !discogger_search::same_positive_discogs_id(last_exact->id.c_str(), a->id.c_str());
 						if (!b_add_new_artist) {
 							tmpArtist = last_exact;
 						}
@@ -401,7 +405,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 				else {
 					if (pai.other_matches.get_count()) {
 						Artist_ptr last_other = pai.other_matches[pai.other_matches.get_count() - 1];
-						b_add_new_artist = atoi(last_other->id) != atoi(a->id);
+						b_add_new_artist = !discogger_search::same_positive_discogs_id(last_other->id.c_str(), a->id.c_str());
 						if (!b_add_new_artist) {
 							tmpArtist = last_other;
 						}
@@ -410,12 +414,12 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 
 				if (b_add_new_artist) {
 
-					auto find_art = pai.map_artists.find(a->id.c_str());
+					auto find_art = pai.map_artists.find(canonical_artist_id);
 					b_add_new_artist = find_art == pai.map_artists.end();
 
 					if (b_add_new_artist) {
-						tmpArtist = std::make_shared<Artist>(a->id);
-						pai.map_artists.emplace(a->id, tmpArtist);
+						tmpArtist = std::make_shared<Artist>(canonical_artist_id.c_str());
+						pai.map_artists.emplace(canonical_artist_id, tmpArtist);
 					}
 					else {
 						tmpArtist = find_art->second;
@@ -457,8 +461,10 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 
 				a->full_artist = tmpArtist;
 
-				size_t lkey = encode_mr(atoi(tmpArtist->id), atoi(mr->id));
-				add_master_release_to_cache(lkey, mr);
+				unsigned long ca = 0, ci = 0;
+                if (discogger_search::parse_preview_cache_ids(
+                        tmpArtist->id.c_str(), mr->id.c_str(), false, ca, ci))
+                    add_master_release_to_cache(encode_mr(static_cast<int>(ca), ci), mr);
 
 				if (b_add_new_artist) {
 					if (bexact_name) {
@@ -489,8 +495,10 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 			no_checkArtist->master_releases.add_item(mr);
 			no_checkArtist->search_order_master.add_item(true);
 
-				size_t lkey = encode_mr(atoi(no_checkArtist->id), atoi(mr->id));
-				add_master_release_to_cache(lkey, mr);
+				unsigned long ca = 0, ci = 0;
+            if (discogger_search::parse_preview_cache_ids(
+                    no_checkArtist->id.c_str(), mr->id.c_str(), true, ca, ci))
+                add_master_release_to_cache(encode_mr(static_cast<int>(ca), ci), mr);
 			if (b_add_new_artist) {
 				if (bexact_name) {
 					pai.exact_matches.add_item(std::move(no_checkArtist));
@@ -507,10 +515,13 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 	ctraffic = 0;
 
 	for (Release_ptr r : fakeArtist->releases) {
+        if (!r || !discogger_search::valid_release_id(r->id.c_str())) continue;
 
 		bool bskip_preview_and_stats = false;
 
-		if (atoi(r->master_id)) {
+		bool has_master = false;
+        if (!discogger_search::parse_master_link(r->master_id.c_str(), has_master) ||
+            has_master) {
 
 			--va_res_cap.second;
 			continue;
@@ -584,6 +595,9 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 			//cached releases have artists...
 
 			for (ReleaseArtist_ptr a : r->artists) {
+                if (!a || !discogger_search::valid_release_id(a->id.c_str())) continue;
+                const std::string canonical_artist_id =
+                    discogger_search::canonical_release_id(a->id.c_str());
 
 				bool b_add_new_artist = true;
 				bool bexact_name = pfc::stringLite::g_equalsCaseInsensitive(a->name, query_artist.c_str());
@@ -591,7 +605,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 				Artist_ptr tmpArtist;
 
 				std::map<std::string, Artist_ptr>::iterator it;
-				it = pai.map_artists.find(a->id.get_ptr());
+				it = pai.map_artists.find(canonical_artist_id);
 
 				b_add_new_artist = it == pai.map_artists.end();
 
@@ -650,8 +664,10 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 
 				// end load artist
 
-				size_t lkey = encode_mr(atoi(tmpArtist->id), atoi(r->id));
-				add_release_to_cache(lkey, r);
+				unsigned long ca = 0, ci = 0;
+                if (discogger_search::parse_preview_cache_ids(
+                        tmpArtist->id.c_str(), r->id.c_str(), false, ca, ci))
+                    add_release_to_cache(encode_mr(static_cast<int>(ca), ci), r);
 
 				if (b_add_new_artist) {
 					if (bexact_name) {
@@ -688,8 +704,10 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 			no_checkArtist->search_order_master.add_item(false);
 
 			if (!bskip_preview_and_stats) {
-				size_t lkey = encode_mr(atoi(no_checkArtist->id), atoi(r->id));
-				add_release_to_cache(lkey, r);
+				unsigned long ca = 0, ci = 0;
+                if (discogger_search::parse_preview_cache_ids(
+                        no_checkArtist->id.c_str(), r->id.c_str(), true, ca, ci))
+                    add_release_to_cache(encode_mr(static_cast<int>(ca), ci), r);
 			}
 
 			if (b_add_new_artist) {

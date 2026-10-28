@@ -39,6 +39,32 @@ inline bool parse_positive_discogs_id(std::string_view id,
     return true;
 }
 
+// Strict preview identity: malformed IDs never compare equal through atoi.
+inline bool same_positive_discogs_id(std::string_view a, std::string_view b) {
+    const auto canonical = canonical_release_id(a);
+    return !canonical.empty() && canonical == canonical_release_id(b);
+}
+// Artist zero is reserved for explicit synthetic unknown-artist previews.
+// On failure neither output may be changed.
+inline bool parse_preview_cache_ids(std::string_view artist, std::string_view item,
+                                    bool synthetic_unknown_artist,
+                                    unsigned long& artist_out,
+                                    unsigned long& item_out) noexcept {
+    unsigned long a = 0, r = 0;
+    if (!parse_positive_discogs_id(item, r) ||
+        (!synthetic_unknown_artist && !parse_positive_discogs_id(artist, a)))
+        return false;
+    artist_out = a; item_out = r;
+    return true;
+}
+// Invalid nonzero master links must never masquerade as standalone releases.
+inline bool parse_master_link(std::string_view raw, bool& has_master) noexcept {
+    if (raw.empty() || raw == "0") { has_master = false; return true; }
+    unsigned long value = 0;
+    if (!parse_positive_discogs_id(raw, value)) return false;
+    has_master = true;
+    return true;
+}
 // URL navigation is a lookup hint, never a tag or release-identity approval.
 // Extract only the ID immediately following the expected Discogs path kind.
 // In particular, do not choose the largest number from a release title/slug.

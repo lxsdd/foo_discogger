@@ -39,6 +39,38 @@ int main() {
         assert(numeric == 777); // never overwrite a cache-key output on failure
     }
 
+    using discogger_search::same_positive_discogs_id;
+    using discogger_search::parse_preview_cache_ids;
+    using discogger_search::parse_master_link;
+    assert(same_positive_discogs_id("00038012673", "38012673"));
+    for (const char* bad : {"", "0", "123junk", "2147483648"})
+        assert(!same_positive_discogs_id(bad, bad));
+    assert(!same_positive_discogs_id("38012673", "37332711"));
+    unsigned long ca = 777, ci = 888;
+    for (const char* release : {"38012673", "37332711", "36397609",
+                                "36819730", "35534398"}) {
+        assert(parse_preview_cache_ids("00012345", release, false, ca, ci));
+        assert(ca == 12345 && ci > 0);
+    }
+    for (const char* invalid : {"", "0", "-1", "123junk", "2147483648",
+                                "999999999999999999999"}) {
+        ca = 777; ci = 888;
+        assert(!parse_preview_cache_ids(invalid, "38012673", false, ca, ci));
+        assert(ca == 777 && ci == 888);
+        assert(!parse_preview_cache_ids("12345", invalid, false, ca, ci));
+        assert(ca == 777 && ci == 888);
+    }
+    assert(parse_preview_cache_ids("unknown", "00038012673", true, ca, ci));
+    assert(ca == 0 && ci == 38012673);
+    bool has_master = true;
+    for (const char* standalone : {"", "0"})
+        assert(parse_master_link(standalone, has_master) && !has_master);
+    for (const char* linked : {"38012673", "00037332711"})
+        assert(parse_master_link(linked, has_master) && has_master);
+    for (const char* bad : {"000", "123junk", "-1", "2147483648"}) {
+        has_master = true;
+        assert(!parse_master_link(bad, has_master) && has_master);
+    }
     struct good_case { const char* text; discogs_reference_kind kind; const char* id; };
     for (const auto& test : {
         good_case{"https://www.discogs.com/release/38012673-1000-Years-2026", discogs_reference_kind::release, "38012673"},

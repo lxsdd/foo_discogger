@@ -2972,3 +2972,17 @@ for case in ("2147483648", "101garbage", "000101", "38012673"):
     assert case in artist_activation_native
 assert "DISCOGGER_NATIVE_ARTIST_ID_TRACER_QA=PASS" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 print("PASS: strict native artist ID/tracer/profile and synthetic aggregate separation.")
+
+# Native search-preview cache identity must not alias malformed or padded IDs.
+preview = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig").split(
+    "void DiscogsInterface::process_amt_parsed_fake_artist(", 1)[1].split(
+    "rppair_t DiscogsInterface::search_amt_artist(", 1)[0]
+assert "atoi(" not in preview
+assert preview.count("parse_preview_cache_ids(") == 4
+assert preview.count("canonical_release_id(a->id.c_str())") == 2
+assert preview.count("valid_release_id(a->id.c_str())") == 2
+assert "parse_master_link(r->master_id.c_str(), has_master)" in preview
+assert "same_positive_discogs_id(last_exact->id.c_str(), a->id.c_str())" in preview
+assert "same_positive_discogs_id(last_other->id.c_str(), a->id.c_str())" in preview
+assert preview.count("pai.map_artists.emplace(canonical_artist_id, tmpArtist)") == 2
+print("PASS: native preview canonical IDs, master links and cache keys are strictly validated.")
