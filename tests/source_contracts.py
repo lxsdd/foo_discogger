@@ -1694,7 +1694,8 @@ print("PASS: canonical artist preview and typed child identity unions wired to n
 ui = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 trigger = ui[ui.index("void CFindReleaseDialog::trigger_release("):
              ui.index("void CFindReleaseDialog::", ui.index("void CFindReleaseDialog::trigger_release(") + 1)]
-assert "discogger_search::valid_release_id(release_id.c_str())" in trigger
+assert "const pfc::string8 canonical_id = discogger_search::canonical_release_id(release_id.c_str()).c_str();" in trigger
+assert "if (!canonical_id.get_length()) {" in trigger
 assert "std::atoi(release_id)" not in trigger
 assert "release_id_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 assert "release_id_test.cpp" in (root / ".github/workflows/validation.yml").read_text(encoding="utf-8-sig")
