@@ -93,6 +93,7 @@ int main() {
         good_case{"https://api.discogs.com/releases/38012673", discogs_reference_kind::release, "38012673"},
         good_case{"https://api.discogs.com/releases/37332711?source=copy", discogs_reference_kind::release, "37332711"},
         good_case{"HTTPS://API.DISCOGS.COM/RELEASES/00036397609", discogs_reference_kind::release, "36397609"},
+        good_case{"https://api.discogs.com/releases/36397609", discogs_reference_kind::release, "36397609"},
         good_case{"api.discogs.com/releases/36819730#view", discogs_reference_kind::release, "36819730"},
         good_case{"https://api.discogs.com/releases/35534398/", discogs_reference_kind::release, "35534398"},
         good_case{"https://api.discogs.com/artists/00012345", discogs_reference_kind::artist, "12345"}

@@ -1701,7 +1701,7 @@ assert '"https://api.discogs.com/"' in release_refs
 assert 'if (api_path) return false;' in release_refs
 assert 'discogs_ascii_prefix(input, path)' in release_refs
 for reference_id in ("38012673", "37332711", "36397609", "36819730", "35534398"):
-    assert f"api.discogs.com/releases/{reference_id}" in release_ref_tests
+    assert f"api.discogs.com/releases/{reference_id}" in release_ref_tests.lower()
 assert "DISCOGGER_NATIVE_DIRECT_REFERENCE_QA=PASS" in ui
 print("PASS: direct release IDs, official API/share links and native parser safety validated.")
 
