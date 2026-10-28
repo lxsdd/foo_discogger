@@ -22,6 +22,23 @@ int main() {
     for (const auto bad : {"", "00000", "2147483648", "123x"})
         assert(canonical_release_id(bad).empty());
 
+    using discogger_search::parse_positive_discogs_id;
+    unsigned long numeric = 777;
+    for (const char* id : {"38012673", "37332711", "36397609",
+                            "36819730", "35534398", "00038012673",
+                            "2147483647"}) {
+        assert(parse_positive_discogs_id(id, numeric));
+        assert(numeric > 0 && numeric <= static_cast<unsigned long>(INT_MAX));
+    }
+    assert(parse_positive_discogs_id("00038012673", numeric));
+    assert(numeric == 38012673UL);
+    for (const char* bad : {"", "0", "000", " 123", "-1", "123junk",
+                            "2147483648", "99999999999999999999"}) {
+        numeric = 777;
+        assert(!parse_positive_discogs_id(bad, numeric));
+        assert(numeric == 777); // never overwrite a cache-key output on failure
+    }
+
     struct good_case { const char* text; discogs_reference_kind kind; const char* id; };
     for (const auto& test : {
         good_case{"https://www.discogs.com/release/38012673-1000-Years-2026", discogs_reference_kind::release, "38012673"},
