@@ -146,5 +146,22 @@ int main() {
     for (int status : {401, 403, 429}) assert(stop_optional_discovery_on_http_status(status));
     for (int status : {0, 200, 400, 404, 408, 500, 503})
         assert(!stop_optional_discovery_on_http_status(status));
+    // Original structured search must preserve actionable HTTP failure
+    // classes after the fetcher's bounded retries, never signed OAuth URLs.
+    using discogger_net::discogs_search_http_error_message;
+    assert(std::string_view(discogs_search_http_error_message(401)).find("HTTP 401") != std::string_view::npos);
+    assert(std::string_view(discogs_search_http_error_message(403)).find("HTTP 403") != std::string_view::npos);
+    assert(std::string_view(discogs_search_http_error_message(404)).find("HTTP 404") != std::string_view::npos);
+    assert(std::string_view(discogs_search_http_error_message(429)).find("HTTP 429") != std::string_view::npos);
+    for (int status : {500, 502, 503, 504})
+        assert(std::string_view(discogs_search_http_error_message(status)).find("server unavailable") != std::string_view::npos);
+    for (int status : {0, 400, 408, 418, 599})
+        assert(std::string_view(discogs_search_http_error_message(status)).find("request failed") != std::string_view::npos);
+    for (int status : {0, 401, 403, 404, 429, 500, 502, 503, 504, 599}) {
+        const std::string_view message(discogs_search_http_error_message(status));
+        assert(message.find("https://") == std::string_view::npos);
+        assert(message.find("oauth_token") == std::string_view::npos);
+        assert(message.find("Authorization") == std::string_view::npos);
+    }
     return 0;
 }
