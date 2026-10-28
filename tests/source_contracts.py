@@ -2934,3 +2934,26 @@ assert "DISCOGGER_NATIVE_SEARCH_RESULT_TRANSACTION_QA=PASS" in (
 assert "staged_search_result_pair<std::vector<int>>" in (
     root / "tests/collaboration_fallback_test.cpp").read_text(encoding="utf-8-sig")
 print("PASS: advanced Discogs search publishes complete exact/other buckets only after final abort check.")
+
+# Original structured search must preserve HTTP 401/403/404/429/5xx error
+# classes after bounded retries, without exposing OAuth-signed URLs or
+# reclassifying cancellation as a provider failure. Native host QA must use
+# the same classifier, not a synthetic-only duplicate.
+http_policy = (root / "http_status_util.h").read_text(encoding="utf-8-sig")
+http_test = (root / "tests/http_status_parser_test.cpp").read_text(encoding="utf-8-sig")
+http_native = (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+http_core = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+original_fetch = http_core.split("rppair_t DiscogsInterface::search_amt_artist(", 1)[1].split(
+    "const size_t cpages = pages.get_count();", 1)[0]
+assert "discogs_search_http_error_message(int status)" in http_policy
+assert "discogs_search_http_error_message(e.get_status())" in original_fetch
+assert "discogs_search_http_error_message(429)" in original_fetch
+assert original_fetch.index("catch (const exception_aborted&)") < original_fetch.index(
+    "catch (const http_429_exception&)") < original_fetch.index(
+    "catch (const http_exception& e)") < original_fetch.index(
+    "catch (foo_discogs_exception& e)")
+assert http_test.count("discogs_search_http_error_message(") >= 6
+assert "DISCOGGER_NATIVE_HTTP_SEARCH_FAILURE_QA=PASS" in http_native
+assert "discogger_net::discogs_search_http_error_message(status)" in http_native
+assert "runner_qa_native_search_preview_fields();" in http_native
+print("PASS: original HTTP failure semantics and native host classification are wired.")
