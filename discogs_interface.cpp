@@ -610,8 +610,8 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 				b_add_new_artist = it == pai.map_artists.end();
 
 				if (b_add_new_artist) {
-					tmpArtist = std::make_shared<Artist>(a->id);
-					pai.map_artists.emplace(a->id, tmpArtist);
+					tmpArtist = std::make_shared<Artist>(canonical_artist_id.c_str());
+					pai.map_artists.emplace(canonical_artist_id, tmpArtist);
 				}
 				else {
 					tmpArtist = it->second;
