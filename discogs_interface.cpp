@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "discogger_search_fallback.h"
+#include "discogger_release_id.h"
 #include "discogger_search_transaction.h"
 #include "discogger_artist_search_pages.h"
 #include <array>
@@ -19,6 +20,23 @@
 #include "conf.h"
 
 namespace ol = Offline;
+
+// Provider master IDs must be validated before any cache lookup or creation.
+// Never let atoi/atol turn malformed/overflow identities into key 0.
+static unsigned long require_discogs_master_id(const pfc::string8& raw) {
+    unsigned long numeric = 0;
+    if (!discogger_search::parse_positive_discogs_id(raw.c_str(), numeric))
+        throw foo_discogs_exception("Invalid Discogs master identity; cache unchanged.");
+    return numeric;
+}
+
+static int require_discogs_cache_artist_id(const pfc::string8& raw) {
+    if (!raw.get_length() || raw.equals("0")) return 0; // global master lookup
+    unsigned long numeric = 0;
+    if (!discogger_search::parse_positive_discogs_id(raw.c_str(), numeric))
+        throw foo_discogs_exception("Invalid Discogs artist identity; cache unchanged.");
+    return static_cast<int>(numeric);
+}
 
 Release_ptr DiscogsInterface::get_release(const size_t lkey, bool bypass_is_cache, bool bypass) {
 
@@ -90,12 +108,15 @@ MasterRelease_ptr DiscogsInterface::get_master_release(const size_t lkey, bool b
 
 MasterRelease_ptr DiscogsInterface::get_master_release(const pfc::string8& master_id, const pfc::string8& artist_id, bool bypass_cache) {
 
-	unsigned long lkey = encode_mr(atoi(artist_id), atoi(master_id));
+	const unsigned long numeric_master = require_discogs_master_id(master_id);
+	const int numeric_artist = require_discogs_cache_artist_id(artist_id);
+	size_t lkey = encode_mr(numeric_artist, numeric_master);
 
 	MasterRelease_ptr master = bypass_cache ? nullptr : get_master_release_from_cache(lkey);
 
 	if (!master) {
-		master = std::make_shared<MasterRelease>(master_id);
+		master = std::make_shared<MasterRelease>(
+			std::to_string(require_discogs_master_id(master_id)).c_str());
 		if (!bypass_cache) {
 			add_master_release_to_cache(lkey, master);
 		}
@@ -105,12 +126,13 @@ MasterRelease_ptr DiscogsInterface::get_master_release(const pfc::string8& maste
 
 MasterRelease_ptr DiscogsInterface::get_master_release(const pfc::string8& master_id, bool bypass_cache) {
 
-	size_t lkey = encode_mr(0, atol(master_id));
+	size_t lkey = encode_mr(0, require_discogs_master_id(master_id));
 
 	MasterRelease_ptr master = bypass_cache ? nullptr : get_master_release_from_cache(lkey);
 
 	if (!master) {
-		master = std::make_shared<MasterRelease>(master_id);
+		master = std::make_shared<MasterRelease>(
+			std::to_string(require_discogs_master_id(master_id)).c_str());
 		if (!bypass_cache) {
 			add_master_release_to_cache(lkey, master);
 		}
@@ -120,11 +142,12 @@ MasterRelease_ptr DiscogsInterface::get_master_release(const pfc::string8& maste
 
 MasterRelease_ptr DiscogsInterface::get_master_release(const pfc::string8 &master_id, threaded_process_status &p_status, abort_callback &p_abort, bool bypass_cache, bool throw_all) {
 
-	size_t lkey = encode_mr(0, atol(master_id));
+	size_t lkey = encode_mr(0, require_discogs_master_id(master_id));
 
 	MasterRelease_ptr master = bypass_cache ? nullptr : get_master_release_from_cache(lkey);
 	if (!master) {
-		master = std::make_shared<MasterRelease>(master_id);
+		master = std::make_shared<MasterRelease>(
+			std::to_string(require_discogs_master_id(master_id)).c_str());
 		if (!bypass_cache) {
 			add_master_release_to_cache(lkey, master);
 		}
