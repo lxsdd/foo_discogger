@@ -864,8 +864,10 @@ for add in (
     assert add in advanced_search, f"advanced search lost shared ownership: {add}"
 for moved in ("std::move(mr)", "std::move(r)"):
     assert moved not in advanced_search, f"advanced search invalidates shared release: {moved}"
-assert "encode_mr(atoi(tmpArtist->id), atoi(mr->id))" in advanced_search
-assert "encode_mr(atoi(no_checkArtist->id), atoi(mr->id))" in advanced_search
+assert advanced_search.count("parse_preview_cache_ids(") == 4
+assert "add_master_release_to_cache(encode_mr(static_cast<int>(ca), ci), mr)" in advanced_search
+assert "add_release_to_cache(encode_mr(static_cast<int>(ca), ci), r)" in advanced_search
+assert "atoi(" not in advanced_search
 print("PASS: advanced live search safely retains shared master/release ownership.")
 
 # Restore the existing search/filter task base type and serialize its lock
