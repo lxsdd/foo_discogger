@@ -6,6 +6,7 @@
 #include "find_release_dialog.h"
 #include "find_artist_list.h"
 #include "discogger_artist_activation.h"
+#include "discogger_artist_numeric.h"
 #include "discogger_artist_projection.h"
 #include <limits>
 #include <unordered_map>
@@ -171,7 +172,8 @@ void CArtistList::on_get_artist_done(cupdRelSrc updsrc, const Artist_ptr artist)
 		{
 			std::lock_guard<std::mutex> guard(dlg->m_loading_selection_rw_mutex);
 
-			if (dlg->m_loading_selection_id == atoi(artist->id)) {
+			const auto profile_id = artist ? discogger_ui::artist_id_or_invalid(artist->id.get_ptr()) : pfc_infinite;
+			if (profile_id != pfc_infinite && dlg->m_loading_selection_id == profile_id) {
 
 				g_discogs->find_release_dialog->UpdateArtistProfile(artist);
 
@@ -182,14 +184,15 @@ void CArtistList::on_get_artist_done(cupdRelSrc updsrc, const Artist_ptr artist)
 	}
 	else if (updsrc == updRelSrc::ArtistList) {
 		Artist_ptr selected_artist = get_selected_artist();
-		size_t selected_id = selected_artist ? atoi(selected_artist->id) : pfc_infinite;
-		if (selected_id == pfc_infinite || atoi(artist->id) == selected_id) {
+		size_t selected_id = selected_artist ? discogger_ui::artist_id_or_invalid(selected_artist->id.get_ptr(), true) : pfc_infinite;
+		const size_t completed_id = artist ? discogger_ui::artist_id_or_invalid(artist->id.get_ptr(), true) : pfc_infinite;
+		if (completed_id != pfc_infinite && (selected_id == pfc_infinite || completed_id == selected_id)) {
 
 			CFindReleaseDialog* dlg = static_cast<CFindReleaseDialog*>(m_host);
 			{
 				std::lock_guard<std::mutex> guard(dlg->m_loading_selection_rw_mutex);
 
-				if (dlg->m_loading_selection_id == atoi(artist->id) ||
+				if (dlg->m_loading_selection_id == completed_id ||
 					dlg->m_loading_selection_id == pfc_infinite) {
 
 					fill_artist_list(false /*not from dlg*/, true, updsrc);
@@ -442,16 +445,17 @@ bool CArtistList::OnDisplayCellImage(int item, int subitem, int& result) const {
         !m_find_release_artists[item]) return false;
 
 	int img_ndx = I_IMAGENONE;
-	bool is_traced;
+	bool is_traced = false;
+	const auto preview_id = discogger_ui::artist_id_or_invalid(m_find_release_artists[item]->id.get_ptr());
 
-	if (m_idtracer_p->is_multi_artist()) {
+	if (discogger_ui::is_tracer_artist_id(preview_id) && m_idtracer_p->is_multi_artist()) {
 
 		auto v = m_idtracer_p->get_vartist_ids();
-		auto fit = std::find(v.begin(), v.end(), atoi(m_find_release_artists[item]->id));
+		auto fit = std::find(v.begin(), v.end(), discogger_ui::artist_id_or_invalid(m_find_release_artists[item]->id.get_ptr()));
 		is_traced = fit != v.end();
 	}
-	else {
-		is_traced = atoi(m_find_release_artists[item]->id) == m_idtracer_p->get_artist_id();
+	else if (discogger_ui::is_tracer_artist_id(preview_id)) {
+		is_traced = preview_id == static_cast<size_t>(m_idtracer_p->get_artist_id());
 	}
 
 	if (is_traced) {
@@ -483,10 +487,10 @@ bool CArtistList::OnDisplayCellString(int item, int subitem, pfc::string8& resul
 size_t CArtistList::get_artist_id(size_t pos) {
 
 	if (get_size() > pos && m_find_release_artists[pos])
-		return atoi(m_find_release_artists[pos]->id);
+		return discogger_ui::artist_id_or_invalid(m_find_release_artists[pos]->id.get_ptr(), true);
 
 	if (m_find_release_artist)
-		return atoi(m_find_release_artist->id);
+		return discogger_ui::artist_id_or_invalid(m_find_release_artist->id.get_ptr(), true);
 
 	return pfc_infinite;
 }
@@ -511,6 +515,7 @@ Artist_ptr CArtistList::get_selected_artist() {
 }
 
 size_t CArtistList::get_artist_role_pos(size_t szartist_id) {
+	if (szartist_id == pfc_infinite) return ~0;
 
 	if (!get_size()) {
 		return ~0;
@@ -518,7 +523,7 @@ size_t CArtistList::get_artist_role_pos(size_t szartist_id) {
 
 	if (m_find_release_artist) {
 
-		if (atoi(m_find_release_artist->id) == szartist_id) {
+		if (discogger_ui::artist_id_or_invalid(m_find_release_artist->id.get_ptr(), true) == szartist_id) {
 			return m_find_release_artist->search_role_list_pos;
 		}
 	}
@@ -528,7 +533,7 @@ size_t CArtistList::get_artist_role_pos(size_t szartist_id) {
 		for (size_t walk = 0; walk < m_find_release_artists.get_count(); walk++) {
 
 			if (m_find_release_artists[walk] &&
-                atoi(m_find_release_artists[walk]->id) == szartist_id) {
+                discogger_ui::artist_id_or_invalid(m_find_release_artists[walk]->id.get_ptr(), true) == szartist_id) {
 
 				return m_find_release_artists[walk]->search_role_list_pos;
 			}
@@ -576,11 +581,12 @@ void CArtistList::Default_Action() {
 
 	Artist_ptr artist = m_find_release_artists[pos];
     if (!artist || !m_idtracer_p) return;
-
-	if (atoi(artist->id) != m_idtracer_p->get_artist_id()) {
-
-		set_artist_tracer_ovr(atoi(artist->id));
-	}
+    const auto selected_id = discogger_ui::artist_id_or_invalid(artist->id.get_ptr(), true);
+    if (selected_id == pfc_infinite) return;
+    // Aggregate preview "0" is not a physical artist tracer identity.
+    if (discogger_ui::is_tracer_artist_id(selected_id) &&
+        selected_id != static_cast<size_t>(m_idtracer_p->get_artist_id()))
+        set_artist_tracer_ovr(selected_id);
 
 	// * CONVEY ARTIST-LIST
 
@@ -705,6 +711,8 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 		}
 		case ID_VIEW_PAGE:
 		{
+            if (!artist || !discogger_ui::is_tracer_artist_id(
+                    discogger_ui::artist_id_or_invalid(artist->id.get_ptr()))) break;
 			pfc::string8 url;
 			url << "https://www.discogs.com/artist/" << artist->id;
 			display_url(url);
@@ -725,7 +733,8 @@ void CArtistList::context_menu(size_t list_index, POINT screen_pos) {
 		}
 		case ID_ARTIST_DEL_CACHE:
 		{
-			if (!artist || !discogs_interface) break;
+			if (!artist || !discogs_interface || !discogger_ui::is_tracer_artist_id(
+                    discogger_ui::artist_id_or_invalid(artist->id.get_ptr()))) break;
             // Artist search rows can differ from the canonical cached object.
             // Keep original profile, cached thumbnails, and last good releases.
             auto cached_artist = discogs_interface->get_artist(artist->id);

@@ -1,4 +1,5 @@
 #include "../discogger_artist_activation.h"
+#include "../discogger_artist_numeric.h"
 #include <cassert>
 #include <cstddef>
 int main() {
@@ -26,5 +27,26 @@ int main() {
     assert(!should_load_artist_on_double_click(2, 2, 2)); // stale row
     assert(!should_load_artist_on_double_click(0, 0, 0)); // empty list
     assert(!should_load_artist_on_double_click(-2, invalid, 0));
+    using discogger_ui::artist_id_or_invalid;
+    using discogger_ui::is_tracer_artist_id;
+    assert(artist_id_or_invalid("101") == 101);
+    assert(artist_id_or_invalid("000101") == 101);
+    assert(artist_id_or_invalid("38012673") == 38012673);
+    assert(artist_id_or_invalid("2147483647") == 2147483647u);
+    assert(artist_id_or_invalid("0") == invalid);
+    assert(artist_id_or_invalid("000") == invalid);
+    assert(artist_id_or_invalid("0", true) == 0);
+    assert(artist_id_or_invalid("00", true) == invalid);
+    assert(artist_id_or_invalid("") == invalid);
+    assert(artist_id_or_invalid("-1") == invalid);
+    assert(artist_id_or_invalid("+101") == invalid);
+    assert(artist_id_or_invalid("101garbage") == invalid);
+    assert(artist_id_or_invalid(" 101") == invalid);
+    assert(artist_id_or_invalid("101 ") == invalid);
+    assert(artist_id_or_invalid("2147483648") == invalid);
+    assert(artist_id_or_invalid("999999999999999999999") == invalid);
+    assert(!is_tracer_artist_id(artist_id_or_invalid("0", true)));
+    assert(!is_tracer_artist_id(artist_id_or_invalid("not-a-number")));
+    assert(is_tracer_artist_id(artist_id_or_invalid("000101")));
     return 0;
 }

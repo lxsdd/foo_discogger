@@ -142,3 +142,15 @@ retain their current tree. The pure C++17 transition table and the original
 Win32/x64 foobar GUI host fixture exercise clearing and restoring five known
 synthetic release IDs. This is not authenticated Discogs live-search acceptance
 or permission to write user media.
+
+
+## Native artist identity and tracer preflight (2026-10-28)
+The actual Win32/x64 artist-list callbacks, selection, profile completion,
+tracer icon and context-menu refresh/navigation use a bounded positive
+Discogs numeric ID parser instead of `atoi`. Padded IDs retain canonical
+numeric identity; malformed, partial, negative and overflow IDs cannot
+alias artist 0 or an unrelated selection. The synthetic aggregate search
+row `0` may still display its combined preview but is never installed
+as a physical artist tracer or opened as a Discogs artist URL.
+Portable C++17/MSVC and original foobar2000 native GUI regression gates
+cover positive and negative identities. No tags/media/DB/artwork writes.

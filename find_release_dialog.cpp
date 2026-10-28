@@ -15,6 +15,7 @@
 #endif
 #include "discogger_release_id.h"
 #include "discogger_artist_activation.h"
+#include "discogger_artist_numeric.h"
 #include "discogger_artist_projection.h"
 #include "discogger_artist_refresh.h"
 #include "discogs_interface.h"
@@ -2857,6 +2858,14 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         padded_alias->releases.get_count() != 2 ||
         padded_alias->master_releases.get_count() != 2)
         throw std::runtime_error("Native padded artist aliases duplicated search rows or child identities.");
+    // Exercise the actual native owner-data artist list with canonical IDs.
+    if (m_alist.get_artist_id(0) != 101 ||
+        discogger_ui::artist_id_or_invalid("000101") != 101 ||
+        discogger_ui::artist_id_or_invalid("101junk") != pfc_infinite ||
+        discogger_ui::artist_id_or_invalid("2147483648") != pfc_infinite ||
+        discogger_ui::is_tracer_artist_id(discogger_ui::artist_id_or_invalid("0", true)))
+        throw std::runtime_error("Native artist list numeric/tracer identity validation failed.");
+    log_msg("DISCOGGER_NATIVE_ARTIST_ID_TRACER_QA=PASS");
     const Artist_ptr retained_alias_projection = alias_rows[0];
     on_search_artist_done(padded_rows, exact, true);
     alias_rows = m_alist.Get_Artists();

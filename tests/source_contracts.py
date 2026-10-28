@@ -2957,3 +2957,18 @@ assert "DISCOGGER_NATIVE_HTTP_SEARCH_FAILURE_QA=PASS" in http_native
 assert "discogger_net::discogs_search_http_error_message(status)" in http_native
 assert "runner_qa_native_search_preview_fields();" in http_native
 print("PASS: original HTTP failure semantics and native host classification are wired.")
+
+# Native artist-list ID/tracer identity must not alias malformed or aggregate IDs.
+artist_list_native = (root / "find_artist_list.cpp").read_text(encoding="utf-8-sig")
+artist_numeric_native = (root / "discogger_artist_numeric.h").read_text(encoding="utf-8-sig")
+artist_activation_native = (root / "tests/artist_activation_test.cpp").read_text(encoding="utf-8-sig")
+assert '#include "discogger_artist_numeric.h"' in artist_list_native
+assert "atoi(" not in artist_list_native
+assert "artist_id_or_invalid" in artist_list_native
+assert "is_tracer_artist_id(selected_id)" in artist_list_native
+assert "completed_id != pfc_infinite" in artist_list_native
+assert "valid_release_id(raw)" in artist_numeric_native
+for case in ("2147483648", "101garbage", "000101", "38012673"):
+    assert case in artist_activation_native
+assert "DISCOGGER_NATIVE_ARTIST_ID_TRACER_QA=PASS" in (root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+print("PASS: strict native artist ID/tracer/profile and synthetic aggregate separation.")
