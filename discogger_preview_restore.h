@@ -31,4 +31,19 @@ bool restore_original_values(Values& current, const Values& original,
     current = std::move(replacement);
     return true;
 }
+// Release::load_preview skips populated search titles. Force a preview
+// refresh without discarding the last valid title on abort, HTTP error,
+// partial parsing or an empty successful response. No media/cache writes.
+template <typename Title, typename Load>
+void refresh_search_preview_title(Title& title, Load&& load) {
+    Title previous(title);
+    title = "";
+    try {
+        std::forward<Load>(load)();
+    } catch (...) {
+        title = std::move(previous);
+        throw;
+    }
+    if (title.length() == 0) title = std::move(previous);
+}
 } // namespace discogger_preview

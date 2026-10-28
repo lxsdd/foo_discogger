@@ -3014,3 +3014,12 @@ assert "same_positive_discogs_id(last_exact->id.c_str(), a->id.c_str())" in prev
 assert "same_positive_discogs_id(last_other->id.c_str(), a->id.c_str())" in preview
 assert preview.count("pai.map_artists.emplace(canonical_artist_id, tmpArtist)") == 2
 print("PASS: native preview canonical IDs, master links and cache keys are strictly validated.")
+# Real advanced-search preview must not lose a parsed title on optional
+# HTTP failure/cancellation; the original Win32/x64 host also tests it.
+interface_source = (root / "discogs_interface.cpp").read_text(encoding="utf-8-sig")
+assert '#include "discogger_preview_restore.h"' in interface_source
+assert "refresh_search_preview_title(r->title, [&]" in preview
+assert "pfc::string8 backtitle = r->title;" not in preview
+assert "DISCOGGER_NATIVE_PREVIEW_TITLE_ROLLBACK_QA=PASS" in (
+    root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
+print("PASS: advanced-search preview title rollback is wired to portable/native foobar regressions.")

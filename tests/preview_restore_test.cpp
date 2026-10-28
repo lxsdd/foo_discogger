@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <stdexcept>
 
 struct synthetic_values {
     std::vector<std::string> values;
@@ -44,5 +45,35 @@ int main() {
     // roundtrip without filtering metadata.
     assert(restore_original_values(lead, synthetic_values{{"Genre=A;Genre=B"}}, 1));
     assert(lead.values[0] == "Genre=A;Genre=B");
+    // Positive/negative title-level rollback for all five known releases.
+    for (const char* id : {"38012673", "37332711", "36397609",
+                           "36819730", "35534398"}) {
+        std::string title = std::string("Original search title ") + id;
+        const std::string original = title;
+        bool caught = false;
+        try {
+            discogger_preview::refresh_search_preview_title(title, [&] {
+                assert(title.empty());
+                title = "Partially parsed preview";
+                throw std::runtime_error("simulated abort/HTTP 429");
+            });
+        } catch (const std::runtime_error&) { caught = true; }
+        assert(caught && title == original);
+        discogger_preview::refresh_search_preview_title(title, [&] {
+            assert(title.empty());
+        });
+        assert(title == original);
+        discogger_preview::refresh_search_preview_title(title, [&] {
+            assert(title.empty());
+            title = "Validated new provider title";
+        });
+        assert(title == "Validated new provider title");
+    }
+    std::string initially_empty;
+    discogger_preview::refresh_search_preview_title(initially_empty, [&] {
+        assert(initially_empty.empty());
+        initially_empty = "Loaded from empty preview";
+    });
+    assert(initially_empty == "Loaded from empty preview");
     return 0;
 }

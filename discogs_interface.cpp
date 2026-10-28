@@ -2,6 +2,7 @@
 #include "discogger_search_fallback.h"
 #include "discogger_release_id.h"
 #include "discogger_search_transaction.h"
+#include "discogger_preview_restore.h"
 #include "discogger_artist_search_pages.h"
 #include <array>
 #include <unordered_set>
@@ -551,8 +552,7 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 
 				if (va_done_cap.second < k_limit_release_traffic) {
 
-					pfc::string8 backtitle = r->title;
-					r->title = "";
+					// Preserve the parsed title if the forced preview fails.
 
 
 					--va_res_cap.second;
@@ -565,7 +565,9 @@ void DiscogsInterface::process_amt_parsed_fake_artist(Artist_ptr fakeArtist, par
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
                     discogger_live_search_qa::preview_attempts.fetch_add(1);
 #endif
-					r->load_preview(p_status, p_abort, false);
+                    discogger_preview::refresh_search_preview_title(r->title, [&] {
+                        r->load_preview(p_status, p_abort, false);
+                    });
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
                     discogger_live_search_qa::preview_successes.fetch_add(1);
 #endif

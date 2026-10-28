@@ -201,3 +201,15 @@ provider, user media or owner Windows acceptance is implied.
 ## Native Find Release input transaction (2026-10-28)
 
 The actual Win32/x64 search-button handler stages a candidate query and only publishes its query map, search mode and filter flags immediately before a valid dispatch. Empty input, bare `various`/`various artists`, incomplete structured queries and unsupported alternate-mode searches leave the previous successful query and async request generation unchanged. Copied query URLs update the visible edit only after validation. The runner-only original-foobar HWND regression invokes the actual button handler for rejected inputs and restores protected live-search telemetry; this is synthetic GUI qualification, not authenticated OAuth acceptance. Direct numeric release IDs are canonicalized before the existing release worker starts. All release suggestions remain REVIEW_REQUIRED; no media/tag/CUE/artwork writer is involved.
+
+## Forced release-preview title rollback (2026-10-29)
+
+The original advanced Discogs search cleared a parsed release title to force
+`Release::load_preview` to fetch missing details. The saved title was never
+restored if that optional fetch failed, was cancelled or returned no title.
+The native search path now restores the last valid title on exceptions/abort
+and empty successful responses while keeping a valid new provider title.
+Five known release IDs exercise positive/negative C++17/MSVC tests and
+original Win32/x64 foobar Release-object QA. This is title-level safety,
+not full cache transactionality, authenticated provider acceptance or
+permission to write user media.

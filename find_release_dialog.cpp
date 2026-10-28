@@ -22,6 +22,7 @@
 #include "discogger_search_visibility.h"
 #include "discogger_search_fallback.h"
 #include "discogger_search_transaction.h"
+#include "discogger_preview_restore.h"
 #include "http_status_util.h"
 #include <unordered_set>
 #include <iterator>
@@ -2678,6 +2679,35 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     if (visible_exact.get_count() != 1 || visible_other.get_count() != 1 ||
         visible_exact[0]->id != "8005" || visible_other[0]->id != "8006")
         throw std::runtime_error("Native advanced-search publication failed.");
+    // Original foobar Release/pfc::string8 title-level rollback, no network.
+    for (const char* id : {"38012673", "37332711", "36397609",
+                           "36819730", "35534398"}) {
+        Release_ptr candidate = std::make_shared<Release>(id);
+        candidate->title = "Last valid search title";
+        bool caught = false;
+        try {
+            discogger_preview::refresh_search_preview_title(candidate->title, [&] {
+                if (candidate->title.length() != 0)
+                    throw std::runtime_error("Native preview did not clear title.");
+                candidate->title = "Partial provider title";
+                throw std::runtime_error("Synthetic cancelled preview");
+            });
+        } catch (const std::runtime_error&) { caught = true; }
+        if (!caught || !candidate->title.equals("Last valid search title"))
+            throw std::runtime_error("Native preview cancellation lost prior title.");
+        discogger_preview::refresh_search_preview_title(candidate->title, [&] {
+            if (candidate->title.length() != 0)
+                throw std::runtime_error("Native empty preview did not refresh.");
+        });
+        if (!candidate->title.equals("Last valid search title"))
+            throw std::runtime_error("Native empty preview lost prior title.");
+        discogger_preview::refresh_search_preview_title(candidate->title, [&] {
+            candidate->title = "New valid provider title";
+        });
+        if (!candidate->title.equals("New valid provider title"))
+            throw std::runtime_error("Native preview failed to publish new title.");
+    }
+    log_msg("DISCOGGER_NATIVE_PREVIEW_TITLE_ROLLBACK_QA=PASS");
     log_msg("DISCOGGER_NATIVE_SEARCH_RESULT_TRANSACTION_QA=PASS");
     // Exercise the production advanced-search preview in original foobar
     // Win32/x64 hosts with two numerical aliases per release/master identity.
