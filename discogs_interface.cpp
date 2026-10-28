@@ -217,9 +217,16 @@ void DiscogsInterface::search_artist(const pfc::string8 &query, pfc::array_t<Art
     // A bounded artist-name preview can search later Discogs pages when
     // page one contains only irrelevant names. No tag or artist ID is approved.
     // Validate every complete page before exposing any candidate.
+    // Never issue broad provider requests for blank artist names.
+    if (discogger_search::trim_copy(query.c_str()).empty()) {
+        p_abort.check();
+        pfc::array_t<Artist_ptr> empty_exact, empty_other;
+        exact_matches = std::move(empty_exact);
+        other_matches = std::move(empty_other);
+        return;
+    }
     pfc::string8 params;
     params << "type=artist&q=" << urlEscape(query) << "&per_page=100";
-    const pfc::string8 lowercase_query = lowercase(query);
     const pfc::string8 stripped_query = strip_artist_name(query);
     std::vector<discogger_search::artist_search_hit> candidates;
     std::unordered_set<std::string> seen_ids;
@@ -258,9 +265,10 @@ void DiscogsInterface::search_artist(const pfc::string8 &query, pfc::array_t<Art
                 throw foo_discogs_exception("Artist search returned a malformed row; retaining prior results.");
             const pfc::string8 id = JSONAttributeString(row, "id");
             const pfc::string8 title = JSONAttributeString(row, "title");
-            if (discogger_search::stage_artist_search_hit(
-                    candidates, seen_ids, id.c_str(), title.c_str()) &&
-                lowercase(title) == lowercase_query)
+            const pfc::string8 stripped_title = strip_artist_name(title);
+            if (discogger_search::stage_ranked_artist_search_hit(
+                    candidates, seen_ids, query.c_str(), stripped_query.c_str(),
+                    id.c_str(), title.c_str(), stripped_title.c_str()))
                 exact_name_found = true;
         }
         if (!discogger_search::continue_artist_search(page, returned_pages, exact_name_found)) {
@@ -276,11 +284,9 @@ void DiscogsInterface::search_artist(const pfc::string8 &query, pfc::array_t<Art
     std::array<std::vector<discogger_search::artist_search_hit>,
         discogger_search::artist_search_rank_count> ranked;
     for (const auto& hit : candidates) {
-        const pfc::string8 name(hit.title.c_str());
-        const pfc::string8 stripped = strip_artist_name(name);
-        const size_t rank = discogger_search::rank_artist_search_hit(
-            query.c_str(), stripped_query.c_str(), name.c_str(), stripped.c_str());
-        ranked[rank].push_back(hit);
+        if (hit.rank >= ranked.size())
+            throw foo_discogs_exception("Invalid staged artist rank; retaining prior results.");
+        ranked[hit.rank].push_back(hit);
     }
     pfc::array_t<Artist_ptr> staged_exact, staged_other;
     size_t emitted = 0;

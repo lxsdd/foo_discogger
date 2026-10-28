@@ -183,3 +183,17 @@ UTF-8 names, paginated results, cache, user tags and physical media are not
 rewritten. Portable and MSVC Win32/x64 regression cases cover positive and
 negative aliases, Unicode accents, collaboration credits and partial words;
 real authenticated provider/owner acceptance remains a separate gate.
+
+## Ranked duplicate artist identities and blank-query containment (2026-10-28)
+
+Native bounded artist pagination now keeps the best search-only name/rank
+for each canonical numeric artist ID across up to five complete pages.
+A later exact title upgrades an earlier numbered alias of the same ID
+without adding duplicate rows or changing canonical artist/cache objects.
+Worse duplicate titles cannot downgrade an exact hit. Only a strict
+case-insensitive exact name stops the scan; Unicode-folded names,
+collaborators and numbered variants remain REVIEW_REQUIRED. Blank
+artist names return empty results without a broad API request. The five
+known reference IDs, malformed rows, page caps and late rank upgrades
+have portable and native MSVC regression coverage. No real authenticated
+provider, user media or owner Windows acceptance is implied.

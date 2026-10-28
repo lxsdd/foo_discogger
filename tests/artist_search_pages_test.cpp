@@ -45,6 +45,40 @@ int main() {
                                   "Matt Faxology", "Matt Faxology") == 4);
     assert(rank_artist_search_hit("", "", "Some Artist", "Some Artist") == 4);
     assert(rank_artist_search_hit("DJ", "DJ", "DJ Shadow", "DJ Shadow") == 4);
+    // A duplicate numeric identity on a later page can improve its
+    // search-only title from a numbered alias to an exact match.
+    std::vector<artist_search_hit> ranked_hits;
+    std::unordered_set<std::string> ranked_seen;
+    assert(!stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Artist (3)", "Artist", "00038012673", "Artist (2)", "Artist"));
+    assert(ranked_hits.size() == 1 && ranked_hits[0].rank == 1);
+    assert(stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Artist (3)", "Artist", "38012673", "ARTIST (3)", "ARTIST"));
+    assert(ranked_hits.size() == 1 && ranked_seen.size() == 1);
+    assert(ranked_hits[0].id == "38012673" &&
+           ranked_hits[0].title == "ARTIST (3)" && ranked_hits[0].rank == 0);
+    assert(stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Artist (3)", "Artist", "00038012673", "Artist (4)", "Artist"));
+    assert(ranked_hits[0].title == "ARTIST (3)"); // never downgrade
+    assert(!stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Artist (3)", "Artist", "0", "Artist (3)", "Artist"));
+    assert(!stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Artist (3)", "Artist", "37332711", "   ", "   "));
+    assert(ranked_hits.size() == 1 && ranked_seen.size() == 1);
+    assert(!stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Café", "Café", "37332711", "Cafe", "Cafe"));
+    assert(ranked_hits.back().rank == 2); // folded Unicode is review-only
+    assert(!stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Matt Fax", "Matt Fax", "36397609", "Matthew", "Matthew"));
+    assert(ranked_hits.back().rank == 4);
+    assert(stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Matt Fax", "Matt Fax", "36397609", "Matt Fax", "Matt Fax"));
+    assert(ranked_hits.back().rank == 0 && ranked_hits.size() == 3);
+    assert(!stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Quivver", "Quivver", "36819730", "Other", "Other"));
+    assert(stage_ranked_artist_search_hit(ranked_hits, ranked_seen,
+        "Quivver", "Quivver", "35534398", "Quivver", "Quivver"));
+    assert(ranked_hits.size() == 5);
     assert(continue_artist_search(1, 8, false));
     assert(continue_artist_search(4, 8, false));
     assert(!continue_artist_search(5, 8, false));
@@ -57,4 +91,10 @@ int main() {
     assert(hits.size() == max_artist_search_hits);
     assert(!stage_artist_search_hit(hits, seen, "99999", "over cap"));
     assert(seen.size() == max_artist_search_hits);
+    assert(stage_ranked_artist_search_hit(hits, seen, "Estiva", "Estiva",
+        "00038012673", "Estiva", "Estiva"));
+    assert(hits[0].rank == 0 && hits[0].title == "Estiva");
+    assert(!stage_ranked_artist_search_hit(hits, seen, "New", "New",
+        "900000", "New", "New"));
+    assert(hits.size() == max_artist_search_hits);
 }

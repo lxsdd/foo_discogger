@@ -14,9 +14,11 @@ namespace discogger_search {
 inline constexpr std::size_t max_artist_search_pages = 5;
 inline constexpr std::size_t max_artist_search_hits = max_artist_search_pages * 100;
 
+inline constexpr std::size_t artist_search_rank_count = 5;
 struct artist_search_hit {
     std::string id;
     std::string title;
+    std::size_t rank = artist_search_rank_count - 1;
 };
 
 inline bool stage_artist_search_hit(std::vector<artist_search_hit>& hits,
@@ -39,7 +41,6 @@ inline bool stage_artist_search_hit(std::vector<artist_search_hit>& hits,
 // Only byte-exact (ASCII case-insensitive) names enter the native exact
 // bucket. Stripped Discogs aliases, folded Latin accents and whole-word
 // partials remain review-only: Artist (2) is not Artist (3).
-inline constexpr std::size_t artist_search_rank_count = 5;
 inline std::size_t rank_artist_search_hit(
     std::string_view query, std::string_view stripped_query,
     std::string_view title, std::string_view stripped_title) {
@@ -67,6 +68,34 @@ inline std::size_t rank_artist_search_hit(
         at = folded_title.find(folded_query, at + 1);
     }
     return 4;
+}
+
+// Duplicate provider IDs can carry better titles on later pages. Keep the
+// first position, improve only the staged rank/title, never cached Artists.
+inline bool stage_ranked_artist_search_hit(
+    std::vector<artist_search_hit>& hits,
+    std::unordered_set<std::string>& seen,
+    std::string_view query, std::string_view stripped_query,
+    std::string_view id, std::string_view title,
+    std::string_view stripped_title) {
+    const std::string canonical_id = canonical_release_id(id);
+    if (canonical_id.empty() || trim_copy(title).empty()) return false;
+    const std::size_t rank = rank_artist_search_hit(
+        query, stripped_query, title, stripped_title);
+    if (seen.find(canonical_id) != seen.end()) {
+        for (auto& existing : hits) {
+            if (existing.id != canonical_id) continue;
+            if (rank < existing.rank) {
+                existing.title = std::string(title);
+                existing.rank = rank;
+            }
+            return existing.rank == 0;
+        }
+        return false;
+    }
+    if (!stage_artist_search_hit(hits, seen, id, title)) return false;
+    hits.back().rank = rank;
+    return rank == 0;
 }
 
 inline bool continue_artist_search(std::size_t page, std::size_t pages,

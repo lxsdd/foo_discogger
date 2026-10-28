@@ -2894,9 +2894,12 @@ artist_block = artist_source.split("void DiscogsInterface::search_artist(", 1)[1
 assert "discogger_search::max_artist_search_pages" in artist_block
 assert "discogger_cache::valid_online_page(" in artist_block
 assert "discogger_cache::valid_online_payload_count(" in artist_block
-assert "discogger_search::stage_artist_search_hit(" in artist_block
+assert "discogger_search::stage_ranked_artist_search_hit(" in artist_block
 assert "discogger_search::continue_artist_search(" in artist_block
-assert "discogger_search::rank_artist_search_hit(" in artist_block
+assert "ranked[hit.rank].push_back(hit);" in artist_block
+assert "lowercase(title) == lowercase_query" not in artist_block
+assert "discogger_search::trim_copy(query.c_str()).empty()" in artist_block
+assert "exact_matches = std::move(empty_exact);" in artist_block
 assert "if (rank == 0) staged_exact.append_single" in artist_block
 assert "rank <= 1" not in artist_block
 assert "std::make_shared<Artist>(hit.id.c_str())" in artist_block
