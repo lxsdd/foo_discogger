@@ -2266,7 +2266,7 @@ void Discogs::parseRelease(Release *release, json_t *root) {
 
 
 	auto master_id = JSONAttributeString(root, "master_id");
-	if (!atoi(master_id)) master_id = "";
+	master_id = discogger_search::canonical_release_id(master_id.c_str()).c_str();
 	if (master_id.get_length()) {
 		MasterRelease_ptr master = discogs_interface->get_master_release(master_id);
 		release->set_master_release(std::move(master));
@@ -2482,7 +2482,8 @@ void parse_release_search_fields(json_t* rel, Release_ptr release) {
 		release->id = JSONAttributeString(rel, "id");
 		//MASTER_ID
 		release->master_id = JSONAttributeString(rel, "master_id");
-		if (!atoi(release->master_id)) release->master_id = "";
+		release->master_id = discogger_search::canonical_release_id(
+			release->master_id.c_str()).c_str();
 		//TITLE
 		release->title = JSONAttributeString(rel, "title");
 		//COUNTRY
@@ -2742,8 +2743,8 @@ void Discogs::parseArtistReleases(json_t* root, Artist* artist, int query_mode, 
 
 						if (query_mode ||(!release->loaded_preview && !release->loaded)) {
 							release->master_id = incoming_master_id;
-							if (!atoi(release->master_id)) release->master_id = "";
-							if (!atoi(release->master_id)) {
+							if (!discogger_search::valid_release_id(release->master_id.c_str())) release->master_id = "";
+							if (!discogger_search::valid_release_id(release->master_id.c_str())) {
 								bool duplicate = false;
 								// NON-MASTER RELEASE
 								for (Release_ptr walk_artist_release : artist->releases) {
