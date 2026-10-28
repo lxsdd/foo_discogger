@@ -72,6 +72,22 @@ inline bool stop_optional_discovery_on_http_status(int status) noexcept {
     return status == 401 || status == 403 || status == 429;
 }
 
+// Keep original structured Discogs search failures actionable after the
+// fetcher's bounded retries. These static messages deliberately exclude
+// OAuth-signed URLs, response bodies, request parameters and token material.
+// Optional fallback has a separate containment policy.
+inline const char* discogs_search_http_error_message(int status) noexcept {
+    switch (status) {
+    case 401: return "Discogs search authorization failed (HTTP 401); check OAuth and retry.";
+    case 403: return "Discogs search access denied (HTTP 403); check permissions.";
+    case 404: return "Discogs search endpoint unavailable (HTTP 404); no results published.";
+    case 429: return "Discogs rate limit (HTTP 429) after bounded retries; retry later.";
+    case 500: case 502: case 503: case 504:
+        return "Discogs server unavailable after bounded retries; retry later.";
+    default: return "Discogs search HTTP request failed; no results published.";
+    }
+}
+
 // OAuth headers may contain signed credentials. Never attach them to
 // untrusted resource URLs merely because their path/query mentions "api".
 // Restrict signing to the exact HTTPS Discogs API origin.
