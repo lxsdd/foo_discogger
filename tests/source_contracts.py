@@ -1657,6 +1657,13 @@ assert 'if (id == "0") return "0";' in projection
 assert "canonical_release_id(id)" in projection
 assert "same_artist_preview_identity(" in projection
 assert "insert_preview_release_identity(" in projection
+assert "enum class advanced_preview_action { keep, clear, show };" in projection
+assert "decide_advanced_preview_action(" in projection
+assert "discogger_search::decide_advanced_preview_action(" in uic
+assert "case discogger_search::advanced_preview_action::clear:" in uic
+assert "m_dctree.on_get_artist_done(clear_source, nullptr);" in uic
+assert "Native empty-version search retained stale selectable release tree." in uic
+assert "Native release tree failed to restore after empty-version search." in uic
 assert "discogger_search::same_artist_preview_identity(" in artist_list
 assert artist_list.count("discogger_search::insert_preview_release_identity(") >= 6
 assert "visible_positions.emplace(" in artist_list

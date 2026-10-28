@@ -1382,12 +1382,13 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
 	if (!append) {
 		m_alist.fill_artist_list(b_chk_exact_matches, m_tracer.has_amr(), updrelsrc/*updRelSrc::ArtistSearch*/);
 
-		if (!m_alist.Get_Artists().get_count()) {
-			cupdRelSrc cupdsrc(updRelSrc::Undef);
-			//..
-			m_dctree.on_get_artist_done(cupdsrc, nullptr);
-			//..
-		}
+        // Advanced-search clearing is handled by the same preview action
+        // as nonempty results, including an artist with zero child releases.
+        if (!(m_query_mode & SearchMode::AT) &&
+            !m_alist.Get_Artists().get_count()) {
+            cupdRelSrc clear_source(updRelSrc::Undef);
+            m_dctree.on_get_artist_done(clear_source, nullptr);
+        }
 	}
 
     // Late advanced-search pages must also appear in the release tree
@@ -1395,19 +1396,44 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
     // explicitly opened by selecting an artist while the worker was active.
     // Empty append notifications are no-ops for the preview.
     const bool incoming_results = incoming_exact || incoming_other;
-    const bool update_preview = (m_query_mode & SearchMode::AT) &&
-        (!append || (incoming_results && !m_alist.Get_Selected_Id().get_length()));
-    if (update_preview) {
+    const bool advanced_mode = (m_query_mode & SearchMode::AT) != 0;
+    const bool artist_selected = m_alist.Get_Selected_Id().get_length() != 0;
+    Artist_ptr preview;
+    if (advanced_mode && (!append || (incoming_results && !artist_selected))) {
         const auto artists = m_alist.Get_Artists();
         if (artists.get_count() == 1) {
-            const Artist_ptr& only = artists[0];
-            if (only && (only->releases.get_count() || only->master_releases.get_count()))
-                ShowArtistSearchResults(only);
+            preview = artists[0];
         } else if (artists.get_count() > 1) {
-            Artist_ptr preview = combined_advanced_search_preview(artists);
-            if (preview->releases.get_count() || preview->master_releases.get_count())
-                ShowArtistSearchResults(preview);
+            bool any_children = false;
+            for (const auto& artist : artists) {
+                if (artist && (artist->releases.get_count() ||
+                               artist->master_releases.get_count())) {
+                    any_children = true;
+                    break;
+                }
+            }
+            if (any_children)
+                preview = combined_advanced_search_preview(artists);
         }
+    }
+    const bool has_preview_children = preview &&
+        (preview->releases.get_count() || preview->master_releases.get_count());
+    switch (discogger_search::decide_advanced_preview_action(
+                advanced_mode, append, incoming_results, artist_selected,
+                has_preview_children)) {
+    case discogger_search::advanced_preview_action::show:
+        ShowArtistSearchResults(preview);
+        break;
+    case discogger_search::advanced_preview_action::clear: {
+        // A successful new search may return a valid artist but no versions.
+        // Clear the previous release tree instead of leaving a stale release
+        // available for Next/tagging. Empty append notifications do not clear.
+        cupdRelSrc clear_source(updRelSrc::Undef);
+        m_dctree.on_get_artist_done(clear_source, nullptr);
+        break;
+    }
+    case discogger_search::advanced_preview_action::keep:
+        break;
     }
 
 	std::lock_guard<std::mutex> guard(g_discogs->tree_locked_mutex);
@@ -2626,6 +2652,22 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     const size_t initial_tree = m_dctree.Get_Size();
     if (initial_tree != 5)
         throw std::runtime_error("Native auto-preview did not publish five synthetic releases.");
+
+    // Regression: a successful new query can return an artist identity but
+    // zero versions. It must remove the previous five selectable releases,
+    // and the next valid query must restore the real native preview tree.
+    Artist_ptr empty_artist = std::make_shared<Artist>("301");
+    empty_artist->name = "Artist without matching release versions";
+    empty_artist->loaded_preview = true;
+    empty_artist->loaded_releases = true;
+    pfc::array_t<Artist_ptr> empty_artist_rows;
+    empty_artist_rows.append_single(empty_artist);
+    on_search_artist_done(exact, empty_artist_rows, false);
+    if (m_dctree.Get_Size() != 0 || m_alist.Get_Artists().get_count() != 1)
+        throw std::runtime_error("Native empty-version search retained stale selectable release tree.");
+    on_search_artist_done(exact, alternatives, false);
+    if (m_dctree.Get_Size() != initial_tree)
+        throw std::runtime_error("Native release tree failed to restore after empty-version search.");
 
     // Model the actual native GUI's successive review-only fallback phases:
     // an unrelated nonempty partner result, then a different relevant title

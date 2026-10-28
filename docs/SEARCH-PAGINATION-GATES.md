@@ -133,3 +133,12 @@ pointer when the cumulative provider result adds no new typed child identity.
 A newly discovered release or master still creates a fresh isolated union.
 This avoids invalidating native owner-data selection and roles on duplicate
 pagination/fallback callbacks while leaving canonical Artist caches untouched.
+
+### Native advanced-search stale-tree barrier (2026-10-28)
+A successful new advanced query with no matching release/master versions clears
+its previous selectable release tree, even when the provider returns a valid
+artist identity. Empty incremental callbacks and explicit artist selections
+retain their current tree. The pure C++17 transition table and the original
+Win32/x64 foobar GUI host fixture exercise clearing and restoring five known
+synthetic release IDs. This is not authenticated Discogs live-search acceptance
+or permission to write user media.

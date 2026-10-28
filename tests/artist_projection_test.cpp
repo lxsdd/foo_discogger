@@ -41,5 +41,15 @@ int main() {
     assert(releases.size() == 2 && masters.size() == 2);
     assert(releases.count("38012673") == 1 && masters.count("38012673") == 1);
     assert(releases.count("410003") == 1 && masters.count("410004") == 1);
+    using preview = advanced_preview_action;
+    assert(decide_advanced_preview_action(false, false, false, false, false) == preview::keep);
+    assert(decide_advanced_preview_action(false, true, true, false, true) == preview::keep);
+    assert(decide_advanced_preview_action(true, false, false, false, false) == preview::clear);
+    assert(decide_advanced_preview_action(true, false, true, true, true) == preview::show);
+    assert(decide_advanced_preview_action(true, false, true, true, false) == preview::clear);
+    assert(decide_advanced_preview_action(true, true, false, false, false) == preview::keep);
+    assert(decide_advanced_preview_action(true, true, true, true, true) == preview::keep);
+    assert(decide_advanced_preview_action(true, true, true, false, false) == preview::clear);
+    assert(decide_advanced_preview_action(true, true, true, false, true) == preview::show);
     return 0;
 }

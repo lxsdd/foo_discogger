@@ -25,4 +25,16 @@ inline bool insert_preview_release_identity(
     const auto key = canonical_release_id(id);
     return !key.empty() && seen.emplace(key).second;
 }
+// A completed new advanced search must never leave an old release tree
+// selectable when its artist rows contain no release/master previews.
+// Incremental empty callbacks and a manually selected artist keep the tree.
+enum class advanced_preview_action { keep, clear, show };
+inline advanced_preview_action decide_advanced_preview_action(
+    bool advanced_mode, bool append, bool incoming_results,
+    bool artist_selected, bool has_preview_children) noexcept {
+    if (!advanced_mode || (append && (!incoming_results || artist_selected)))
+        return advanced_preview_action::keep;
+    return has_preview_children ? advanced_preview_action::show
+                                : advanced_preview_action::clear;
+}
 } // namespace discogger_search
