@@ -197,3 +197,7 @@ artist names return empty results without a broad API request. The five
 known reference IDs, malformed rows, page caps and late rank upgrades
 have portable and native MSVC regression coverage. No real authenticated
 provider, user media or owner Windows acceptance is implied.
+
+## Native Find Release input transaction (2026-10-28)
+
+The actual Win32/x64 search-button handler stages a candidate query and only publishes its query map, search mode and filter flags immediately before a valid dispatch. Empty input, bare `various`/`various artists`, incomplete structured queries and unsupported alternate-mode searches leave the previous successful query and async request generation unchanged. Copied query URLs update the visible edit only after validation. The runner-only original-foobar HWND regression invokes the actual button handler for rejected inputs and restores protected live-search telemetry; this is synthetic GUI qualification, not authenticated OAuth acceptance. Direct numeric release IDs are canonicalized before the existing release worker starts. All release suggestions remain REVIEW_REQUIRED; no media/tag/CUE/artwork writer is involved.

@@ -1041,11 +1041,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 	discogger_live_search_qa::input_live_length.store(static_cast<unsigned>(::GetWindowTextLengthW(live_edit)));
 #endif
 
-	for (const std::string fld : kv_query_fields_ordered) {
-
-		m_qdm_search_query[fld] = {};
-
-	}
+	// Stage each input privately. A rejected or blank search must retain
+	// the last successful query, mode, filter state and result epoch.
+	QueryDefMap candidate_query = {};
 
 	//todo: move search query related 
 	pfc::string8 trot_text = trim(uGetWindowText(m_edit_artist));
@@ -1070,28 +1068,27 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 	bool bid = false;
 
-	if (bool bquery_from_url = search_query::UrlToMap(trot_text, m_qdm_search_query)) {
+	const bool query_from_url = search_query::UrlToMap(trot_text, candidate_query);
+	if (query_from_url) {
 		std::pair<std::string, std::string> exp_pair;
-		search_query::MapToText(m_qdm_search_query, exp_pair, false);
+		search_query::MapToText(candidate_query, exp_pair, false);
 		trot_text = exp_pair.first.c_str();
-		uSetWindowText(m_edit_artist, trot_text);
 	}
 
-	m_qdm_search_query = {};
-	bool bquery = search_query::TextToMap(trot_text, m_qdm_search_query);
-	bquery &= search_query::IsMinimal(m_qdm_search_query);
+	bool bquery = search_query::TextToMap(trot_text, candidate_query);
+	bquery &= search_query::IsMinimal(candidate_query);
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
-	discogger_live_search_qa::parsed_fields.store(static_cast<unsigned>(search_query::CountAvailableFields(m_qdm_search_query)));
-	discogger_live_search_qa::query_minimal.store(search_query::IsMinimal(m_qdm_search_query) ? 1u : 0u);
+	discogger_live_search_qa::parsed_fields.store(static_cast<unsigned>(search_query::CountAvailableFields(candidate_query)));
+	discogger_live_search_qa::query_minimal.store(search_query::IsMinimal(candidate_query) ? 1u : 0u);
 	discogger_live_search_qa::query_detected.store(bquery ? 1u : 0u);
 	discogger_live_search_qa::alt_mode.store(CONF.awt_get_alt_mode() ? 1u : 0u);
 #endif
 
-	bool bquery_type_uncompleted = search_query::CountAvailableFields(m_qdm_search_query) >= 1 && !search_query::IsMinimal(m_qdm_search_query);
+	bool bquery_type_uncompleted = search_query::CountAvailableFields(candidate_query) >= 1 && !search_query::IsMinimal(candidate_query);
 
 	if (bquery_type_uncompleted) {
 
-		pfc::string8 hint = search_query::IsMinimalHint(m_qdm_search_query);
+		pfc::string8 hint = search_query::IsMinimalHint(candidate_query);
 		SetSearchModeText(hint, false);
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 		discogger_live_search_qa::early_exit.store(2);
@@ -1104,11 +1101,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 		//..
 	}
 
-	//todo
+	// Commit the active mode only after all rejection paths have passed.
 
-	m_query_mode = 0;
-
-	pfc::string8 qartist = m_qdm_search_query.at("artist=").first.c_str();
+	pfc::string8 qartist = candidate_query.at("artist=").first.c_str();
 	bool bqdm_various = pfc::stringLite::g_equalsCaseInsensitive("various", qartist);
 
 	if (bva_in_artist && !bqdm_various) {
@@ -1123,14 +1118,11 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 		//..
 	}
 
-	SetSearchModeFlag(SearchMode::VA, bqdm_various);
-	SetSearchModeFlag(SearchMode::AT, search_query::IsMinimal(m_qdm_search_query));
-
 
 	if (bquery) {
 
 		std::pair<std::string, std::string> exp_pair;
-		bool bres = search_query::MapToText(m_qdm_search_query, exp_pair, false, false);
+		bool bres = search_query::MapToText(candidate_query, exp_pair, false, false);
 
 		if (!exp_pair.first.compare(m_search_expression)) {
 
@@ -1143,7 +1135,7 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 		if (bres) {
 
 			// The API has no need for the GUI-only default type=all filter.
-			search_query::MapToText(m_qdm_search_query, exp_pair, false, false);
+			search_query::MapToText(candidate_query, exp_pair, false, false);
 			pfc::string8 artist_meta_scaped = exp_pair.second.c_str();
 
 			trot_text = artist_meta_scaped;
@@ -1171,12 +1163,18 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 #endif
 		}
 
-		m_search_expression = "";
 		bid = id_from_url(m_edit_artist, trot_text);
 
 	}
 
 	if (trot_text.get_length()) {
+		// Publish the validated search snapshot once, immediately before dispatch.
+		m_qdm_search_query = std::move(candidate_query);
+		m_query_mode = 0;
+		SetSearchModeFlag(SearchMode::VA, bqdm_various);
+		SetSearchModeFlag(SearchMode::AT, search_query::IsMinimal(m_qdm_search_query));
+		if (!bquery) m_search_expression = "";
+		if (query_from_url) uSetWindowText(m_edit_artist, trot_text);
 
 		// hint display the preffix 'Query results'
 		SetSearchModeText("");
@@ -1662,7 +1660,10 @@ LRESULT CFindReleaseDialog::OnButtonConfigure(WORD /*wNotifyCode*/, WORD wID, HW
 
 //todo: rev
 void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
-	if (!discogger_search::valid_release_id(release_id.c_str())) {
+	// Direct numeric input and copied URLs must share one cache/worker identity.
+	// Canonicalization is lookup-only; no tag or media mutation.
+	const pfc::string8 canonical_id = discogger_search::canonical_release_id(release_id.c_str()).c_str();
+	if (!canonical_id.get_length()) {
 		uMessageBox(m_hWnd, "Empty or invalid Release ID.", "foo_discogger: Error", MB_APPLMODAL | MB_ICONASTERISK);
 		return;
 
@@ -1697,7 +1698,7 @@ void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
 	}
 
 	try {
-		service_ptr_t<process_release_callback> task = new service_impl_t<process_release_callback>(this, release_id, offline_artist_id, "", m_items);
+		service_ptr_t<process_release_callback> task = new service_impl_t<process_release_callback>(this, canonical_id, offline_artist_id, "", m_items);
         // A new release selection supersedes any pending search or release
         // completion, even when the original dialog HWND is still alive.
         m_search_request_epoch.begin();
@@ -2540,6 +2541,53 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char
 std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
+    // Exercise the real HWND edit and button handler on rejected inputs.
+    // Preserve protected live-search counters: synthetic QA is not OAuth QA.
+    const pfc::string8 saved_edit = uGetWindowText(m_edit_artist);
+    const QueryDefMap saved_query = m_qdm_search_query;
+    const auto saved_mode = m_query_mode;
+    const auto saved_filter_flags = conf.find_release_filter_flag;
+    const pfc::string8 saved_expression = m_search_expression;
+    const pfc::string8 saved_artist = m_search_artist;
+    const auto saved_epoch = m_search_request_epoch.current();
+    std::array<std::atomic<unsigned>*, 15> counters = {{
+        &discogger_live_search_qa::button,
+        &discogger_live_search_qa::input_nonempty,
+        &discogger_live_search_qa::input_nonempty_calls,
+        &discogger_live_search_qa::input_empty_calls,
+        &discogger_live_search_qa::input_member_valid,
+        &discogger_live_search_qa::input_hwnd_match,
+        &discogger_live_search_qa::input_member_length,
+        &discogger_live_search_qa::input_live_length,
+        &discogger_live_search_qa::parsed_fields,
+        &discogger_live_search_qa::query_minimal,
+        &discogger_live_search_qa::query_detected,
+        &discogger_live_search_qa::alt_mode,
+        &discogger_live_search_qa::early_exit,
+        &discogger_live_search_qa::routed,
+        &discogger_live_search_qa::repeat_query
+    }};
+    std::array<unsigned, 15> saved_counters{};
+    for (size_t i = 0; i < counters.size(); ++i)
+        saved_counters[i] = counters[i]->load();
+    bool rejected_inputs_preserved = true;
+    for (const char* rejected : {" ", "various", "various artists"}) {
+        uSetWindowText(m_edit_artist, rejected);
+        BOOL handled = FALSE;
+        OnButtonSearch(0, IDC_BTN_SEARCH, nullptr, handled);
+        rejected_inputs_preserved &=
+            m_qdm_search_query == saved_query && m_query_mode == saved_mode &&
+            conf.find_release_filter_flag == saved_filter_flags &&
+            m_search_expression.equals(saved_expression) &&
+            m_search_artist.equals(saved_artist) &&
+            m_search_request_epoch.current() == saved_epoch;
+    }
+    uSetWindowText(m_edit_artist, saved_edit);
+    for (size_t i = 0; i < counters.size(); ++i)
+        counters[i]->store(saved_counters[i]);
+    if (!rejected_inputs_preserved)
+        throw std::runtime_error("Native rejected search changed active query or result state.");
+    log_msg("DISCOGGER_NATIVE_REJECTED_SEARCH_STATE_QA=PASS");
     // Run the production native edit-field URL parser in original foobar
     // Win32/x64 hosts. API/share links are lookup hints, not tag approvals.
     for (const auto& reference : {

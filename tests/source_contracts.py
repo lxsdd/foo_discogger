@@ -928,9 +928,19 @@ for marker in ('if (!exp_pair.first.compare(m_search_expression)) {',
                'if (trot_text.equals(m_search_artist)) {'):
     repeat_block = search_click.split(marker, 1)[1].split("}", 1)[0]
     assert "return FALSE;" not in repeat_block
-assert 'search_query::MapToText(m_qdm_search_query, exp_pair, false, false);' in search_click
+assert 'search_query::MapToText(candidate_query, exp_pair, false, false);' in search_click
 assert 'search_query::MapToText(m_qdm_search_query, exp_pair, true, false);' not in search_click
 print("PASS: explicit repeated searches remain routable and omit GUI-only API type.")
+assert "QueryDefMap candidate_query = {};" in search_click
+assert "m_qdm_search_query = std::move(candidate_query);" in search_click
+assert search_click.index("m_qdm_search_query = std::move(candidate_query);") > search_click.index("if (trot_text.get_length()) {", search_click.index("bid = id_from_url"))
+assert "const bool query_from_url = search_query::UrlToMap(trot_text, candidate_query);" in search_click
+assert "if (query_from_url) uSetWindowText(m_edit_artist, trot_text);" in search_click
+assert "DISCOGGER_NATIVE_REJECTED_SEARCH_STATE_QA=PASS" in completion_dialog
+assert "const pfc::string8 canonical_id = discogger_search::canonical_release_id(release_id.c_str()).c_str();" in completion_dialog
+assert 'new service_impl_t<process_release_callback>(this, canonical_id, offline_artist_id, "", m_items);' in completion_dialog
+print("PASS: native rejected search is transactional; direct release lookup canonicalized.")
+
 
 
 # Preserve conditional Wine light-theme redraw with current libPPUI:
