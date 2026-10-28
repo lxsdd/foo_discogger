@@ -21,6 +21,7 @@
 #include "discogger_search_visibility.h"
 #include "discogger_search_fallback.h"
 #include "discogger_search_transaction.h"
+#include "http_status_util.h"
 #include <unordered_set>
 #include <iterator>
 
@@ -2542,6 +2543,21 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     runner_qa_native_master_page_transaction();
     runner_qa_native_master_child_isolation();
     runner_qa_native_search_preview_fields();
+    // Run the same SDK-independent failure classifier inside the original
+    // Win32/x64 foobar host. No network, OAuth, tags or cache writes.
+    for (int status : {401, 403, 404, 429}) {
+        const std::string_view message(discogger_net::discogs_search_http_error_message(status));
+        const std::string expected_status = "HTTP " + std::to_string(status);
+        if (message.find(expected_status) == std::string_view::npos ||
+            message.find("oauth_token") != std::string_view::npos ||
+            message.find("https://") != std::string_view::npos)
+            throw std::runtime_error("Native Discogs search HTTP failure classification failed.");
+    }
+    if (std::string_view(discogger_net::discogs_search_http_error_message(503))
+            .find("server unavailable") == std::string_view::npos)
+        throw std::runtime_error("Native Discogs search server failure classification failed.");
+    log_msg("DISCOGGER_NATIVE_HTTP_SEARCH_FAILURE_QA=PASS");
+
     // Actual foobar Win32/x64 pfc::array_t publication barrier: an optional
     // provider/preview exception cannot expose half-built exact/other rows.
     pfc::array_t<Artist_ptr> visible_exact, visible_other;
