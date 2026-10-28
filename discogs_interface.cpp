@@ -737,6 +737,18 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         // triggered for a deliberately stopped network request.
         throw;
     }
+    catch (const http_429_exception&) {
+        // The fetcher already exhausted bounded, abort-aware Retry-After
+        // handling. Do not turn a real 429 into "unknown error", or expose
+        // a signed OAuth request in the modeless native search dialog.
+        p_abort.check();
+        throw foo_discogs_exception(discogger_net::discogs_search_http_error_message(429));
+    }
+    catch (const http_exception& e) {
+        p_abort.check();
+        throw foo_discogs_exception(
+            discogger_net::discogs_search_http_error_message(e.get_status()));
+    }
 	catch (foo_discogs_exception& e) {
 
 		pfc::string8 error("Error loading search releases. ");
