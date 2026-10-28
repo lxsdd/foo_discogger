@@ -2540,6 +2540,34 @@ std::array<size_t, 3> CFindReleaseDialog::runner_qa_live_search_probe(const char
 std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() {
     if (!::IsWindow(m_hWnd) || !::IsWindow(m_artist_list) || !::IsWindow(m_release_tree))
         throw std::runtime_error("Synthetic result QA requires an open native Find Releases dialog.");
+    // Run the production native edit-field URL parser in original foobar
+    // Win32/x64 hosts. API/share links are lookup hints, not tag approvals.
+    for (const auto& reference : {
+        std::pair<const char*, const char*>{"HTTPS://WWW.DISCOGS.COM/RELEASE/00038012673-Title", "38012673"},
+        {"https://api.discogs.com/releases/37332711", "37332711"},
+        {"//discogs.com/de/release/36397609-Remix", "36397609"},
+        {"https://api.discogs.com/releases/36819730", "36819730"},
+        {"https://api.discogs.com/releases/35534398", "35534398"}
+    }) {
+        std::string parsed("unchanged");
+        if (!discogger_search::parse_discogs_reference(
+                reference.first, discogger_search::discogs_reference_kind::release,
+                parsed) || parsed != reference.second)
+            throw std::runtime_error("Native direct Discogs release reference failed.");
+    }
+    for (const char* invalid : {
+        "https://api.discogs.com.evil.example/releases/38012673",
+        "https://api.discogs.com/releases/38012673-Injected",
+        "https://api.discogs.com/releases/2147483648",
+        "https://api.discogs.com/artists/38012673"
+    }) {
+        std::string parsed("unchanged");
+        if (discogger_search::parse_discogs_reference(
+                invalid, discogger_search::discogs_reference_kind::release,
+                parsed) || parsed != "unchanged")
+            throw std::runtime_error("Native direct Discogs URL accepted an unsafe identity.");
+    }
+    log_msg("DISCOGGER_NATIVE_DIRECT_REFERENCE_QA=PASS");
     runner_qa_native_cache_json_rollback();
     runner_qa_native_master_page_transaction();
     runner_qa_native_master_child_isolation();

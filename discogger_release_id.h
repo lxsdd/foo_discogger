@@ -69,6 +69,19 @@ inline bool parse_master_link(std::string_view raw, bool& has_master) noexcept {
 // Extract only the ID immediately following the expected Discogs path kind.
 // In particular, do not choose the largest number from a release title/slug.
 enum class discogs_reference_kind { artist, release };
+// Only ASCII URL scheme, host, locale and resource-kind bytes are folded.
+// The ID and untrusted slug remain byte-exact; never decode %2F into a path.
+inline bool discogs_ascii_prefix(std::string_view value,
+                                 std::string_view prefix) noexcept {
+    if (value.size() < prefix.size()) return false;
+    for (std::size_t i = 0; i < prefix.size(); ++i) {
+        char a = value[i], b = prefix[i];
+        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = static_cast<char>(b - 'A' + 'a');
+        if (a != b) return false;
+    }
+    return true;
+}
 inline bool parse_discogs_reference(std::string_view input,
                                     discogs_reference_kind kind,
                                     std::string& id) {
@@ -88,15 +101,27 @@ inline bool parse_discogs_reference(std::string_view input,
         return true;
     }
 
-    // Accept only the actual website host, never an embedded or lookalike URL.
-    constexpr std::string_view prefixes[] = {
-        "https://www.discogs.com/", "https://discogs.com/",
-        "http://www.discogs.com/", "http://discogs.com/",
-        "www.discogs.com/", "discogs.com/"
+    // Accept only exact Discogs authorities (including copied API links).
+    // The trailing '/' is part of each boundary: credentials, ports and
+    // lookalike hosts never become a trusted Discogs reference.
+    struct recognized_prefix { std::string_view text; bool api; };
+    constexpr recognized_prefix prefixes[] = {
+        {"https://www.discogs.com/", false},
+        {"https://discogs.com/", false},
+        {"http://www.discogs.com/", false},
+        {"http://discogs.com/", false},
+        {"//www.discogs.com/", false},
+        {"//discogs.com/", false},
+        {"www.discogs.com/", false},
+        {"discogs.com/", false},
+        {"https://api.discogs.com/", true},
+        {"api.discogs.com/", true}
     };
-    for (const auto prefix : prefixes) {
-        if (input.substr(0, prefix.size()) == prefix) {
-            input.remove_prefix(prefix.size());
+    bool api_path = false;
+    for (const auto& prefix : prefixes) {
+        if (discogs_ascii_prefix(input, prefix.text)) {
+            input.remove_prefix(prefix.text.size());
+            api_path = prefix.api;
             break;
         }
     }
@@ -112,9 +137,12 @@ inline bool parse_discogs_reference(std::string_view input,
             break;
         }
     }
-    const std::string_view path = kind == discogs_reference_kind::release
-        ? std::string_view("release/") : std::string_view("artist/");
-    if (input.substr(0, path.size()) != path) return false;
+    const std::string_view path = api_path
+        ? (kind == discogs_reference_kind::release
+            ? std::string_view("releases/") : std::string_view("artists/"))
+        : (kind == discogs_reference_kind::release
+            ? std::string_view("release/") : std::string_view("artist/"));
+    if (!discogs_ascii_prefix(input, path)) return false;
     input.remove_prefix(path.size());
 
     std::size_t digits = 0;
@@ -126,6 +154,7 @@ inline bool parse_discogs_reference(std::string_view input,
     // A slug is optional; it may contain digits, but never supplies the ID.
     std::size_t pos = digits;
     if (pos < input.size() && input[pos] == '-') {
+        if (api_path) return false; // API resource paths never have title slugs.
         ++pos;
         const std::size_t slug_start = pos;
         while (pos < input.size() && input[pos] != '?' &&

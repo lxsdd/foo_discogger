@@ -154,3 +154,18 @@ row `0` may still display its combined preview but is never installed
 as a physical artist tracer or opened as a Discogs artist URL.
 Portable C++17/MSVC and original foobar2000 native GUI regression gates
 cover positive and negative identities. No tags/media/DB/artwork writes.
+
+## Exact official Discogs URL and API-reference lookup
+
+The native Find Release artist/release fields accept the existing bracketed IDs,
+canonical website links and exact official `https://api.discogs.com/releases/ID`
+or `/artists/ID` references. Scheme, host and resource-kind case variants and
+protocol-relative website share links are parsed as lookup hints; the ID is
+validated as a positive signed-32-bit Discogs identity and leading zeroes are
+canonicalized. API URLs must use the plural resource path and may not carry
+a release-title slug. Credentials, ports, lookalike domains, mismatched kinds,
+overflow, zero IDs and nested paths are rejected without changing the caller's
+previous ID. Query and fragment text never supply an identity. All five known
+release IDs have portable and original Win32/x64 native-host positive/negative
+regressions. These URL tests do **not** establish OAuth live search, metadata
+writes, edition matching or owner acceptance; every suggestion stays review-only.

@@ -87,7 +87,15 @@ int main() {
         good_case{"https://discogs.com/fr/artist/23456-Name", discogs_reference_kind::artist, "23456"},
         good_case{"[a=34567]", discogs_reference_kind::artist, "34567"},
         good_case{"[a45678]", discogs_reference_kind::artist, "45678"},
-        good_case{"release/2147483647", discogs_reference_kind::release, "2147483647"}
+        good_case{"release/2147483647", discogs_reference_kind::release, "2147483647"},
+        good_case{"HTTPS://WWW.DISCOGS.COM/RELEASE/00038012673-2026-Edit", discogs_reference_kind::release, "38012673"},
+        good_case{"//discogs.com/de/release/37332711-Kyau-Albert-Maywave", discogs_reference_kind::release, "37332711"},
+        good_case{"https://api.discogs.com/releases/38012673", discogs_reference_kind::release, "38012673"},
+        good_case{"https://api.discogs.com/releases/37332711?source=copy", discogs_reference_kind::release, "37332711"},
+        good_case{"HTTPS://API.DISCOGS.COM/RELEASES/00036397609", discogs_reference_kind::release, "36397609"},
+        good_case{"api.discogs.com/releases/36819730#view", discogs_reference_kind::release, "36819730"},
+        good_case{"https://api.discogs.com/releases/35534398/", discogs_reference_kind::release, "35534398"},
+        good_case{"https://api.discogs.com/artists/00012345", discogs_reference_kind::artist, "12345"}
     }) {
         std::string parsed("unchanged");
         assert(parse_discogs_reference(test.text, test.kind, parsed));
@@ -95,6 +103,16 @@ int main() {
     }
     for (const char* bad : {
         "https://evil.example/release/38012673",
+        "https://api.discogs.com.evil.example/releases/38012673",
+        "https://api.discogs.com@evil.example/releases/38012673",
+        "https://api.discogs.com:443/releases/38012673",
+        "http://api.discogs.com/releases/38012673",
+        "https://api.discogs.com/release/38012673",
+        "https://api.discogs.com/releases/38012673-Injected-Title",
+        "https://api.discogs.com/releases/38012673/another/123",
+        "https://api.discogs.com/releases/0",
+        "https://api.discogs.com/releases/2147483648",
+        "//evil.example/release/38012673",
         "https://www.discogs.com.evil.example/release/38012673",
         "https://www.discogs.com@evil.example/release/38012673",
         "https://www.discogs.com:443/release/38012673",

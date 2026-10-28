@@ -1694,7 +1694,16 @@ assert "discogger_search::valid_release_id(release_id.c_str())" in ui
 assert "extract_max_number(buffer, mode_param" not in ui
 assert "Enter a valid Discogs release ID or release URL." in ui
 assert "https://www.discogs.com/release/38012673-1000-Years-2026" in (root / "tests/release_id_test.cpp").read_text(encoding="utf-8-sig")
-print("PASS: direct release IDs validated before preview/load callbacks.")
+release_refs = (root / "discogger_release_id.h").read_text(encoding="utf-8-sig")
+release_ref_tests = (root / "tests/release_id_test.cpp").read_text(encoding="utf-8-sig")
+assert 'discogs_ascii_prefix(input, prefix.text)' in release_refs
+assert '"https://api.discogs.com/"' in release_refs
+assert 'if (api_path) return false;' in release_refs
+assert 'discogs_ascii_prefix(input, path)' in release_refs
+for reference_id in ("38012673", "37332711", "36397609", "36819730", "35534398"):
+    assert f"api.discogs.com/releases/{reference_id}" in release_ref_tests
+assert "DISCOGGER_NATIVE_DIRECT_REFERENCE_QA=PASS" in ui
+print("PASS: direct release IDs, official API/share links and native parser safety validated.")
 
 # Thumbnail cache reads are untrusted: no unchecked artist index, no signed
 # CRT read conversion, no partial/oversized buffers handed to the preview UI.
