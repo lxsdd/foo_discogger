@@ -907,8 +907,8 @@ result_body = completion_dialog.split("void CFindReleaseDialog::on_search_artist
     "void CFindReleaseDialog::OnTypeFilterTimer(", 1)[0]
 assert "m_query_mode & SearchMode::AT" in result_body
 assert "artists.get_count() == 1" in result_body
-assert "only->releases.get_count() || only->master_releases.get_count()" in result_body
-assert "ShowArtistSearchResults(only);" in result_body
+assert "preview->releases.get_count() || preview->master_releases.get_count()" in result_body
+assert "preview = artists[0];" in result_body
 assert "artists.get_count() > 1" in result_body
 assert "combined_advanced_search_preview(artists)" in result_body
 assert "ShowArtistSearchResults(preview);" in result_body
