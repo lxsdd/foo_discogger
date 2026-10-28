@@ -1075,6 +1075,9 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 		trot_text = exp_pair.first.c_str();
 	}
 
+	// UrlToMap populates its own temporary fields; TextToMap requires a fresh
+	// empty map (and asserts this in debug hosts). Never reuse URL parser state.
+	candidate_query = {};
 	bool bquery = search_query::TextToMap(trot_text, candidate_query);
 	bquery &= search_query::IsMinimal(candidate_query);
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
@@ -2587,6 +2590,21 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         counters[i]->store(saved_counters[i]);
     if (!rejected_inputs_preserved)
         throw std::runtime_error("Native rejected search changed active query or result state.");
+    // Native, network-free round trip for copied Discogs search URLs:
+    // UrlToMap fills a map, then the normalized text must be parsed afresh.
+    QueryDefMap url_fields{};
+    const pfc::string8 copied_query(
+        "https://www.discogs.com/search/?type=all&artist=Matt%20Fax&title=Only%20You");
+    std::pair<std::string, std::string> normalized_query{};
+    if (!search_query::UrlToMap(copied_query, url_fields) ||
+        !search_query::MapToText(url_fields, normalized_query, false) ||
+        normalized_query.first.empty())
+        throw std::runtime_error("Native Discogs query URL normalization failed.");
+    url_fields = {};
+    if (!search_query::TextToMap(normalized_query.first.c_str(), url_fields) ||
+        !search_query::IsMinimal(url_fields))
+        throw std::runtime_error("Native normalized query could not be reparsed.");
+    log_msg("DISCOGGER_NATIVE_QUERY_URL_REPARSE_QA=PASS");
     log_msg("DISCOGGER_NATIVE_REJECTED_SEARCH_STATE_QA=PASS");
     // Run the production native edit-field URL parser in original foobar
     // Win32/x64 hosts. API/share links are lookup hints, not tag approvals.
