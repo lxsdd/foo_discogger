@@ -169,3 +169,17 @@ previous ID. Query and fragment text never supply an identity. All five known
 release IDs have portable and original Win32/x64 native-host positive/negative
 regressions. These URL tests do **not** establish OAuth live search, metadata
 writes, edition matching or owner acceptance; every suggestion stays review-only.
+
+## Review-only artist-name ranking (2026-10-28)
+
+The bounded, validated artist-name scan now ranks strict case-insensitive exact
+names first, followed by numbered/stripped Discogs aliases, Latin Unicode-folded
+names, whole-word partial credits, and unrelated results. Only the strict
+original name enters the native exact-match bucket; all aliases, folded names
+and partial credits remain manual-review candidates. In particular,
+`Artist (2)` is never silently treated as the exact identity of `Artist (3)`,
+and `Matt` cannot match the inside of `Matthew`. The original provider IDs,
+UTF-8 names, paginated results, cache, user tags and physical media are not
+rewritten. Portable and MSVC Win32/x64 regression cases cover positive and
+negative aliases, Unicode accents, collaboration credits and partial words;
+real authenticated provider/owner acceptance remains a separate gate.

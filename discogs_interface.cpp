@@ -273,14 +273,13 @@ void DiscogsInterface::search_artist(const pfc::string8 &query, pfc::array_t<Art
 
     // Rank the entire bounded scan before applying the existing MAX_ARTISTS
     // display cap. An exact name on a later page beats page-one noise.
-    std::array<std::vector<discogger_search::artist_search_hit>, 4> ranked;
+    std::array<std::vector<discogger_search::artist_search_hit>,
+        discogger_search::artist_search_rank_count> ranked;
     for (const auto& hit : candidates) {
         const pfc::string8 name(hit.title.c_str());
-        const pfc::string8 lower = lowercase(name);
         const pfc::string8 stripped = strip_artist_name(name);
-        const size_t rank = lower == lowercase_query ? 0 :
-            stripped == stripped_query ? 1 :
-            lower.find_first(stripped_query) != pfc::infinite_size ? 2 : 3;
+        const size_t rank = discogger_search::rank_artist_search_hit(
+            query.c_str(), stripped_query.c_str(), name.c_str(), stripped.c_str());
         ranked[rank].push_back(hit);
     }
     pfc::array_t<Artist_ptr> staged_exact, staged_other;
@@ -292,7 +291,7 @@ void DiscogsInterface::search_artist(const pfc::string8 &query, pfc::array_t<Art
             // Search-only projections never mutate canonical artist caches.
             Artist_ptr artist = std::make_shared<Artist>(hit.id.c_str());
             artist->name = hit.title.c_str();
-            if (rank <= 1) staged_exact.append_single(std::move(artist));
+            if (rank == 0) staged_exact.append_single(std::move(artist));
             else staged_other.append_single(std::move(artist));
             ++emitted;
         }
