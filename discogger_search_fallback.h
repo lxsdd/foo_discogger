@@ -317,9 +317,13 @@ inline bool plausible_original_release_title(
     const auto requested = fold_title_words(artist);
     if (credited.empty() || requested.empty() || credited == requested)
         return true;
-    const auto featured_primary = primary_artist_before_featuring(artist);
-    return !featured_primary.empty() &&
-        credited == fold_title_words(featured_primary);
+    // Discogs may index an explicit x/×/vs or featuring collaboration under
+    // its first participant. This suppresses only redundant optional HTTP
+    // requests for a plausible ORIGINAL hit, never approves a release.
+    // Do not split an ampersand-only duo or accept a guest-only credit.
+    const auto indexed_primary = release_discovery_artist(artist);
+    return !indexed_primary.empty() && indexed_primary != trim_copy(artist) &&
+        credited == fold_title_words(indexed_primary);
 }
 
 template <typename Children, typename ChildTitle>

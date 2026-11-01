@@ -3038,3 +3038,11 @@ assert "review->name = discogger_search::review_only_group_name.data();" in sear
 assert "incoming_review_only" in native_fallback
 assert "DISCOGGER_NATIVE_FALLBACK_PROVENANCE_QA=PASS" in native_fallback
 print("PASS: original/fallback provenance and native review visibility are wired.")
+# Real original-result collaboration confidence, not just a planner fixture.
+fallback_policy = (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
+assert "const auto indexed_primary = release_discovery_artist(artist);" in fallback_policy
+assert "indexed_primary != trim_copy(artist)" in fallback_policy
+assert "DISCOGGER_NATIVE_COLLAB_PRIMARY_CREDIT_QA=PASS" in native_fallback
+assert 'plausible_original_release_title("Kyau & Albert x Maywave"' in (
+    root / "tests/collaboration_fallback_test.cpp").read_text(encoding="utf-8-sig")
+print("PASS: first-credit original collaboration gate and native regression wiring.")

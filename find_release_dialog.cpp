@@ -2777,6 +2777,24 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         discogger_search::plausible_release_title(
             "1000 Years", "Unrelated Artist - 2000 Years"))
         throw std::runtime_error("Native structured-title fallback confidence gate failed.");
+    // Real Win32/x64 foobar host exercises the production original-result
+    // gate. A guest-only hit, permanent duo or wrong edition is not enough.
+    if (!discogger_search::plausible_original_release_title(
+            "Kyau & Albert x Maywave", "1000 Years",
+            "Kyau & Albert - 1000 Years") ||
+        !discogger_search::plausible_original_release_title(
+            "Above & Beyond feat. Richard Bedford", "Sun & Moon",
+            "Above & Beyond - Sun & Moon") ||
+        discogger_search::plausible_original_release_title(
+            "Kyau & Albert x Maywave", "1000 Years",
+            "Maywave - 1000 Years") ||
+        discogger_search::plausible_original_release_title(
+            "Kyau & Albert", "1000 Years", "Kyau - 1000 Years") ||
+        discogger_search::plausible_original_release_title(
+            "Kyau & Albert x Maywave", "1000 Years (DJ Version)",
+            "Kyau & Albert - 1000 Years (Radio Edit)"))
+        throw std::runtime_error("Native collaboration primary-credit discovery gate failed.");
+    log_msg("DISCOGGER_NATIVE_COLLAB_PRIMARY_CREDIT_QA=PASS");
     const size_t previous_mode = m_query_mode;
     m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
     // Native HWND/list/tree regression: original exact result stays exact,

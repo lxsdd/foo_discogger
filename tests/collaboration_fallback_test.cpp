@@ -242,6 +242,24 @@ int main() {
         "Matt Fax - Only You (Radio Edit)"));
     assert(plausible_original_release_title("Matt Fax", "Only You (Extended Mix)",
         "Matt Fax - Only You (Extended Mix)"));
+    // Genuine original first-credit collaborations must not launch redundant
+    // Discogs fallback requests; unrelated/guest/edition hits still do.
+    assert(plausible_original_release_title("Kyau & Albert x Maywave",
+        "1000 Years", "Kyau & Albert - 1000 Years"));
+    assert(plausible_original_release_title("Maywave × Kyau & Albert",
+        "1000 Years", "Maywave - 1000 Years"));
+    assert(plausible_original_release_title("Producer VS. Guest",
+        "A New Day", "Producer - A New Day"));
+    assert(plausible_original_release_title("Above & Beyond feat. Richard Bedford",
+        "Sun & Moon", "Above & Beyond - Sun & Moon"));
+    assert(!plausible_original_release_title("Kyau & Albert",
+        "1000 Years", "Kyau - 1000 Years"));
+    assert(!plausible_original_release_title("Kyau & Albert x Maywave",
+        "1000 Years", "Maywave - 1000 Years"));
+    assert(!plausible_original_release_title("Kyau & Albert x",
+        "1000 Years", "Kyau & Albert - 1000 Years"));
+    assert(!plausible_original_release_title("Kyau & Albert x Maywave",
+        "1000 Years (DJ Version)", "Kyau & Albert - 1000 Years (Radio Edit)"));
     const auto child_title = [](std::string_view value) { return value; };
     assert(!plausible_original_release_group_title("Matt Fax", "Only You (Extended Mix)",
         "Matt Fax - Only You (Radio Edit)",
@@ -249,6 +267,12 @@ int main() {
     assert(plausible_original_release_group_title("Matt Fax", "Only You (Extended Mix)",
         "Matt Fax - Only You (Radio Edit)",
         std::vector<std::string_view>{"Matt Fax - Only You (Extended Mix)"}, child_title));
+    assert(plausible_original_release_group_title("Kyau & Albert x Maywave",
+        "1000 Years", "Various Artists - Compilation",
+        std::vector<std::string_view>{"Kyau & Albert - 1000 Years"}, child_title));
+    assert(!plausible_original_release_group_title("Kyau & Albert x Maywave",
+        "1000 Years", "Various Artists - Compilation",
+        std::vector<std::string_view>{"Maywave - 1000 Years"}, child_title));
 
 
     // Original Discogs results may group a requested version below a
