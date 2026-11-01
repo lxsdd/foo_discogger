@@ -120,7 +120,7 @@ inline std::string release_discovery_artist(std::string_view artist) {
 }
 // Only strip a *recognized, terminal* version descriptor. Preserve the
 // user's exact title and version for all later track matching and tagging.
-inline std::string without_terminal_mix_suffix(std::string_view title) {
+inline std::string without_terminal_mix_suffix_once(std::string_view title) {
     const std::string clean = trim_copy(title);
     const std::string lower = ascii_lower(clean);
     constexpr std::string_view suffixes[] = {
@@ -192,6 +192,19 @@ recognized = true;
 // A review-only discovery fold: normalize common Latin diacritics,
 // decomposed accents and Unicode punctuation without changing stored tags,
 // query bytes or release identities. Other scripts remain byte-exact.
+// A release may carry stacked *recognized terminal* version labels, e.g.
+// "(Extended Mix) [Remastered]". Remove at most three for discovery only;
+// an unrecognized final label keeps the entire original title unchanged.
+// The exact user edition remains untouched for review and matching.
+inline std::string without_terminal_mix_suffix(std::string_view title) {
+    std::string current = trim_copy(title);
+    for (unsigned pass = 0; pass < 3; ++pass) {
+        std::string next = without_terminal_mix_suffix_once(current);
+        if (next == current || next.empty()) break;
+        current.swap(next);
+    }
+    return current;
+}
 inline std::string fold_title_words(std::string_view text) {
     std::string out;
     auto add_word = [&](std::string_view value) {
