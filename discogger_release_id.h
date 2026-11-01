@@ -128,11 +128,12 @@ inline bool parse_discogs_reference(std::string_view input,
     if (!input.empty() && input.front() == '/') input.remove_prefix(1);
 
     // Discogs shares localized links such as /de/release/123-title.
+    // Fold ASCII locale case just like the trusted host/resource prefix.
     constexpr std::string_view locales[] = {
         "de/", "en/", "fr/", "es/", "it/", "pt/", "ja/"
     };
     for (const auto locale : locales) {
-        if (input.substr(0, locale.size()) == locale) {
+        if (discogs_ascii_prefix(input, locale)) {
             input.remove_prefix(locale.size());
             break;
         }
