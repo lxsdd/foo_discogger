@@ -429,7 +429,7 @@ assert "fallback_params(fallback_query.c_str())" in search
 assert "percent_encode_search_value" in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
 assert "if (fallback_max > max_to_abort)" in search
 assert 'fallback_presentation_query["artist="].first.clear();' in search
-assert 'presentation_query["artist="].first.clear();' not in search
+assert '\n    presentation_query["artist="].first.clear();' not in search
 assert "used_broad_fallback = true;" in search
 assert "p_abort.check();" in search
 # A nonempty partner/guest result may be unrelated. The next bounded
@@ -540,7 +540,7 @@ assert plan.index("if (!using_track_title) {") < plan.index("const std::string i
 # Therefore the stricter, authenticated primary-artist query comes FIRST.
 assert "if (!original_has_candidates || !original_title_plausible)" in search
 assert 'fallback_presentation_query["artist="].first.clear();' in search
-assert 'presentation_query["artist="].first.clear();' not in search
+assert '\n    presentation_query["artist="].first.clear();' not in search
 print("PASS: safe, bounded dedicated release-title index precedes partner and broad fallback.")
 print("PASS: artist refresh, HTTP rate-limit routing and collaboration fallback are wired.")
 print("NOTE: full component compilation and live Discogs/foobar testing are separate gates.")
