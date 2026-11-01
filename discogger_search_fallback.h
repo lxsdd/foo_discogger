@@ -26,19 +26,43 @@ inline std::string ascii_lower(std::string_view value) {
 // an ampersand can also be part of a permanent duo/group name.
 inline std::string trailing_collaborator(std::string_view artist) {
     const auto lowered = ascii_lower(artist);
-    constexpr std::string_view joins[] = {
-        " x ", " × ", " vs. ", " vs ", " feat. ", " feat ", " featuring ", " ft. ", " ft "
+    // A later vocalist credit must not replace an explicit x/vs partner.
+    // Preserve ampersand-only group names as review-only hints.
+    constexpr std::string_view collaborations[] = {
+        " x ", " × ", " vs. ", " vs ", " versus "
+    };
+    constexpr std::string_view guests[] = {
+        " feat. ", " feat ", " featuring ", " ft. ", " ft "
     };
     std::size_t position = std::string_view::npos, offset = 0;
-    for (const auto join : joins) {
+    for (const auto join : collaborations) {
         const auto p = lowered.rfind(join);
-        if (p != std::string::npos && (position == std::string_view::npos || p > position)) {
+        if (p != std::string_view::npos &&
+            (position == std::string_view::npos || p > position)) {
             position = p; offset = join.size();
         }
     }
-    // Prefer an explicit featuring/x/vs join over an ampersand inside a
-    // collaborating group's name (e.g. "Maywave x Kyau & Albert").
-    // Only use '&' as a weaker discovery hint if no explicit join exists.
+    if (position != std::string_view::npos) {
+        const std::string_view tail = artist.substr(position + offset);
+        const std::string tail_lower = ascii_lower(tail);
+        std::size_t guest_at = std::string_view::npos;
+        for (const auto guest : guests) {
+            const auto p = tail_lower.find(guest);
+            if (p != std::string_view::npos &&
+                (guest_at == std::string_view::npos || p < guest_at))
+                guest_at = p;
+        }
+        return trim_copy(tail.substr(0, guest_at));
+    }
+    // Without an explicit collaboration, a featured vocalist remains the
+    // next bounded discovery hint; a plain ampersand is weaker still.
+    for (const auto guest : guests) {
+        const auto p = lowered.rfind(guest);
+        if (p != std::string_view::npos &&
+            (position == std::string_view::npos || p > position)) {
+            position = p; offset = guest.size();
+        }
+    }
     if (position == std::string_view::npos) {
         position = lowered.rfind(" & ");
         offset = 3;
