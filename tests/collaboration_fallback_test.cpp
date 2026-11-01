@@ -74,6 +74,21 @@ int main() {
     assert(without_terminal_mix_suffix("Only You (Extended Mix)") == "Only You");
     assert(without_terminal_mix_suffix("1000 Years (Live)") == "1000 Years (Live)");
     assert(without_terminal_mix_suffix("Only You (John Smith Remix)") == "Only You");
+    assert(without_terminal_mix_suffix("Only You (John Smith Remix) [Remastered]") == "Only You");
+    assert(without_terminal_mix_suffix("Only You (Extended Mix) (2026 Remaster)") == "Only You");
+    assert(without_terminal_mix_suffix("Only You (Live) [Remastered]") == "Only You (Live)");
+    assert(without_terminal_mix_suffix("Only You (Extended Mix) (Live)") == "Only You (Extended Mix) (Live)");
+    assert(!plausible_release_title("Only You (Extended Mix) [Remastered]",
+        "Matt Fax - Only You (Radio Edit) [Remastered]"));
+    assert(plausible_release_title("Only You (Extended Mix) [Remastered]",
+        "Matt Fax - Only You (Extended Mix) [Remastered]"));
+    const auto stacked_plan = build_fallback_plan(
+        "Matt Fax", "Only You (John Smith Remix) [Remastered]", "");
+    assert(stacked_plan.size() == 3);
+    assert(stacked_plan[0].release_title_filter ==
+           "Only You (John Smith Remix) [Remastered]");
+    assert(stacked_plan[1].release_title_filter == "Only You");
+    assert(stacked_plan[2].q == "Only You");
     assert(without_terminal_mix_suffix("Till You Let Go (2026 Remaster)") == "Till You Let Go");
     assert(without_terminal_mix_suffix("Consciousness EP [Deluxe Edition]") == "Consciousness EP");
     assert(without_terminal_mix_suffix("Only You - Extended Mix") == "Only You");
