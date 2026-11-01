@@ -1344,8 +1344,16 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
         (append ? m_alist.Get_Exact_Artist_Count() : 0);
     const size_t total_other = incoming_other +
         (append ? m_alist.Get_Other_Artist_Count() : 0);
+    bool incoming_review_only = false;
+    for (const auto& artist : valid_other) {
+        if (artist && discogger_search::is_review_only_group(
+                artist->id.c_str(), artist->name.c_str())) {
+            incoming_review_only = true;
+            break;
+        }
+    }
     const auto decision = discogger_search::resolve_result_filter(
-        exact_only_requested, total_exact, total_other);
+        exact_only_requested, total_exact, total_other, incoming_review_only);
     const bool b_chk_exact_matches = decision.exact_only;
     if (decision.show_alternatives && exact_only_requested) {
         // The effective list filter must match the visible checkbox.
@@ -1356,7 +1364,9 @@ void CFindReleaseDialog::on_search_artist_done(const pfc::array_t<Artist_ptr>& p
     pfc::string8 msg = search_query_run_message(
         m_qdm_search_query, m_query_mode, out_va_cap, no_matches);
     if (decision.show_alternatives)
-        msg << " No exact artist match; alternative releases require review.";
+        msg << (incoming_review_only
+            ? " Broader Discogs suggestions require manual release/version review."
+            : " No exact artist match; alternative releases require review.");
     SetSearchModeText(msg);
 
 	{
@@ -2769,6 +2779,38 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         throw std::runtime_error("Native structured-title fallback confidence gate failed.");
     const size_t previous_mode = m_query_mode;
     m_query_mode = SearchMode::AT; // exercise the real advanced-search auto-preview path
+    // Native HWND/list/tree regression: original exact result stays exact,
+    // while the review-only group is visible without a second artist click.
+    Artist_ptr original_origin = std::make_shared<Artist>("101");
+    original_origin->name = "Original exact artist";
+    original_origin->loaded_preview = true;
+    original_origin->loaded_releases = true;
+    Release_ptr original_version = std::make_shared<Release>("36397609");
+    original_version->title = "Only You";
+    original_version->loaded_preview = true;
+    original_origin->releases.append_single(original_version);
+    original_origin->search_order_master.append_single(false);
+    Artist_ptr review_origin = std::make_shared<Artist>("0");
+    review_origin->name = discogger_search::review_only_group_name.data();
+    review_origin->loaded_preview = true;
+    review_origin->loaded_releases = true;
+    Release_ptr review_version = std::make_shared<Release>("38012673");
+    review_version->title = "Via Balearia (review required)";
+    review_version->loaded_preview = true;
+    review_origin->releases.append_single(review_version);
+    review_origin->search_order_master.append_single(false);
+    pfc::array_t<Artist_ptr> origin_exact, origin_other;
+    origin_exact.append_single(original_origin);
+    origin_other.append_single(review_origin);
+    CheckDlgButton(IDC_CHK_ONLY_EXACT_MATCHES, BST_CHECKED);
+    on_search_artist_done(origin_exact, origin_other, false);
+    if (m_alist.Get_Artists().get_count() != 2 ||
+        m_dctree.Get_Size() != 2 ||
+        IsDlgButtonChecked(IDC_CHK_ONLY_EXACT_MATCHES) != BST_UNCHECKED ||
+        !m_alist.Get_Artists()[0]->id.equals("101") ||
+        !m_alist.Get_Artists()[1]->id.equals("0"))
+        throw std::runtime_error("Native original/fallback provenance or review visibility failed.");
+    log_msg("DISCOGGER_NATIVE_FALLBACK_PROVENANCE_QA=PASS");
 
     // Preserve the five cross-provider identities from the original fixture.
     Artist_ptr artist = std::make_shared<Artist>("0");

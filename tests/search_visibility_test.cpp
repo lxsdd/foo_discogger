@@ -8,6 +8,10 @@ int main() {
     assert(!alt_unchecked.exact_only && alt_unchecked.show_alternatives);
     const auto mixed = resolve_result_filter(true, 2, 5);
     assert(mixed.exact_only && !mixed.show_alternatives);
+    const auto forced_review = resolve_result_filter(true, 2, 1, true);
+    assert(!forced_review.exact_only && forced_review.show_alternatives);
+    const auto empty_forced_review = resolve_result_filter(true, 2, 0, true);
+    assert(empty_forced_review.exact_only && !empty_forced_review.show_alternatives);
     const auto exact = resolve_result_filter(true, 1, 0);
     assert(exact.exact_only && !exact.show_alternatives);
     const auto empty = resolve_result_filter(true, 0, 0);

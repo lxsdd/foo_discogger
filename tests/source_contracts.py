@@ -428,7 +428,8 @@ assert "search_query::TextToMap(fallback_expression, fallback_map)" not in searc
 assert "fallback_params(fallback_query.c_str())" in search
 assert "percent_encode_search_value" in (root / "discogger_search_fallback.h").read_text(encoding="utf-8-sig")
 assert "if (fallback_max > max_to_abort)" in search
-assert 'presentation_query["artist="].first.clear();' in search
+assert 'fallback_presentation_query["artist="].first.clear();' in search
+assert 'presentation_query["artist="].first.clear();' not in search
 assert "used_broad_fallback = true;" in search
 assert "p_abort.check();" in search
 # A nonempty partner/guest result may be unrelated. The next bounded
@@ -452,8 +453,8 @@ assert "master->sub_releases" in amt_search
 assert "Native grouped version original-result fallback gate failed." in (
     root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 assert "if (!original_has_candidates || !original_title_plausible)" in amt_search
-assert "fake_artist->master_releases.get_count() > prior_masters" in fallback_loop
-assert "fake_artist->releases.get_count() > prior_releases" in fallback_loop
+assert "fallback_artist->master_releases.get_count() > prior_masters" in fallback_loop
+assert "fallback_artist->releases.get_count() > prior_releases" in fallback_loop
 assert "if (have_new_candidates)" in fallback_loop
 nonempty_result = fallback_loop.split("if (have_new_candidates) {", 1)[1].split(
     "            }", 1)[0]
@@ -538,7 +539,8 @@ assert plan.index("if (!using_track_title) {") < plan.index("const std::string i
 # A guest/title query can return an unrelated release and stop the fallback.
 # Therefore the stricter, authenticated primary-artist query comes FIRST.
 assert "if (!original_has_candidates || !original_title_plausible)" in search
-assert 'presentation_query["artist="].first.clear();' in search
+assert 'fallback_presentation_query["artist="].first.clear();' in search
+assert 'presentation_query["artist="].first.clear();' not in search
 print("PASS: safe, bounded dedicated release-title index precedes partner and broad fallback.")
 print("PASS: artist refresh, HTTP rate-limit routing and collaboration fallback are wired.")
 print("NOTE: full component compilation and live Discogs/foobar testing are separate gates.")
@@ -3023,3 +3025,14 @@ assert "pfc::string8 backtitle = r->title;" not in preview
 assert "DISCOGGER_NATIVE_PREVIEW_TITLE_ROLLBACK_QA=PASS" in (
     root / "find_release_dialog.cpp").read_text(encoding="utf-8-sig")
 print("PASS: advanced-search preview title rollback is wired to portable/native foobar regressions.")
+
+# Native original/fallback provenance, transaction and review UI wiring.
+assert "parse_amt_page(fallback_artist, fallback_pages[i], fallback_pai" in search
+assert "process_amt_parsed_fake_artist(fake_artist, pai, true, true," in search
+assert "process_amt_parsed_fake_artist(fallback_artist, fallback_pai, true, true," in search
+assert "discogger_search::review_only_identity_filter provenance;" in search
+assert "staged_matches.other.append_single(review);" in search
+assert "review->name = discogger_search::review_only_group_name.data();" in search
+assert "incoming_review_only" in native_fallback
+assert "DISCOGGER_NATIVE_FALLBACK_PROVENANCE_QA=PASS" in native_fallback
+print("PASS: original/fallback provenance and native review visibility are wired.")

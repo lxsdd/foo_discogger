@@ -7,6 +7,19 @@
 #include <vector>
 int main() {
     using namespace discogger_search;
+    review_only_identity_filter origin;
+    origin.remember_original(false, "36397609");
+    origin.remember_original(true, "37332711");
+    origin.remember_original(false, "0");
+    assert(!origin.allow_suggestion(false, "00036397609"));
+    assert(!origin.allow_suggestion(true, "00037332711"));
+    assert(origin.allow_suggestion(false, "38012673"));
+    assert(!origin.allow_suggestion(false, "00038012673"));
+    assert(origin.allow_suggestion(true, "38012673"));
+    assert(!origin.allow_suggestion(false, "0"));
+    assert(!origin.allow_suggestion(false, "2147483648"));
+    assert(is_review_only_group("0", review_only_group_name));
+    assert(!is_review_only_group("101", review_only_group_name));
     assert(trailing_collaborator("Kyau & Albert X Maywave") == "Maywave");
     assert(trailing_collaborator("Kyau & Albert x Maywave") == "Maywave");
     // Ampersand collaborations are bounded discovery hints, not safe tag matches.

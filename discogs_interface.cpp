@@ -889,6 +889,19 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             }
         }
     }
+    // Preserve original exact/other provenance across optional discovery.
+    Artist_ptr fallback_artist = std::make_shared<Artist>("0");
+    fallback_artist->name = "Review-only discovery";
+    fallback_artist->loaded = true;
+    fallback_artist->loaded_preview = true;
+    fallback_artist->loaded_releases = true;
+    QueryDefMap fallback_presentation_query = qdm_search_query;
+    fallback_presentation_query["artist="].first.clear();
+    pfc::array_t<Artist_ptr> fallback_exact, fallback_other;
+    parse_amt_info fallback_pai = {
+        fallback_presentation_query, {}, {}, {},
+        fallback_exact, fallback_other, {0, 0}
+    };
     bool used_broad_fallback = false;
     if (!original_has_candidates || !original_title_plausible) {
         // Keep the exact original query untouched; the plan only suggests
@@ -967,11 +980,26 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                         static_cast<unsigned>(json_array_size(results)));
             }
 #endif
-            const size_t prior_masters = fake_artist->master_releases.get_count();
-            const size_t prior_releases = fake_artist->releases.get_count();
-            for (size_t i = 0; i < fallback_pages.get_count(); ++i) {
-                p_abort.check();
-                parse_amt_page(fake_artist, fallback_pages[i], pai, p_status, p_abort);
+            const size_t prior_masters = fallback_artist->master_releases.get_count();
+            const size_t prior_releases = fallback_artist->releases.get_count();
+            try {
+                for (size_t i = 0; i < fallback_pages.get_count(); ++i) {
+                    p_abort.check();
+                    parse_amt_page(fallback_artist, fallback_pages[i], fallback_pai,
+                        p_status, p_abort);
+                }
+            } catch (const exception_aborted&) {
+                throw;
+            } catch (const foo_discogs_exception&) {
+                // Drop all optional rows after an incomplete provider page.
+                fallback_artist->master_releases.force_reset();
+                fallback_artist->releases.force_reset();
+                fallback_artist->search_order_master.force_reset();
+                fallback_pai.mva_masters.clear();
+                used_broad_fallback = false;
+                budget.stop();
+                p_status.set_item("Optional Discogs result parse failed; preserving original results.");
+                break;
             }
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
             discogger_live_search_qa::worker_phase.store(4);
@@ -979,8 +1007,8 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             // A duplicate ID from fallback must not demote an otherwise
             // unchanged original candidate into the review-only bucket.
             const bool have_new_candidates =
-                fake_artist->master_releases.get_count() > prior_masters ||
-                fake_artist->releases.get_count() > prior_releases;
+                fallback_artist->master_releases.get_count() > prior_masters ||
+                fallback_artist->releases.get_count() > prior_releases;
             budget.observe(have_new_candidates);
             if (have_new_candidates) {
                 used_broad_fallback = true;
@@ -994,32 +1022,90 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
     }
 
 	va_res_cap.first = fake_artist->master_releases.get_count();
+    va_res_cap.first += fallback_artist->master_releases.get_count();
 	va_res_cap.second = fake_artist->releases.get_count();
+    va_res_cap.second += fallback_artist->releases.get_count();
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
     // These are parsed preview candidates, never independently fetched probes.
     discogger_live_search_qa::parsed_masters.store(static_cast<unsigned>(va_res_cap.first));
     discogger_live_search_qa::parsed_releases.store(static_cast<unsigned>(va_res_cap.second));
 #endif
 
-	//to load while parsing
-	for (auto mr : pai.mva_masters) {
-		mr.second->loaded_preview = false;
-	}
-
-	// Low-confidence fallback suggestions stay in the 'other' section:
-    // the UI cannot mistake them for exact original-artist hits.
-    QueryDefMap presentation_query = qdm_search_query;
-    if (used_broad_fallback)
-        presentation_query["artist="].first.clear();
-    parse_amt_info presentation_pai = {
-        presentation_query, map_found_artists, set_bad_artists, mva_masters,
-        staged_matches.exact, staged_matches.other, qry_m_r_found
-    };
+    // Original matches retain the original artist filter and exact roles.
+    for (auto mr : pai.mva_masters) mr.second->loaded_preview = false;
+    for (auto mr : fallback_pai.mva_masters) mr.second->loaded_preview = false;
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
     discogger_live_search_qa::worker_phase.store(5);
 #endif
-    process_amt_parsed_fake_artist(fake_artist, presentation_pai, true, true,
+    process_amt_parsed_fake_artist(fake_artist, pai, true, true,
         va_res_cap, va_done_cap, p_status, p_abort);
+
+    if (used_broad_fallback) {
+        std::pair<size_t, size_t> fallback_res_cap(0, 0);
+        std::pair<size_t, size_t> fallback_done_cap(0, 0);
+        bool fallback_ready = true;
+        try {
+            process_amt_parsed_fake_artist(fallback_artist, fallback_pai, true, true,
+                fallback_res_cap, fallback_done_cap, p_status, p_abort);
+        } catch (const exception_aborted&) {
+            throw;
+        } catch (const foo_discogs_exception&) {
+            p_abort.check();
+            fallback_ready = false;
+        } catch (const http_exception&) {
+            p_abort.check();
+            fallback_ready = false;
+        }
+        if (fallback_ready) {
+            discogger_search::review_only_identity_filter provenance;
+            for (const auto& master : fake_artist->master_releases) {
+                if (!master) continue;
+                provenance.remember_original(true, master->id.c_str());
+                if (master->main_release)
+                    provenance.remember_original(false, master->main_release->id.c_str());
+                for (const auto& child : master->sub_releases)
+                    if (child) provenance.remember_original(false, child->id.c_str());
+            }
+            for (const auto& release : fake_artist->releases)
+                if (release) provenance.remember_original(false, release->id.c_str());
+
+            // Synthetic review-only group prevents fallback payload from
+            // merging into an original exact artist of the same Discogs ID.
+            Artist_ptr review = std::make_shared<Artist>("0");
+            review->name = discogger_search::review_only_group_name.data();
+            review->loaded = true;
+            review->loaded_preview = true;
+            review->loaded_releases = true;
+            const auto collect = [&](const pfc::array_t<Artist_ptr>& rows) {
+                for (const auto& source : rows) {
+                    if (!source) continue;
+                    for (const auto& master : source->master_releases) {
+                        if (master && provenance.allow_suggestion(true, master->id.c_str())) {
+                            review->master_releases.append_single(master);
+                            review->search_order_master.append_single(true);
+                        }
+                    }
+                    for (const auto& release : source->releases) {
+                        if (release && provenance.allow_suggestion(false, release->id.c_str())) {
+                            review->releases.append_single(release);
+                            review->search_order_master.append_single(false);
+                        }
+                    }
+                }
+            };
+            collect(fallback_exact);
+            collect(fallback_other);
+            if (review->master_releases.get_count() || review->releases.get_count()) {
+                staged_matches.other.append_single(review);
+                va_res_cap.first += fallback_res_cap.first;
+                va_res_cap.second += fallback_res_cap.second;
+                va_done_cap.first += fallback_done_cap.first;
+                va_done_cap.second += fallback_done_cap.second;
+            }
+        } else {
+            p_status.set_item("Optional Discogs preview unavailable; preserving original results.");
+        }
+    }
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
     discogger_live_search_qa::worker_phase.store(6);
 #endif
