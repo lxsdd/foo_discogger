@@ -29,6 +29,17 @@ int main() {
     assert(trailing_collaborator("Kyau & Albert x Maywave") == "Maywave");
     assert(trailing_collaborator("Maywave x Kyau & Albert") == "Kyau & Albert");
     assert(trailing_collaborator("Matt Fax feat. Lovlee") == "Lovlee");
+    // Mixed collaboration/featured credits must query the actual partner,
+    // not a later vocalist; no unbounded extra provider requests.
+    assert(trailing_collaborator("Kyau & Albert x Maywave feat. Singer") == "Maywave");
+    assert(trailing_collaborator("Kyau & Albert × Maywave ft. Singer") == "Maywave");
+    assert(trailing_collaborator("Producer VS. Partner featuring Singer") == "Partner");
+    assert(trailing_collaborator("Producer feat. Singer x Partner") == "Partner");
+    assert(trailing_collaborator("Producer x Partner x Guest feat. Singer") == "Guest");
+    assert(trailing_collaborator("Producer feat. Singer") == "Singer");
+    assert(trailing_collaborator("Producer & Partner feat. Singer") == "Singer");
+    assert(trailing_collaborator("Producer x   feat. Singer") == "");
+
     assert(trailing_collaborator("Artist ft. Guest") == "Guest");
     assert(trailing_collaborator("Quivver") == "");
     assert(trailing_collaborator("Artist VS. Guest") == "Guest");
@@ -48,6 +59,16 @@ int main() {
     assert(primary_artist_before_explicit_collaboration("Artist x   ").empty());
     assert(release_discovery_artist("Kyau & Albert x Maywave feat. Singer") == "Kyau & Albert");
     assert(release_discovery_artist("Kyau & Albert") == "Kyau & Albert");
+    const auto mixed_credit_plan = build_fallback_plan(
+        "Kyau & Albert x Maywave feat. Singer", "1000 Years", "");
+    assert(mixed_credit_plan.size() == 3);
+    assert(mixed_credit_plan[0].artist_filter == "Kyau & Albert");
+    assert(mixed_credit_plan[1].q == "Maywave" &&
+           mixed_credit_plan[1].title == "1000 Years");
+    assert(encode_fallback_query(mixed_credit_plan[1]) ==
+           "q=%22Maywave%22&title=1000%20Years");
+    assert(mixed_credit_plan[2].q == "1000 Years");
+
     assert(release_discovery_artist("Above & Beyond feat. Richard Bedford") == "Above & Beyond");
     assert(without_terminal_mix_suffix("1000 Years (DJ Version)") == "1000 Years");
     assert(without_terminal_mix_suffix("Only You (Extended Mix)") == "Only You");
