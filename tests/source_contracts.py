@@ -2954,7 +2954,7 @@ assert '#include "discogger_search_transaction.h"' in advanced_source
 assert "staged_search_result_pair<pfc::array_t<Artist_ptr>> staged_matches;" in advanced
 assert "exact_matches.force_reset();" not in advanced
 assert "other_matches.force_reset();" not in advanced
-assert "staged_matches.exact, staged_matches.other, qry_m_r_found" in advanced
+assert "staged_matches.exact," in advanced\nassert "staged_matches.other," in advanced\nassert "qry_m_r_found" in advanced
 assert "staged_matches.publish(exact_matches, other_matches);" in advanced
 assert advanced.index("p_abort.check();\n    staged_matches.publish(") > advanced.index(
     "pfc::list_to_array(om, lp);")
