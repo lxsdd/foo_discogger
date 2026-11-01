@@ -2765,6 +2765,18 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
         discogger_search::encode_fallback_query(edition_plan[1]) !=
             "artist=Matt%20Fax&release_title=Only%20You&type=release")
         throw std::runtime_error("Native edition base-title index fallback gate failed.");
+    // Mixed collaboration + vocalist: the bounded partner query must not
+    // drift to the featured singer. Exercise the real Win32/x64 planner.
+    const auto mixed_plan = discogger_search::build_fallback_plan(
+        "Kyau & Albert x Maywave feat. Singer", "1000 Years", "");
+    if (mixed_plan.size() != 3 ||
+        mixed_plan[0].artist_filter != "Kyau & Albert" ||
+        mixed_plan[1].q != "Maywave" ||
+        mixed_plan[1].title != "1000 Years" ||
+        mixed_plan[2].q != "1000 Years" ||
+        discogger_search::encode_fallback_query(mixed_plan[1]) !=
+            "q=%22Maywave%22&title=1000%20Years")
+        throw std::runtime_error("Native mixed-credit collaboration discovery gate failed.");
     // The native original-host fixture exercises the production discovery
     // gate, including a nonempty but irrelevant first-page title. Neither
     // this heuristic nor fallback candidates authorize a metadata write.
