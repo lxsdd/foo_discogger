@@ -118,10 +118,12 @@ inline bool parse_discogs_reference(std::string_view input,
         {"api.discogs.com/", true}
     };
     bool api_path = false;
+    bool recognized_website_url = false;
     for (const auto& prefix : prefixes) {
         if (discogs_ascii_prefix(input, prefix.text)) {
             input.remove_prefix(prefix.text.size());
             api_path = prefix.api;
+            recognized_website_url = !prefix.api;
             break;
         }
     }
@@ -132,10 +134,15 @@ inline bool parse_discogs_reference(std::string_view input,
     constexpr std::string_view locales[] = {
         "de/", "en/", "fr/", "es/", "it/", "pt/", "ja/"
     };
-    for (const auto locale : locales) {
-        if (discogs_ascii_prefix(input, locale)) {
-            input.remove_prefix(locale.size());
-            break;
+    // A bare relative resource path is not a localized Discogs URL.
+    // Do not let `de/release/...` or API /de/releases/... bypass the
+    // exact trusted authority/resource-kind checks.
+    if (recognized_website_url) {
+        for (const auto locale : locales) {
+            if (discogs_ascii_prefix(input, locale)) {
+                input.remove_prefix(locale.size());
+                break;
+            }
         }
     }
     const std::string_view path = api_path

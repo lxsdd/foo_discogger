@@ -131,6 +131,11 @@ int main() {
         "https://www.discogs.com/releases/38012673",
         "https://www.discogs.com/ZZ/release/38012673",
         "https://www.discogs.com/DE.evil/release/38012673",
+        "de/release/38012673", // bare relative path: no trusted Discogs website
+        "/DE/release/38012673", // leading slash still not a host authority
+        "fr/release/38012673",
+        "en/release/38012673",
+        "ja/release/38012673",
         "https://api.discogs.com/DE/releases/38012673",
         "https://www.discogs.com/release/99999999999999999999",
         "[a38012673]", "[r=0]", "[r2147483648]",
@@ -144,5 +149,15 @@ int main() {
     assert(!parse_discogs_reference("https://discogs.com/release/38012673",
         discogs_reference_kind::artist, parsed));
     assert(parsed == "unchanged");
+    for (const char* invalid_artist : {
+        "de/artist/12345", "/FR/artist/12345", "ja/artist/12345",
+        "https://api.discogs.com/de/artists/12345",
+        "api.discogs.com/en/artists/12345"
+    }) {
+        parsed = "unchanged";
+        assert(!parse_discogs_reference(invalid_artist,
+            discogs_reference_kind::artist, parsed));
+        assert(parsed == "unchanged");
+    }
     return 0;
 }
