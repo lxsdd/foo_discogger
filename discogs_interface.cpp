@@ -2,6 +2,7 @@
 #include "discogger_search_fallback.h"
 #include "discogger_release_id.h"
 #include "discogger_search_transaction.h"
+#include "discogger_collection_transaction.h"
 #include "discogger_preview_restore.h"
 #include "discogger_artist_search_pages.h"
 #include <array>
@@ -1429,14 +1430,24 @@ pfc::array_t<pfc::string8> DiscogsInterface::get_collection(threaded_process_sta
 
 		pfc::array_t<pfc::string8> urls = jp.get_object_array_string("folders", "resource_url");
 
+		// Discogs may legitimately return no folders. Never index an empty
+		// folder response or turn an incomplete release page into cache state.
+		p_abort.check();
+		if (urls.get_count() == 0) return collection;
+
 		url = urls[0];
 		url << "/releases";
 		pfc::array_t<JSONParser_ptr> pages = get_all_pages(url, "", p_abort, "Loading collection...", p_status);
 
-		for (size_t i = 0; i < pages.get_count(); i++) {
-
-			parseCollection(pages[i]->root, collection);
-		}
+		// Parsing or cancellation must not publish a partial collection.
+		// The pure staging helper also refuses a missing page set.
+		auto staged = discogger_collection::stage_collection_pages<pfc::array_t<pfc::string8>>(
+			pages.get_count(),
+			[&](pfc::array_t<pfc::string8>& output, size_t page) {
+				parseCollection(pages[page]->root, output);
+			},
+			[&]() { p_abort.check(); });
+		collection = std::move(staged);
 	}
 	catch (network_exception &) {
 		throw;

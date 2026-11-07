@@ -81,6 +81,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/release_tree_snapshot_test.cpp -o /tmp/discogger-release-tree && /tmp/discogger-release-tree
       - name: Compile and run strict direct release ID validation
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/release_id_test.cpp -o /tmp/discogger-release-id && /tmp/discogger-release-id
+      - name: Stage Discogs collection pages without partial cache publication
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/collection_transaction_test.cpp -o /tmp/discogger-collection-pages && /tmp/discogger-collection-pages
       - name: Transactional master pagination positive/negative and cancellation regression
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/master_page_transaction_test.cpp -o /tmp/discogger-master-pages && /tmp/discogger-master-pages
       - name: Compile and run multi-value field token regressions

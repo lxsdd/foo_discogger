@@ -213,3 +213,15 @@ Five known release IDs exercise positive/negative C++17/MSVC tests and
 original Win32/x64 foobar Release-object QA. This is title-level safety,
 not full cache transactionality, authenticated provider acceptance or
 permission to write user media.
+
+## Collection-folder and multi-page cache transaction (2026-11-07)
+
+The actual `DiscogsInterface::get_collection` now checks for an empty folder
+list before reading the first URL. When a folder exists, it stages the complete
+release page set and publishes exactly once after per-page and final abort checks.
+Malformed later pages and cancellations retain the previous visible cache; an
+advertised folder with no release pages is rejected as incomplete rather than
+cached as a successful empty result. A valid zero-folder response is an empty
+collection. Portable C++17, Windows MSVC x86/x64 and production-path source
+contracts cover positive and negative cases. No authenticated Discogs live
+provider, music/tag/CUE writes or real foobar GUI acceptance is claimed.

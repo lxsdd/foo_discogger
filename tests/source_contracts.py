@@ -3049,3 +3049,17 @@ assert "DISCOGGER_NATIVE_COLLAB_PRIMARY_CREDIT_QA=PASS" in native_fallback
 assert 'plausible_original_release_title("Kyau & Albert x Maywave"' in (
     root / "tests/collaboration_fallback_test.cpp").read_text(encoding="utf-8-sig")
 print("PASS: first-credit original collaboration gate and native regression wiring.")
+
+# The real collection path must fail closed on empty folders and stage all
+# pages before a single final cache publication; no synthetic-only guard.
+collection_path = interface_source.split("pfc::array_t<pfc::string8> DiscogsInterface::get_collection(", 1)[1].split(
+    "bool DiscogsInterface::get_thumbnail_from_cache(", 1)[0]
+assert '#include "discogger_collection_transaction.h"' in interface_source
+assert "if (urls.get_count() == 0) return collection;" in collection_path
+assert collection_path.index("if (urls.get_count() == 0)") < collection_path.index("url = urls[0];")
+assert "discogger_collection::stage_collection_pages" in collection_path
+assert "parseCollection(pages[page]->root, output);" in collection_path
+assert collection_path.index("collection = std::move(staged);") > collection_path.index("stage_collection_pages")
+assert "parseCollection(pages[i]->root, collection)" not in collection_path
+assert "collection_transaction_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+print("PASS: native collection pagination is bounded, staged and only published after checks.")
