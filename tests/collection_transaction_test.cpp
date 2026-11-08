@@ -2,7 +2,36 @@
 #include <cassert>
 #include <stdexcept>
 #include <vector>
+#include <string>
 int main() {
+    // Never follow an authenticated folder resource_url outside Discogs API.
+    const std::vector<const char*> good = {
+        "https://api.discogs.com/users/a/collection/folders/0",
+        "https://api.discogs.com/users/a_-%20B/collection/folders/12345",
+        "https://api.discogs.com/users/%E2%82%AC/collection/folders/123"
+    };
+    const std::vector<const char*> bad = {
+        "", "http://api.discogs.com/users/a/collection/folders/0",
+        "https://api.discogs.com.evil.invalid/users/a/collection/folders/0",
+        "https://api.discogs.com@evil.invalid/users/a/collection/folders/0",
+        "https://evil.invalid/users/a/collection/folders/0",
+        "https://api.discogs.com/users//collection/folders/0",
+        "https://api.discogs.com/users/a/collection/folders/",
+        "https://api.discogs.com/users/a/collection/folders/0?token=abc",
+        "https://api.discogs.com/users/a/collection/folders/0#fragment",
+        "https://api.discogs.com/users/a/collection/folders/0/extra",
+        "https://api.discogs.com/users/a/collection/folders/-1",
+        "https://api.discogs.com/users/a/collection/folders/000000000000000000000",
+        "https://api.discogs.com/users/a%2G/collection/folders/0",
+        "https://api.discogs.com/users/a%/collection/folders/0",
+        "https://api.discogs.com/users/a\\b/collection/folders/0",
+        "https://api.discogs.com/users/a/b/collection/folders/0",
+        "https://api.discogs.com/users/a/collection/folders/0\r\nHost: attacker"
+    };
+    for (const auto* url : good) assert(discogger_collection::valid_folder_resource_url(url));
+    for (const auto* url : bad) assert(!discogger_collection::valid_folder_resource_url(url));
+    assert(!discogger_collection::valid_folder_resource_url(std::string(2049, 'x')));
+
     const std::vector<int> cached{7, 8};
     int checks = 0;
     auto parse = [](std::vector<int>& staged, std::size_t i) {
