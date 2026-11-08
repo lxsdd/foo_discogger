@@ -3060,6 +3060,9 @@ assert collection_path.index("if (urls.get_count() == 0)") < collection_path.ind
 assert "discogger_collection::stage_collection_pages" in collection_path
 assert "parseCollection(pages[page]->root, output);" in collection_path
 assert collection_path.index("collection = std::move(staged);") > collection_path.index("stage_collection_pages")
+assert 'discogger_collection::valid_folder_resource_url(urls[0].get_ptr())' in collection_path
+assert collection_path.index('valid_folder_resource_url(urls[0].get_ptr())') < collection_path.index('url = urls[0];')
+assert 'discogger_collection_transaction.h' in interface_source
 assert "parseCollection(pages[i]->root, collection)" not in collection_path
 assert "collection_transaction_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 print("PASS: native collection pagination is bounded, staged and only published after checks.")
