@@ -1435,6 +1435,8 @@ pfc::array_t<pfc::string8> DiscogsInterface::get_collection(threaded_process_sta
 		p_abort.check();
 		if (urls.get_count() == 0) return collection;
 
+		if (!discogger_collection::valid_folder_resource_url(urls[0].get_ptr()))
+			throw std::invalid_argument("Untrusted Discogs collection folder URL");
 		url = urls[0];
 		url << "/releases";
 		pfc::array_t<JSONParser_ptr> pages = get_all_pages(url, "", p_abort, "Loading collection...", p_status);
