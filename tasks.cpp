@@ -1963,16 +1963,18 @@ void process_release_callback::on_success(HWND p_wnd) {
 
     // add_history may synchronously dispatch Win32 messages and close the
     // dialog. Revalidate before hiding it or opening the preview.
-    if (!owner_is_current()) return;
-    m_dialog->hide();
-	{
-		//todo: trace race condition
-		std::lock_guard<std::mutex> ul(g_discogs->create_match_tracking_mutex);
-
-		if (!g_discogs->track_matching_dialog) {
-			fb2k::newDialog<CTrackMatchingDialog>(core_api::get_main_window(), m_tag_writer, false);
-		}
-	}
+    discogger_async::commit_release_preview_if_current(
+        [this] { return owner_is_current(); },
+        [this] { m_dialog->hide(); },
+        [this] {
+            // hide() can synchronously dispatch a new search or destroy this
+            // dialog. Do not use the old release after that reentrant event.
+            std::lock_guard<std::mutex> ul(g_discogs->create_match_tracking_mutex);
+            if (!owner_is_current()) return;
+            if (!g_discogs->track_matching_dialog) {
+                fb2k::newDialog<CTrackMatchingDialog>(core_api::get_main_window(), m_tag_writer, false);
+            }
+        });
 }
 
 void process_release_callback::on_abort(HWND p_wnd) {

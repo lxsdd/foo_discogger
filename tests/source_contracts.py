@@ -3066,3 +3066,15 @@ assert 'discogger_collection_transaction.h' in interface_source
 assert "parseCollection(pages[i]->root, collection)" not in collection_path
 assert "collection_transaction_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 print("PASS: native collection pagination is bounded, staged and only published after checks.")
+
+# Native release presentation must revalidate the request after the reentrant
+# Win32 hide, before opening the track-matching dialog.
+release_callback = (root / "tasks.cpp").read_text(encoding="utf-8-sig").split(
+    "void process_release_callback::on_success(HWND p_wnd)", 1)[1].split(
+    "void process_release_callback::on_abort(HWND p_wnd)", 1)[0]
+assert "discogger_async::commit_release_preview_if_current(" in release_callback
+assert "if (!owner_is_current()) return;" in release_callback
+assert "m_dialog->hide();" in release_callback
+assert "std::lock_guard<std::mutex> ul(g_discogs->create_match_tracking_mutex);" in release_callback
+assert "if (!owner_is_current()) return;" in release_callback.split("std::lock_guard<std::mutex>", 1)[1]
+print("PASS: release preview rejects reentrant hide/stale callback before native track comparison.")

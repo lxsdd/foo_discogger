@@ -92,5 +92,25 @@ int main() {
     assert(discogger_master::find_partial_version_index(
         0, [](std::size_t) { return true; }) ==
         (std::numeric_limits<std::size_t>::max)());
+
+    // Native callback regression: hide() can reenter the Win32 event loop,
+    // superseding the request while the original HWND still exists.
+    search_request_epoch release_present;
+    const auto accepted = release_present.current();
+    int hides = 0, presentations = 0;
+    auto is_accepted = [&] { return release_present.matches(accepted); };
+    assert(discogger_async::commit_release_preview_if_current(
+        is_accepted, [&] { ++hides; }, [&] { ++presentations; }));
+    assert(hides == 1 && presentations == 1);
+    release_present.begin();
+    assert(!discogger_async::commit_release_preview_if_current(
+        is_accepted, [&] { ++hides; }, [&] { ++presentations; }));
+    assert(hides == 1 && presentations == 1);
+    const auto reentrant = release_present.current();
+    assert(!discogger_async::commit_release_preview_if_current(
+        [&] { return release_present.matches(reentrant); },
+        [&] { ++hides; release_present.begin(); },
+        [&] { ++presentations; }));
+    assert(hides == 2 && presentations == 1);
     return 0;
 }
