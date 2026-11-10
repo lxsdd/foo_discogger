@@ -1948,32 +1948,32 @@ void process_release_callback::generate_track_mapping(TagWriter& tagwriter, cons
 
 void process_release_callback::on_success(HWND p_wnd) {
     PFC_ASSERT(core_api::is_main_thread());
-    // A newer search/release, closed dialog or replaced HWND must never
-    // receive this old release's history or track-matching preview.
+    // The ticket binds this response to the original live Win32 owner.
     if (!owner_is_current() || !m_tag_writer) return;
-	auto tw_release = m_tag_writer->GetRelease();
+    auto tw_release = m_tag_writer->GetRelease();
     if (!tw_release) return;
-	if (tw_release) {
-		rppair row = std::pair(std::pair(tw_release->id, tw_release->title),
-			std::pair("", ""));
 
-		//release history
-		m_dialog->add_history(oplog_type::release, kHistoryProccessRelease, row);
-	}
-
-    // add_history may synchronously dispatch Win32 messages and close the
-    // dialog. Revalidate before hiding it or opening the preview.
+    // An already-open preview belongs to another selection. Do not hide
+    // the search or record a history entry for a release we did not open.
+    if (g_discogs->track_matching_dialog) return;
     discogger_async::commit_release_preview_if_current(
         [this] { return owner_is_current(); },
         [this] { m_dialog->hide(); },
-        [this] {
-            // hide() can synchronously dispatch a new search or destroy this
-            // dialog. Do not use the old release after that reentrant event.
+        [this]() -> bool {
+            // ShowWindow(SW_HIDE) can dispatch a newer selection or destroy HWND.
             std::lock_guard<std::mutex> ul(g_discogs->create_match_tracking_mutex);
-            if (!owner_is_current()) return;
-            if (!g_discogs->track_matching_dialog) {
-                fb2k::newDialog<CTrackMatchingDialog>(core_api::get_main_window(), m_tag_writer, false);
-            }
+            if (!owner_is_current() || g_discogs->track_matching_dialog) return false;
+            fb2k::newDialog<CTrackMatchingDialog>(core_api::get_main_window(), m_tag_writer, false);
+            // The native dialog constructor publishes the global pointer.
+            // Require its HWND to be created before accepting the selection.
+            return owner_is_current() && g_discogs->track_matching_dialog != nullptr &&
+                ::IsWindow(g_discogs->track_matching_dialog->m_hWnd);
+        },
+        [this, tw_release] {
+            // add_history persists SQLite state. Never run for a stale/failed preview.
+            rppair row = std::pair(std::pair(tw_release->id, tw_release->title),
+                                  std::pair("", ""));
+            m_dialog->add_history(oplog_type::release, kHistoryProccessRelease, row);
         });
 }
 

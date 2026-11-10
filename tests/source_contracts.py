@@ -3067,14 +3067,21 @@ assert "parseCollection(pages[i]->root, collection)" not in collection_path
 assert "collection_transaction_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 print("PASS: native collection pagination is bounded, staged and only published after checks.")
 
-# Native release presentation must revalidate the request after the reentrant
-# Win32 hide, before opening the track-matching dialog.
+# Native release history may be written only after the CURRENT preview is
+# successfully constructed as a real HWND, including reentrant hide handling.
 release_callback = (root / "tasks.cpp").read_text(encoding="utf-8-sig").split(
     "void process_release_callback::on_success(HWND p_wnd)", 1)[1].split(
     "void process_release_callback::on_abort(HWND p_wnd)", 1)[0]
 assert "discogger_async::commit_release_preview_if_current(" in release_callback
-assert "if (!owner_is_current()) return;" in release_callback
+assert "if (!owner_is_current() || !m_tag_writer) return;" in release_callback
 assert "m_dialog->hide();" in release_callback
 assert "std::lock_guard<std::mutex> ul(g_discogs->create_match_tracking_mutex);" in release_callback
-assert "if (!owner_is_current()) return;" in release_callback.split("std::lock_guard<std::mutex>", 1)[1]
-print("PASS: release preview rejects reentrant hide/stale callback before native track comparison.")
+assert "if (!owner_is_current() || g_discogs->track_matching_dialog) return false;" in release_callback
+assert "return owner_is_current() && g_discogs->track_matching_dialog != nullptr &&" in release_callback
+assert "::IsWindow(g_discogs->track_matching_dialog->m_hWnd);" in release_callback
+assert release_callback.index("fb2k::newDialog<CTrackMatchingDialog>(") < release_callback.index("m_dialog->add_history(")
+request_helper = (root / "discogger_search_request.h").read_text(encoding="utf-8-sig")
+assert request_helper.index("if (!present()) return false;") < request_helper.index("record_history();")
+assert request_helper.index("if (!is_current()) return false;", request_helper.index("if (!present()) return false;")) < request_helper.index("record_history();")
+assert "search_request_epoch_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+print("PASS: original Win32 preview must be current and open before release history persists.")

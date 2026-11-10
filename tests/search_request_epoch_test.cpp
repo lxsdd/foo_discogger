@@ -93,24 +93,55 @@ int main() {
         0, [](std::size_t) { return true; }) ==
         (std::numeric_limits<std::size_t>::max)());
 
-    // Native callback regression: hide() can reenter the Win32 event loop,
-    // superseding the request while the original HWND still exists.
+    // The old native callback persisted the release BEFORE reentrant hide().
+    // These synthetic counters model UI presentation and SQLite history;
+    // the regression never touches real user files or databases.
     search_request_epoch release_present;
     const auto accepted = release_present.current();
-    int hides = 0, presentations = 0;
+    int hides = 0, presentations = 0, history_updates = 0;
     auto is_accepted = [&] { return release_present.matches(accepted); };
+    auto hide = [&] { ++hides; };
+    auto present = [&]() -> bool { ++presentations; return true; };
+    auto record_history = [&] { ++history_updates; };
+
+    // Current and successfully created preview: exactly one history entry.
     assert(discogger_async::commit_release_preview_if_current(
-        is_accepted, [&] { ++hides; }, [&] { ++presentations; }));
-    assert(hides == 1 && presentations == 1);
+        is_accepted, hide, present, record_history));
+    assert(hides == 1 && presentations == 1 && history_updates == 1);
+
+    // Old callback completes after a new selection: zero side effects.
     release_present.begin();
     assert(!discogger_async::commit_release_preview_if_current(
-        is_accepted, [&] { ++hides; }, [&] { ++presentations; }));
-    assert(hides == 1 && presentations == 1);
-    const auto reentrant = release_present.current();
+        is_accepted, hide, present, record_history));
+    assert(hides == 1 && presentations == 1 && history_updates == 1);
+
+    // HWND hide reenters and supersedes the callback; history must not change.
+    const auto during_hide = release_present.current();
     assert(!discogger_async::commit_release_preview_if_current(
-        [&] { return release_present.matches(reentrant); },
-        [&] { ++hides; release_present.begin(); },
-        [&] { ++presentations; }));
-    assert(hides == 2 && presentations == 1);
+        [&] { return release_present.matches(during_hide); },
+        [&] { ++hides; release_present.begin(); }, present, record_history));
+    assert(hides == 2 && presentations == 1 && history_updates == 1);
+
+    // Failed preview or preexisting comparison dialog is not accepted.
+    const auto failed_preview = release_present.current();
+    assert(!discogger_async::commit_release_preview_if_current(
+        [&] { return release_present.matches(failed_preview); },
+        hide, [&]() -> bool { ++presentations; return false; }, record_history));
+    assert(hides == 3 && presentations == 2 && history_updates == 1);
+
+    // Even a newly created preview can reenter a later selection.
+    const auto during_preview = release_present.current();
+    assert(!discogger_async::commit_release_preview_if_current(
+        [&] { return release_present.matches(during_preview); },
+        hide, [&]() -> bool { ++presentations; release_present.begin(); return true; },
+        record_history));
+    assert(hides == 4 && presentations == 3 && history_updates == 1);
+
+    // The subsequent current selection can accept one new history entry.
+    const auto accepted_new = release_present.current();
+    assert(discogger_async::commit_release_preview_if_current(
+        [&] { return release_present.matches(accepted_new); },
+        hide, present, record_history));
+    assert(hides == 5 && presentations == 4 && history_updates == 2);
     return 0;
 }

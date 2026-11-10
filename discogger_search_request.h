@@ -23,12 +23,17 @@ public:
 // A Win32 hide may synchronously dispatch messages that replace or destroy
 // the original release dialog. Recheck the ticket after that reentrant step
 // before opening the track comparison UI. Runs only on the main thread.
-template <typename IsCurrent, typename Hide, typename Present>
-bool commit_release_preview_if_current(IsCurrent is_current, Hide hide, Present present) {
+// Commit history only after successful preview and a second epoch check.
+// All callbacks execute on the UI thread; no I/O occurs in this helper.
+template <typename IsCurrent, typename Hide, typename Present, typename RecordHistory>
+bool commit_release_preview_if_current(IsCurrent is_current, Hide hide, Present present,
+                                       RecordHistory record_history) {
     if (!is_current()) return false;
     hide();
     if (!is_current()) return false;
-    present();
+    if (!present()) return false;
+    if (!is_current()) return false;
+    record_history();
     return true;
 }
 } // namespace discogger_async
