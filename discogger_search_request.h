@@ -14,6 +14,14 @@ public:
         if (++epoch_ == 0) ++epoch_;
         return epoch_;
     }
+    // A modeless worker can reject start() while the previous worker is still
+    // valid. Undo only our own uncommitted selection; never resurrect an older
+    // request after a reentrant UI selection has already superseded it.
+    bool rollback_failed_start(std::uint64_t attempted, std::uint64_t previous) noexcept {
+        if (previous == 0 || !matches(attempted)) return false;
+        epoch_ = previous;
+        return true;
+    }
     std::uint64_t current() const noexcept { return epoch_; }
     bool matches(std::uint64_t ticket) const noexcept {
         return ticket != 0 && ticket == epoch_;

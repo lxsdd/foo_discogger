@@ -23,6 +23,28 @@ int main() {
     assert(!presented);
     if (request.matches(second)) presented = true;
     assert(presented);
+    // Native worker-start transaction: g_run_modeless may throw while the
+    // preceding release callback is still pending on this same HWND.
+    search_request_epoch release_start;
+    const auto running = release_start.begin();
+    const auto rejected = release_start.begin();
+    assert(!release_start.matches(running));
+    assert(release_start.rollback_failed_start(rejected, running));
+    assert(release_start.matches(running) && !release_start.matches(rejected));
+    // Successful replacement permanently invalidates the previous callback.
+    const auto replacement = release_start.begin();
+    assert(release_start.matches(replacement) && !release_start.matches(running));
+    // A stale failure from the older attempt cannot undo a newer selection.
+    assert(!release_start.rollback_failed_start(rejected, running));
+    assert(release_start.matches(replacement));
+    // Reentrant abort/selection during a failed start must remain authoritative.
+    const auto aborted_attempt = release_start.begin();
+    const auto after_abort = release_start.begin();
+    assert(!release_start.rollback_failed_start(aborted_attempt, replacement));
+    assert(release_start.matches(after_abort) && !release_start.matches(replacement));
+    assert(!release_start.rollback_failed_start(after_abort, 0));
+    // A successful start is never rolled back on its eventual worker abort.
+    assert(release_start.matches(after_abort));
     // A failed/aborted task cannot reactivate its previous ticket.
     assert(!request.matches(first) && request.matches(second));
     // The release-tree double-click is another async request. Selecting a

@@ -1715,8 +1715,16 @@ void CFindReleaseDialog::trigger_release(const pfc::string8& release_id) {
 		service_ptr_t<process_release_callback> task = new service_impl_t<process_release_callback>(this, canonical_id, offline_artist_id, "", m_items);
         // A new release selection supersedes any pending search or release
         // completion, even when the original dialog HWND is still alive.
-        m_search_request_epoch.begin();
-		task->start(m_hWnd);
+        const auto previous_request = m_search_request_epoch.current();
+        const auto attempted_request = m_search_request_epoch.begin();
+        try {
+            task->start(m_hWnd);
+        } catch (const locked_task_exception&) {
+            // g_run_modeless rejected this worker. Keep the older running
+            // release's ticket valid unless reentrant UI work superseded us.
+            m_search_request_epoch.rollback_failed_start(attempted_request, previous_request);
+            throw;
+        }
 	}
 	catch (locked_task_exception e)
 	{
