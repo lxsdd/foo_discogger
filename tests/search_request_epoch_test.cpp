@@ -31,9 +31,11 @@ int main() {
     assert(!release_start.matches(running));
     assert(release_start.rollback_failed_start(rejected, running));
     assert(release_start.matches(running) && !release_start.matches(rejected));
+    // Ticket allocation must not reuse the rejected start's identity (ABA).
     // Successful replacement permanently invalidates the previous callback.
     const auto replacement = release_start.begin();
     assert(release_start.matches(replacement) && !release_start.matches(running));
+    assert(replacement != rejected); // A failed start must never be reissued.
     // A stale failure from the older attempt cannot undo a newer selection.
     assert(!release_start.rollback_failed_start(rejected, running));
     assert(release_start.matches(replacement));

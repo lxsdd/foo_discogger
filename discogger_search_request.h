@@ -8,10 +8,12 @@
 // Only begin()/current()/matches() on the UI thread; workers carry tickets.
 namespace discogger_async {
 class search_request_epoch {
-    std::uint64_t epoch_ = 1; // Zero is always an invalid/unbound ticket.
+    std::uint64_t epoch_ = 1; // Active request; zero is invalid.
+    std::uint64_t next_epoch_ = 1; // Monotonic allocation, never rewound by rollback.
 public:
     std::uint64_t begin() noexcept {
-        if (++epoch_ == 0) ++epoch_;
+        if (++next_epoch_ == 0) ++next_epoch_;
+        epoch_ = next_epoch_;
         return epoch_;
     }
     // A modeless worker can reject start() while the previous worker is still
@@ -19,7 +21,7 @@ public:
     // request after a reentrant UI selection has already superseded it.
     bool rollback_failed_start(std::uint64_t attempted, std::uint64_t previous) noexcept {
         if (previous == 0 || !matches(attempted)) return false;
-        epoch_ = previous;
+        epoch_ = previous; // Restore validity, NOT ticket allocation (avoid ABA).
         return true;
     }
     std::uint64_t current() const noexcept { return epoch_; }
