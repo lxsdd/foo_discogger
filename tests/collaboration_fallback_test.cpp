@@ -465,5 +465,23 @@ int main() {
     staged_search_result_pair<std::vector<int>> no_results;
     no_results.publish(previous_exact, previous_other);
     assert(previous_exact.empty() && previous_other.empty());
+    // A valid empty provider result may clear old rows. A failed empty result
+    // must retain them, while any complete exact/review candidate may survive.
+    optional_fallback_outcome outcome;
+    assert(!outcome.requires_error(0));
+    outcome.record_failure();
+    assert(outcome.requires_error(0));
+    assert(!outcome.requires_error(1));
+    outcome.record_failure();
+    assert(outcome.requires_error(0));
+    previous_exact = {101}; previous_other = {202};
+    staged_search_result_pair<std::vector<int>> failed_empty;
+    if (!outcome.requires_error(failed_empty.exact.size() + failed_empty.other.size()))
+        failed_empty.publish(previous_exact, previous_other);
+    assert(previous_exact == std::vector<int>{101} && previous_other == std::vector<int>{202});
+    failed_empty.other.push_back(303);
+    if (!outcome.requires_error(failed_empty.exact.size() + failed_empty.other.size()))
+        failed_empty.publish(previous_exact, previous_other);
+    assert(previous_exact.empty() && previous_other == std::vector<int>{303});
     return 0;
 }

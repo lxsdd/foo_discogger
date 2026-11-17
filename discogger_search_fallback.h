@@ -539,6 +539,16 @@ private:
     bool stopped_ = false;
 };
 
+// Ported from master 16c71bb: an unavailable search is not an empty success.
+// Existing exact/review provenance is deliberately not changed by this gate.
+struct optional_fallback_outcome {
+    bool failed = false;
+    void record_failure() noexcept { failed = true; }
+    bool requires_error(std::size_t completed_candidate_count) const noexcept {
+        return failed && completed_candidate_count == 0;
+    }
+};
+
 // Identity is type + numerical Discogs ID, not title, role or search source.
 // Release and master with the same numerical ID are different objects.
 inline bool already_seen_release_id(

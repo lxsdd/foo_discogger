@@ -904,6 +904,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         fallback_exact, fallback_other, {0, 0}
     };
     bool used_broad_fallback = false;
+    discogger_search::optional_fallback_outcome fallback_outcome;
     if (!original_has_candidates || !original_title_plausible) {
         // Keep the exact original query untouched; the plan only suggests
         // additional Discogs candidates and never writes tags.
@@ -940,6 +941,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                 throw; // User cancellation must never become a successful search.
             }
             catch (const http_exception& e) {
+                fallback_outcome.record_failure();
                 // A failed optional discovery is never worth another query
                 // when authorization is denied or Discogs is rate-limiting.
                 // Keep original results; preserve cancellation and stop the
@@ -955,6 +957,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
                 continue;
             }
             catch (const foo_discogs_exception&) {
+                fallback_outcome.record_failure();
                 // These are optional discovery suggestions. An unavailable or
                 // malformed fallback page must not discard the original
                 // already-parsed Discogs results. Keep all error text and
@@ -992,6 +995,7 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
             } catch (const exception_aborted&) {
                 throw;
             } catch (const foo_discogs_exception&) {
+                fallback_outcome.record_failure();
                 // Drop all optional rows after an incomplete provider page.
                 fallback_artist->master_releases.force_reset();
                 fallback_artist->releases.force_reset();
@@ -1051,9 +1055,11 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
         } catch (const exception_aborted&) {
             throw;
         } catch (const foo_discogs_exception&) {
+                fallback_outcome.record_failure();
             p_abort.check();
             fallback_ready = false;
         } catch (const http_exception&) {
+            fallback_outcome.record_failure();
             p_abort.check();
             fallback_ready = false;
         }
@@ -1135,6 +1141,22 @@ rppair_t DiscogsInterface::search_amt_artist(const pfc::string8& query, const Qu
     // Publish both buckets only after *all* original and optional phases,
     // preview loading, sorting and the final cancellation check succeeded.
     // A late 429, malformed page, failed preview or abort leaves prior output.
+    p_abort.check();
+    // Count only final publishable candidates, not pages that were discarded
+    // on parse/preview failure. Retain the previous result pair on failure.
+    std::size_t completed_candidates = 0;
+    const auto count_candidates = [&](const pfc::array_t<Artist_ptr>& rows) {
+        for (const auto& artist : rows) {
+            if (!artist) continue;
+            completed_candidates += artist->master_releases.get_count();
+            completed_candidates += artist->releases.get_count();
+        }
+    };
+    count_candidates(staged_matches.exact);
+    count_candidates(staged_matches.other);
+    if (fallback_outcome.requires_error(completed_candidates))
+        throw foo_discogs_exception(
+            "Optional Discogs discovery failed without complete candidates; retry.");
     p_abort.check();
     staged_matches.publish(exact_matches, other_matches);
 

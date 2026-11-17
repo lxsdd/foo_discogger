@@ -3085,3 +3085,12 @@ assert request_helper.index("if (!present()) return false;") < request_helper.in
 assert request_helper.index("if (!is_current()) return false;", request_helper.index("if (!present()) return false;")) < request_helper.index("record_history();")
 assert "search_request_epoch_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 print("PASS: original Win32 preview must be current and open before release history persists.")
+
+# Optional failure is not an empty successful replacement. Both staged buckets
+# are counted after preview processing and before the atomic output publication.
+search_source = Path("discogs_interface.cpp").read_text(encoding="utf-8")
+assert search_source.count("fallback_outcome.record_failure();") == 5
+final_gate = search_source.index("if (fallback_outcome.requires_error(completed_candidates))")
+assert search_source.index("count_candidates(staged_matches.exact);") < final_gate
+assert search_source.index("count_candidates(staged_matches.other);") < final_gate
+assert final_gate < search_source.index("staged_matches.publish(exact_matches, other_matches);")
