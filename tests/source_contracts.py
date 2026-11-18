@@ -3101,7 +3101,10 @@ assert final_gate < search_source.index("staged_matches.publish(exact_matches, o
 preview_source = (root / "track_matching_dialog.cpp").read_text(encoding="utf-8-sig")
 assert preview_source.count("std::lock_guard<std::mutex> guard(m_mx_pending_previews_mod);") == 2
 assert "std::lock_guard<std::mutex> lg(m_mx_pending_previews_mod);" not in preview_source
-initial = preview_source.split("m_pending_previews = m_vpreview_jobs.size();", 1)[1].split("return FALSE;", 2)[-1].split("LRESULT CTrackMatchingDialog::OnCheckSkipArtwork", 1)[0]
+initial = preview_source.split("m_pending_previews = m_vpreview_jobs.size();", 1)[1].split("LRESULT CTrackMatchingDialog::OnCheckSkipArtwork", 1)[0]
+# The no-jobs branch legitimately returns early; do not truncate at that return.
+assert initial.index("if (!m_pending_previews)") < initial.index("request_file_preview(w.index_art, w.artist_art);")
+assert "std::lock_guard<std::mutex>" not in initial
 assert "request_file_preview(w.index_art, w.artist_art);" in initial
 assert "request_preview(w.index_art, w.artist_art, w.only_cache, w.get_mibs);" in initial
 refresh = preview_source.split("void CTrackMatchingDialog::process_download_art_paths_done(", 1)[1].split("LRESULT CTrackMatchingDialog::OnColorStatic", 1)[0]
