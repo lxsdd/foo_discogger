@@ -15,6 +15,7 @@
 #include "tag_writer.h"
 
 #include "track_matching_utils.h"
+#include "discogger_track_mapping_row.h"
 
 #include "preview_dialog.h"
 #ifdef SIM_VA_MA_BETA
@@ -501,6 +502,7 @@ void CTrackMatchingDialog::generate_track_mappings(track_mappings_list_type &tra
 	const size_t count_f = m_coord.GetFileTrackUiLvSize();
 
 	for (size_t i = 0; i < count_d; i++) {
+		file_index = -1; // A short file list must not reuse the preceding row.
 		dc_track_index = -1;
 		dc_disc_index = -1;
 		track_mapping track;
@@ -519,13 +521,13 @@ void CTrackMatchingDialog::generate_track_mappings(track_mappings_list_type &tra
 		else {
 			size_t orig_file_index;
 			if ((orig_file_index = m_coord.GetFileTrackUiAtLvPos(i, file_match)) != pfc_infinite) {
-				file_index = orig_file_index;
+				file_index = discogger_matching::mapping_file_index(i, count_f, orig_file_index, pfc_infinite);
 			}
 			else
 				file_index = -1;
 		}
 
-		track.enabled = (dc_track_index != -1 && dc_disc_index != -1);
+		track.enabled = (file_index != -1 && dc_track_index != -1 && dc_disc_index != -1);
 		track.discogs_disc = dc_disc_index; //DECODE_DISCOGS_DISK(dindex);
 		track.discogs_track = dc_track_index;  //DECODE_DISCOGS_TRACK(dindex);
 		track.file_index = file_index;

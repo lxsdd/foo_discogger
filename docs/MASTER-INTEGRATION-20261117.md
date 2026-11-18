@@ -21,3 +21,7 @@ old green CI is not qualification of this change.
 ## ArtistList selection completion (18 November 2026)
 
 The original `ArtistList` callback previously accepted a completed artist with no selected row and a cleared pending loading ID, allowing a late result to reselect a discarded artist. The explicit row-selection path now requires completed, selected and pending IDs to agree in both dialog and list callbacks. The `Undef` initialization and `ArtistSearchAT` preview paths remain untouched. A portable positive/negative selection-completion regression is wired into portable-core; native x86/x64 and official SDK qualification must run on the combined commit.
+
+## Track mapping row alignment (18 November 2026)
+
+Issue #6: the original track-mapping dialog retained the prior file index when the Discogs track list outlasted the file list. The original production loop now resets the file index for each row and marks rows without a valid file mapping disabled. A portable positive/negative row regression covers shortened, reordered, invalid and overflow indices. No media/tag writes are performed by this regression. The combined source still requires exact-SHA native CI; live OAuth/GUI and license acceptance remain separate.
