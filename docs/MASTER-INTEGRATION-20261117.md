@@ -38,3 +38,17 @@ uses the same mutex. Portable regression covers partial completion, exact finish
 zero callbacks, excess callbacks, and duplicate callbacks after completion.
 The existing eager artwork scheduling and actual owner OAuth/GUI acceptance remain
 open; this does not claim lazy fetching or complete duplicate-job attribution.
+
+
+## Artwork preview dispatch mutex boundary (18 November 2026)
+
+The original dialog held the nonrecursive pending-preview mutex while calling
+add_pending_previews() in both download-refresh and extra-preview paths. Since
+that helper locks the same mutex, either path could deadlock before dispatch.
+Initial preview dispatch also held the completion mutex while starting tasks,
+which is unsafe if start() completes synchronously. The original dialog now
+reserves pending completions before dispatch and never holds that mutex across
+request_file_preview()/request_preview(). The counter's own increment and
+completion remain mutex-protected. Source-contract regression checks all three
+original dispatch paths and ordering; existing native/portable completion
+regressions remain in place. Live GUI/OAuth is still separate.

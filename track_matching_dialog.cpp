@@ -232,8 +232,8 @@ LRESULT CTrackMatchingDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPA
 		}
 
 		{
-			std::lock_guard<std::mutex> lg(m_mx_pending_previews_mod);
-
+			// All initial jobs are already counted. Dispatch without holding the
+			// completion mutex: a task may finish synchronously in start().
 			for (const auto& w : m_vpreview_jobs) {
 				if (w.isfile) {
 					request_file_preview(w.index_art, w.artist_art);
@@ -452,10 +452,9 @@ void CTrackMatchingDialog::process_download_art_paths_done(pfc::string8 callback
 		}
 	}
 
-	{
-		std::lock_guard<std::mutex> lg(m_mx_pending_previews_mod);
-		add_pending_previews(cjobs);
-	}
+	// Reserve completions before dispatch; add_pending_previews owns its mutex.
+	// Never hold that mutex while a preview task may call back synchronously.
+	add_pending_previews(cjobs);
 
 	size_t true_pos = refresh_mask.find_first(true, 0, refresh_mask.size());
 	while (true_pos < refresh_mask.size()) {
@@ -1467,8 +1466,8 @@ bool CTrackMatchingDialog::context_menu_track_switch(HWND wnd, POINT point, bool
 
 		if (added)
 		{
-			std::lock_guard<std::mutex> lg(m_mx_pending_previews_mod);
-
+			// The counter is reserved before any task starts; do not recursively
+			// acquire its mutex or hold it across a synchronous callback.
 			add_pending_previews(added);
 
 			for (auto it = m_vpreview_jobs.rbegin(); it - m_vpreview_jobs.rbegin() < added; it++) {
