@@ -17,6 +17,7 @@
 #include "track_matching_utils.h"
 #include "discogger_track_mapping_row.h"
 #include "discogger_preview_completion.h"
+#include "discogger_artist_artwork_count.h"
 
 #include "preview_dialog.h"
 #ifdef SIM_VA_MA_BETA
@@ -174,9 +175,7 @@ LRESULT CTrackMatchingDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPA
 		size_t cartist_art = 0;
 
 		for (auto wra : m_tag_writer->GetArtists()) {
-			if (wra->full_artist) {
-				cartist_art += wra->full_artist->images.get_count();
-			}
+			cartist_art += discogger_ui::artist_artwork_count(wra);
 		}
 
 		if (CONF_MULTI_ARTWORK.isEmpty() || m_tag_writer->GetArtCount(art_src::alb) > kMax_Artwork ||
@@ -201,11 +200,12 @@ LRESULT CTrackMatchingDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPA
 			}
 			size_t acc_ndx = 0;
 			for (auto wra : m_tag_writer->GetArtists()) {
-				for (size_t it = 0; it < wra->full_artist->images.get_count(); it++) {
+				const size_t artist_images = discogger_ui::artist_artwork_count(wra);
+				for (size_t it = 0; it < artist_images; it++) {
 					preview_job pj(false, acc_ndx + it, true, it != 0, false);
 					m_vpreview_jobs.emplace_back(std::move(pj));
 				}
-				acc_ndx += wra->full_artist->images.get_count();
+				acc_ndx += artist_images;
 			}
 			// 0 front, 1 back, 3 disk, 2 artist
 			for (size_t i = 0; i < album_art_ids::num_types(); i++) {
@@ -658,7 +658,7 @@ bool CTrackMatchingDialog::generate_artwork_guids(pfc::array_t<GUID> &my_album_a
 		size_t cartist_art = 0;
 
 		for (auto wra : m_tag_writer->GetRelease()->artists) {
-			cartist_art += wra->full_artist->images.get_count();
+			cartist_art += discogger_ui::artist_artwork_count(wra);
 		}
 		if ((calbum_art + cartist_art) > 0) {
 			my_album_art_ids.resize(m_tag_writer->GetArtCount());
