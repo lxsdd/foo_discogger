@@ -52,3 +52,14 @@ request_file_preview()/request_preview(). The counter's own increment and
 completion remain mutex-protected. Source-contract regression checks all three
 original dispatch paths and ordering; existing native/portable completion
 regressions remain in place. Live GUI/OAuth is still separate.
+
+## Artwork refresh duplicate-row completion ownership (18 November 2026)
+
+The original refresh path dispatched one file-art preview per distinct index
+through a bitmask, but incremented pending completions for every matching
+Discogs row. Duplicate rows therefore over-reserved completions and could
+leave the dialog hidden indefinitely. The production loop now reserves only
+on the first occurrence of each file-art index. Source regression verifies
+that the guard surrounds both bitmask update and counter increment, with
+positive/negative duplicate, empty and unique-row examples. Native exact-SHA
+CI remains the qualification gate; live OAuth/GUI acceptance is separate.

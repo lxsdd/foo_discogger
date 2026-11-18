@@ -444,9 +444,14 @@ void CTrackMatchingDialog::process_download_art_paths_done(pfc::string8 callback
 				if (ndx_vfile != pfc_infinite) {
 					ndx_image_file_t ndx_image_file = file_it->first;
 					size_t img_ndx = ndx_image_file.first;
-					refresh_mask.set(img_ndx, true);
-					refresh_mask_types.set(img_ndx, img_type == 2);
-					cjobs++;
+					// One request is dispatched per distinct file-art index.
+					// Count only its first occurrence or duplicate rows leave
+					// unmatched pending completions and hide the dialog.
+					if (!refresh_mask.get(img_ndx)) {
+						refresh_mask.set(img_ndx, true);
+						refresh_mask_types.set(img_ndx, img_type == 2);
+						++cjobs;
+					}
 				}
 			}
 		}

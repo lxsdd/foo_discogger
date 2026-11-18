@@ -3112,3 +3112,25 @@ assert refresh.index("add_pending_previews(cjobs);") < refresh.index("request_fi
 extra = preview_source.split("case ID_ART_PREVIEW:", 1)[1].split("case ID_ART_IMAGE_VIEWER:", 1)[0]
 assert extra.index("add_pending_previews(added);") < extra.index("request_preview(it->index_art, it->artist_art, false, false);")
 print("PASS: initial, refresh and additional artwork requests dispatch outside completion mutex.")
+
+# Duplicate artwork rows must reserve exactly one completion per dispatched
+# distinct file-art index. Verify the original UI path, not a detached helper.
+refresh = preview_source.split("void CTrackMatchingDialog::process_download_art_paths_done(", 1)[1].split("LRESULT CTrackMatchingDialog::OnColorStatic", 1)[0]
+unique_guard = refresh.index("if (!refresh_mask.get(img_ndx)) {")
+assert unique_guard < refresh.index("refresh_mask.set(img_ndx, true);")
+assert unique_guard < refresh.index("++cjobs;") < refresh.index("add_pending_previews(cjobs);")
+assert "cjobs++;" not in refresh
+# Positive and negative duplicate-row cases, including no eligible rows.
+def reserve_and_dispatch(rows):
+    selected = set()
+    reserved = 0
+    for index in rows:
+        if index not in selected:
+            selected.add(index)
+            reserved += 1
+    return reserved, len(selected)
+for rows, expected in (([], 0), ([3], 1), ([3, 3], 1), ([3, 4, 3, 4], 2), ([0, 2, 1], 3)):
+    reserved, dispatched = reserve_and_dispatch(rows)
+    assert reserved == dispatched == expected
+assert len([3, 3]) != len(set([3, 3]))  # prior over-reservation regression
+print("PASS: artwork refresh completion reservations match distinct dispatched indices.")
