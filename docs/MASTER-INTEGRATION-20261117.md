@@ -25,3 +25,16 @@ The original `ArtistList` callback previously accepted a completed artist with n
 ## Track mapping row alignment (18 November 2026)
 
 Issue #6: the original track-mapping dialog retained the prior file index when the Discogs track list outlasted the file list. The original production loop now resets the file index for each row and marks rows without a valid file mapping disabled. A portable positive/negative row regression covers shortened, reordered, invalid and overflow indices. No media/tag writes are performed by this regression. The combined source still requires exact-SHA native CI; live OAuth/GUI and license acceptance remain separate.
+
+## Artwork preview completion counter (18 November 2026)
+
+Issue #6 original track-matching dialog decremented the outstanding artwork-preview
+counter without bounds checking and read it again after releasing the mutex. A
+late or excess completion could wrap the unsigned count and leave the dialog
+hidden; the unlocked read also raced with count updates. The production callback
+now uses a bounded transition-to-zero helper under the existing mutex, and
+only that transition reveals and invalidates the dialog. The pending-job increment
+uses the same mutex. Portable regression covers partial completion, exact finish,
+zero callbacks, excess callbacks, and duplicate callbacks after completion.
+The existing eager artwork scheduling and actual owner OAuth/GUI acceptance remain
+open; this does not claim lazy fetching or complete duplicate-job attribution.

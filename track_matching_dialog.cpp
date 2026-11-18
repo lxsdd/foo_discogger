@@ -16,6 +16,7 @@
 
 #include "track_matching_utils.h"
 #include "discogger_track_mapping_row.h"
+#include "discogger_preview_completion.h"
 
 #include "preview_dialog.h"
 #ifdef SIM_VA_MA_BETA
@@ -34,20 +35,17 @@ static cfgDialogPosition cfg_dialog_position_track_matching_dlg(guid_cfg_dialog_
 
 //private
 void CTrackMatchingDialog::add_pending_previews(size_t n) {
-
+	std::lock_guard<std::mutex> guard(m_mx_pending_previews_mod);
 	m_pending_previews += n;
-
 }
 //public
 void CTrackMatchingDialog::pending_previews_done(size_t n) {
-
+	bool completed = false;
 	{
 		std::lock_guard<std::mutex> guard(m_mx_pending_previews_mod);
-		m_pending_previews -= n;
+		completed = discogger_ui::complete_preview_jobs(m_pending_previews, n);
 	}
-
-	if (!m_pending_previews) {
-
+	if (completed) {
 		ShowWindow(SW_SHOW);
 		m_coord.Invalidate();
 	}

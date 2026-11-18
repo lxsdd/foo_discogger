@@ -32,6 +32,7 @@ $Sources = @(
     'artist_activation_test.cpp',
     'search_request_epoch_test.cpp',
     'preview_selection_test.cpp',
+    'preview_completion_test.cpp',
     'preview_restore_test.cpp',
     'duration_match_test.cpp',
     'result_alignment_test.cpp',

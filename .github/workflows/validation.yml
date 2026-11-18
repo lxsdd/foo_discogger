@@ -77,6 +77,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/duration_match_test.cpp -o /tmp/discogger-duration-match && /tmp/discogger-duration-match
       - name: Compile and run empty/shortened tag preview selection regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/preview_selection_test.cpp -o /tmp/discogger-preview-selection && /tmp/discogger-preview-selection
+      - name: Guard artwork preview completion counter against zero and over-completion
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/preview_completion_test.cpp -o /tmp/discogger-preview-completion && /tmp/discogger-preview-completion
       - name: Guard original-to-leading-tag preview restoration
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/preview_restore_test.cpp -o /tmp/discogger-preview-restore && /tmp/discogger-preview-restore
       - name: Compile and run bounded cached thumbnail regressions
