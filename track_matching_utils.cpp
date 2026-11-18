@@ -7,6 +7,7 @@
 #include "discogs_interface.h"
 #include "ol_cache.h"
 #include "track_matching_utils.h"
+#include "discogger_file_size_units.h"
 
 using namespace Gdiplus;
 
@@ -222,15 +223,11 @@ double roundOff(double n) {
 }
 
 pfc::string8 round_file_size_units(size_t size) {
-	static const char* SIZES[] = { "B", "KB", "MB", "GB" };
-	int div = 0;
-	size_t rem = 0;
-
-	while (size >= 1024 && div < (sizeof SIZES / sizeof * SIZES)) {
-		rem = (size % 1024);
-		div++;
-		size /= 1024;
-	}
+	static const char* SIZES[] = { "B", "KB", "MB", "GB", "TB" };
+	const auto units = discogger_file_size::split(size);
+	const size_t div = units.unit_index;
+	const size_t rem = units.remainder;
+	size = units.whole;
 
 	double size_d = (float)size + (float)rem / 1024.0;
 	size_d = roundOff(size_d);

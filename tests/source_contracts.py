@@ -3134,3 +3134,13 @@ for rows, expected in (([], 0), ([3], 1), ([3, 3], 1), ([3, 4, 3, 4], 2), ([0, 2
     assert reserved == dispatched == expected
 assert len([3, 3]) != len(set([3, 3]))  # prior over-reservation regression
 print("PASS: artwork refresh completion reservations match distinct dispatched indices.")
+
+# Original artwork UI must cap the unit index even for >= 1 TiB input.
+file_sizes = (root / "track_matching_utils.cpp").read_text(encoding="utf-8-sig")
+unit_helper = (root / "discogger_file_size_units.h").read_text(encoding="utf-8-sig")
+assert '#include "discogger_file_size_units.h"' in file_sizes
+assert "discogger_file_size::split(size)" in file_sizes
+assert '"TB"' in file_sizes
+assert "unit_index + 1 < unit_count" in unit_helper
+assert "file_size_units_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
+print("PASS: original artwork file-size display bounds unit indexing at TB.")
