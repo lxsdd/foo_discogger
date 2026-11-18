@@ -1,3 +1,4 @@
+#include "discogger_artist_selection_completion.h"
 #include "stdafx.h"
 #include <cstdlib>
 #include <cstring>
@@ -1206,6 +1207,13 @@ void CFindReleaseDialog::on_get_artist_done(cupdRelSrc updsrc, Artist_ptr& artis
 
 		auto list_artist_p = m_alist.Get_Selected_Id();
 		bool selection_ok = !list_artist_p.get_length() || list_artist_p.equals(artist->id);
+        if (updsrc == updRelSrc::ArtistList) {
+            const auto completed_id = artist ? discogger_ui::artist_id_or_invalid(artist->id.get_ptr(), true) : pfc_infinite;
+            const auto selected_id = discogger_ui::artist_id_or_invalid(list_artist_p.get_ptr(), true);
+            std::lock_guard<std::mutex> guard(m_loading_selection_rw_mutex);
+            selection_ok = discogger_ui::accept_artist_list_completion(
+                completed_id, selected_id, m_loading_selection_id, pfc_infinite);
+        }
 
 		if (!selection_ok) {
 			//..

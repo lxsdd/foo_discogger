@@ -1,3 +1,4 @@
+#include "discogger_artist_selection_completion.h"
 #include "stdafx.h"
 
 #include "libPPUI\clipboard.h"
@@ -186,14 +187,14 @@ void CArtistList::on_get_artist_done(cupdRelSrc updsrc, const Artist_ptr artist)
 		Artist_ptr selected_artist = get_selected_artist();
 		size_t selected_id = selected_artist ? discogger_ui::artist_id_or_invalid(selected_artist->id.get_ptr(), true) : pfc_infinite;
 		const size_t completed_id = artist ? discogger_ui::artist_id_or_invalid(artist->id.get_ptr(), true) : pfc_infinite;
-		if (completed_id != pfc_infinite && (selected_id == pfc_infinite || completed_id == selected_id)) {
+		if (completed_id != pfc_infinite) {
 
 			CFindReleaseDialog* dlg = static_cast<CFindReleaseDialog*>(m_host);
 			{
 				std::lock_guard<std::mutex> guard(dlg->m_loading_selection_rw_mutex);
 
-				if (dlg->m_loading_selection_id == completed_id ||
-					dlg->m_loading_selection_id == pfc_infinite) {
+				if (discogger_ui::accept_artist_list_completion(
+                    completed_id, selected_id, dlg->m_loading_selection_id, pfc_infinite)) {
 
 					fill_artist_list(false /*not from dlg*/, true, updsrc);
 

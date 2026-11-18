@@ -17,3 +17,7 @@ No donor branch merge or writer activation. Portable regression and source
 contracts cover empty success versus failed empty, surviving complete candidates
 and publication ordering. New native x86/x64 CI on the resulting SHA is required;
 old green CI is not qualification of this change.
+
+## ArtistList selection completion (18 November 2026)
+
+The original `ArtistList` callback previously accepted a completed artist with no selected row and a cleared pending loading ID, allowing a late result to reselect a discarded artist. The explicit row-selection path now requires completed, selected and pending IDs to agree in both dialog and list callbacks. The `Undef` initialization and `ArtistSearchAT` preview paths remain untouched. A portable positive/negative selection-completion regression is wired into portable-core; native x86/x64 and official SDK qualification must run on the combined commit.

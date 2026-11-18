@@ -65,6 +65,8 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_search_pages_test.cpp -o /tmp/discogger-artist-pages && /tmp/discogger-artist-pages
       - name: Canonical artist preview aliases and typed release/master union regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_projection_test.cpp -o /tmp/discogger-artist-projection && /tmp/discogger-artist-projection
+      - name: Reject stale ArtistList completion after selection change or reentrant consumption
+        run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_selection_completion_test.cpp -o /tmp/discogger-artist-completion && /tmp/discogger-artist-completion
       - name: Compile and run artist double-click selection regressions
         run: g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/artist_activation_test.cpp -o /tmp/discogger-artist-activate && /tmp/discogger-artist-activate
       - name: Reject stale enabled-track approval and collapsed-value alignment
