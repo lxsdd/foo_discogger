@@ -4,6 +4,14 @@
 int main() {
     constexpr std::size_t invalid = static_cast<std::size_t>(-1);
     using discogger_ui::accept_artist_list_completion;
+    using discogger_ui::valid_artist_redraw_row;
+    // Native ListView redraw must not receive a no-selection or stale index.
+    assert(!valid_artist_redraw_row(invalid, 0));
+    assert(!valid_artist_redraw_row(invalid, 3));
+    assert(!valid_artist_redraw_row(0, 0));
+    assert(valid_artist_redraw_row(0, 3));
+    assert(valid_artist_redraw_row(2, 3));
+    assert(!valid_artist_redraw_row(3, 3));
     // Initial selection, and explicit refresh of that same selected artist.
     assert(accept_artist_list_completion(12,12,12,invalid));
     assert(accept_artist_list_completion(12,12,12,invalid));

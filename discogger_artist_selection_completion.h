@@ -10,4 +10,9 @@ inline bool accept_artist_list_completion(std::size_t completed,
                                           std::size_t invalid) noexcept {
     return completed != invalid && selected == completed && pending == completed;
 }
+// ListView_RedrawItems takes an actual visible row, never the no-selection
+// sentinel returned by GetFirstSelected or a row removed during refresh.
+inline bool valid_artist_redraw_row(std::size_t row, std::size_t count) noexcept {
+    return row < count;
+}
 }

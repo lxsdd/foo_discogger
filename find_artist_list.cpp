@@ -284,7 +284,9 @@ void CArtistList::fill_artist_list(bool dlgexact, bool force_exact, updRelSrc up
 		//..
 		//refresh lv images
 
-		ListView_RedrawItems(this->m_hWnd, pos, pos);
+		if (discogger_ui::valid_artist_redraw_row(pos, Get_Artists().get_count())) {
+			ListView_RedrawItems(this->m_hWnd, pos, pos);
+		}
 
 		if (prev_list_pos != ~0 && prev_list_pos != pos) {
 
