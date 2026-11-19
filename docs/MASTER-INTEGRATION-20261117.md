@@ -63,3 +63,16 @@ on the first occurrence of each file-art index. Source regression verifies
 that the guard surrounds both bitmask update and counter increment, with
 positive/negative duplicate, empty and unique-row examples. Native exact-SHA
 CI remains the qualification gate; live OAuth/GUI acceptance is separate.
+
+## ArtistList previous-row redraw alignment (19 November 2026)
+
+The original selection-refresh path found the previous artist by its stable role
+but converted the visible zero-based ListView index to `w + 1`. This redrew
+the following row, and the last row could request an out-of-range redraw.
+The production path now retains the zero-based index, uses an invalid sentinel
+when the role disappeared, and bounds-checks the previous row before native
+redraw. Initial selection, explicit refresh and completion ownership are
+unchanged. The existing selection-completion native regression now also covers
+first/middle/last, removed and empty previous rows and is explicitly wired
+into the x86/x64 MSVC unit-test runner. This is a source/native regression,
+not a substitute for owner interactive OAuth/GUI acceptance.

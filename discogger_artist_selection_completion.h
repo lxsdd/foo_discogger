@@ -12,6 +12,12 @@ inline bool accept_artist_list_completion(std::size_t completed,
 }
 // ListView_RedrawItems takes an actual visible row, never the no-selection
 // sentinel returned by GetFirstSelected or a row removed during refresh.
+// A prior role is a ListView row, not a one-based artist role ID.
+// Keep the invalid sentinel when the role no longer exists after refresh.
+inline std::size_t previous_artist_redraw_row(std::size_t found_index,
+                                              std::size_t count) noexcept {
+    return found_index < count ? found_index : static_cast<std::size_t>(-1);
+}
 inline bool valid_artist_redraw_row(std::size_t row, std::size_t count) noexcept {
     return row < count;
 }

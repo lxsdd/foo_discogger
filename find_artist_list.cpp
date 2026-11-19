@@ -252,11 +252,14 @@ void CArtistList::fill_artist_list(bool dlgexact, bool force_exact, updRelSrc up
 		// on artist list doubled clicked on enter key
 
 		size_t prev_role_pos = m_find_release_artist ? m_find_release_artist->search_role_list_pos : 0/*~0*/;
-		size_t prev_list_pos = 0;
+		// Owner-data ListView rows are zero-based. The previous code stored
+		// w + 1 and could redraw the next row (or an out-of-range final row).
+		size_t prev_list_pos = SIZE_MAX;
 		for (size_t w = 0; w < m_find_release_artists.get_count(); w++) {
 			if (m_find_release_artists[w] &&
                 m_find_release_artists[w]->search_role_list_pos == prev_role_pos) {
-				prev_list_pos = w + 1; //1 base
+				prev_list_pos = discogger_ui::previous_artist_redraw_row(
+                    w, m_find_release_artists.get_count());
 				break;
 			}
 		}
@@ -288,7 +291,8 @@ void CArtistList::fill_artist_list(bool dlgexact, bool force_exact, updRelSrc up
 			ListView_RedrawItems(this->m_hWnd, pos, pos);
 		}
 
-		if (prev_list_pos != ~0 && prev_list_pos != pos) {
+		if (prev_list_pos != pos &&
+            discogger_ui::valid_artist_redraw_row(prev_list_pos, Get_Artists().get_count())) {
 
 			//refresh prev item
 			ListView_RedrawItems(this->m_hWnd, prev_list_pos, prev_list_pos);

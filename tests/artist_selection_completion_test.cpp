@@ -5,6 +5,16 @@ int main() {
     constexpr std::size_t invalid = static_cast<std::size_t>(-1);
     using discogger_ui::accept_artist_list_completion;
     using discogger_ui::valid_artist_redraw_row;
+    using discogger_ui::previous_artist_redraw_row;
+    // Role positions are distinct from zero-based visible ListView rows.
+    assert(previous_artist_redraw_row(0, 3) == 0);
+    assert(previous_artist_redraw_row(1, 3) == 1);
+    assert(previous_artist_redraw_row(2, 3) == 2);
+    assert(previous_artist_redraw_row(3, 3) == invalid);
+    assert(previous_artist_redraw_row(invalid, 3) == invalid);
+    assert(previous_artist_redraw_row(0, 0) == invalid);
+    assert(valid_artist_redraw_row(previous_artist_redraw_row(2, 3), 3));
+    assert(!valid_artist_redraw_row(previous_artist_redraw_row(2, 2), 2));
     // Native ListView redraw must not receive a no-selection or stale index.
     assert(!valid_artist_redraw_row(invalid, 0));
     assert(!valid_artist_redraw_row(invalid, 3));
