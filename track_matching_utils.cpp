@@ -1,6 +1,7 @@
 #include "stdafx.h"
 
 #include <GdiPlus.h>
+#include <vector>
 #include "CGdiPlusBitmap.h"
 #pragma comment(lib, "gdiplus.lib")
 
@@ -597,23 +598,24 @@ MemoryBlock MemoryBlockToPngIcon(MemoryBlock buffer) {
 	}
 
 	hres = poutStream->Seek(li, STREAM_SEEK_SET, NULL);
-	poutStream->Commit(STGC_DEFAULT);
-
-	STATSTG outstats;
-	poutStream->Stat(&outstats, STATFLAG_NONAME);
-
-	ULONG read;
-	UINT length = outstats.cbSize.QuadPart;
-
 	MemoryBlock newbuffer = {};
-	BYTE* out_stream_bytes = new BYTE[outstats.cbSize.QuadPart];
-	hr = poutStream->Read(out_stream_bytes, outstats.cbSize.QuadPart, &read); //Read entire stream into the array
-	if (SUCCEEDED(hr)) {
-		newbuffer.set_size(newWidth * newHeight * 3);
-		newbuffer.set_data_fromptr(out_stream_bytes, length);
+	STATSTG outstats = {};
+	// Never expose an incomplete PNG: Read can return S_FALSE with a short count.
+	if (FAILED(hres) || FAILED(poutStream->Stat(&outstats, STATFLAG_NONAME)) ||
+		outstats.cbSize.HighPart != 0 || outstats.cbSize.LowPart == 0) {
+		log_msg("Bad PNG Icon stream seek or size");
 	}
 	else {
-		log_msg("Bad result reading from PNG Icon stream");
+		const ULONG length = outstats.cbSize.LowPart;
+		std::vector<BYTE> out_stream_bytes(length);
+		ULONG read = 0;
+		hr = poutStream->Read(out_stream_bytes.data(), length, &read);
+		if (hr == S_OK && read == length) {
+			newbuffer.set_data_fromptr(out_stream_bytes.data(), length);
+		}
+		else {
+			log_msg("Bad or incomplete result reading from PNG Icon stream");
+		}
 	}
 	poutStream->Release();
 	pStream->Release();

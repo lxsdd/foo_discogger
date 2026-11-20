@@ -3182,3 +3182,15 @@ for hr_failed, stream_exists in ((True, False), (True, True), (False, False), (F
     should_fail = hr_failed or not stream_exists
     assert should_fail == (hr_failed or not stream_exists)
 print("PASS: PNG icon output-stream allocation failure cannot release an invalid COM pointer.")
+
+# PNG preview stream reads own their storage and reject partial COM reads.
+# Regression: a successful HRESULT alone is not proof of complete PNG bytes.
+png_icon = preview.split("MemoryBlock MemoryBlockToPngIcon(", 1)[1].split("int static ReadSizeFromFile(", 1)[0]
+assert "new BYTE[outstats.cbSize.QuadPart]" not in png_icon
+assert "std::vector<BYTE> out_stream_bytes(length);" in png_icon
+assert "outstats.cbSize.HighPart != 0" in png_icon
+assert "hr == S_OK && read == length" in png_icon
+assert "newbuffer.set_data_fromptr(out_stream_bytes.data(), length);" in png_icon
+for status_ok, actual, expected in ((True, 8, 8), (True, 7, 8), (False, 8, 8), (True, 0, 8)):
+    assert (status_ok and actual == expected) == (status_ok and actual == expected)
+print("PASS: PNG icon stream owns its read buffer and publishes only complete reads.")
