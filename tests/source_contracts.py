@@ -3221,3 +3221,15 @@ assert "m_discogs_track_libui_presenter.AddRow(track_file_match);" in matching_r
 for file_count, should_read in ((0, False), (1, True), (2, True)):
     assert (0 == 0 and file_count != 0) == should_read
 print("PASS: Discogs-only matching preview avoids first-file dereference while retaining nonempty release label.")
+
+# Empty/replaced selections must invalidate the previous release caption in
+# the actual presenter, not merely skip reading the first physical file.
+clear_guard = 'if (citems == 0 || ctracks == 0) {'
+assert clear_guard in matching_rows
+clear_body = matching_rows.split(clear_guard, 1)[1].split('}', 1)[0]
+assert 'uSetDlgItemText(m_hWnd, IDC_STATIC_MATCH_TRACKING_REL_NAME, "");' in clear_body
+assert matching_rows.index(clear_guard) < matching_rows.index('for (size_t i = 0; i < cmax; i++)')
+assert matching_rows.index('if (i == 0 && citems != 0) {') > matching_rows.index(clear_guard)
+for files, tracks, clears in ((0, 3, True), (2, 0, True), (0, 0, True), (1, 3, False), (2, 3, False)):
+    assert (files == 0 or tracks == 0) == clears
+print("PASS: track matching refresh clears stale release captions for empty selections.")

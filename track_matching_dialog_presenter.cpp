@@ -1667,6 +1667,12 @@ void coord_presenters::populate_track_ui_mode() {
 	const size_t ctracks = m_tag_writer->m_track_mappings.get_count();
 	const size_t citems = m_tag_writer->m_finfo_manager->items.get_count();
 
+	// A refresh with no physical selection (or no Discogs tracks) must not
+	// retain the previous release label from a different selection.
+	if (citems == 0 || ctracks == 0) {
+		uSetDlgItemText(m_hWnd, IDC_STATIC_MATCH_TRACKING_REL_NAME, "");
+	}
+
 	const size_t cmax = (std::max)(ctracks, citems);
 
 	titleformat_object::ptr lenght_script;

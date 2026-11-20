@@ -86,3 +86,16 @@ nonmatching current preview, preserving the current fast path and invalid-ID
 rejection. The existing native artist-selection regression covers identity
 matches/mismatches and source contracts verify the actual original-dialog
 fallback wiring. This does not replace interactive owner GUI/OAuth acceptance.
+
+
+## Track-mapping empty-selection caption invalidation (20 November 2026)
+
+The original presenter now clears a previously displayed release caption when a
+refresh has no selected physical files or no Discogs tracks. This complements
+the already qualified first-file dereference guard: an empty selection must not
+show metadata from the preceding selection, while repopulation with physical
+files continues through the existing first-track release-label path. Positive
+and negative source-contract cases cover empty files, empty tracks and resumed
+nonempty selections. This is a production UI change, not a completed interactive
+original-host empty-selection test; exact-SHA native CI and owner GUI/OAuth
+acceptance remain distinct. No media or metadata writes are involved.
