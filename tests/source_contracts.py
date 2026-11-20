@@ -3168,3 +3168,17 @@ for failure_marker in ("msg << temp_file_mini;",
     tail = preview_small.split(failure_marker, 1)[1].split("return imgpairs", 1)[0]
     assert "if (hIconSmall) DestroyIcon(hIconSmall);" in tail
 print("PASS: mini-preview file I/O failures destroy an already-created HICON.")
+
+# A failed output-stream allocation must never dereference an uninitialized
+# COM pointer. Also handle a successful HRESULT with a null output defensively.
+png_icon = preview.split("MemoryBlock MemoryBlockToPngIcon(", 1)[1].split("int static ReadSizeFromFile(", 1)[0]
+assert "IStream* poutStream = nullptr;" in png_icon
+assert "if (FAILED(hr) || !poutStream)" in png_icon
+failure = png_icon.split("if (FAILED(hr) || !poutStream)", 1)[1].split("Gdiplus::Bitmap bmIcon", 1)[0]
+assert "if (poutStream) poutStream->Release();" in failure
+assert "poutStream->Release();" not in failure.replace("if (poutStream) poutStream->Release();", "")
+assert "pStream->Release();" in failure
+for hr_failed, stream_exists in ((True, False), (True, True), (False, False), (False, True)):
+    should_fail = hr_failed or not stream_exists
+    assert should_fail == (hr_failed or not stream_exists)
+print("PASS: PNG icon output-stream allocation failure cannot release an invalid COM pointer.")

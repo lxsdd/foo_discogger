@@ -564,11 +564,11 @@ MemoryBlock MemoryBlockToPngIcon(MemoryBlock buffer) {
 		ScalingFactor = (float)newHeight / (float)bmFetch.GetHeight();
 
 	HRESULT hr = S_FALSE;
-	IStream* poutStream;
+	IStream* poutStream = nullptr;
 	hr = CreateStreamOnHGlobal(NULL, true, &poutStream);
-	if (!SUCCEEDED(hr)) {
+	if (FAILED(hr) || !poutStream) {
 		log_msg("Bad global stream allocation for PNG Icon");
-		poutStream->Release();
+		if (poutStream) poutStream->Release();
 		pStream->Release();
 		return {};
 	}
