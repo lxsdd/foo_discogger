@@ -3191,6 +3191,10 @@ assert "std::vector<BYTE> out_stream_bytes(length);" in png_icon
 assert "outstats.cbSize.HighPart != 0" in png_icon
 assert "hr == S_OK && read == length" in png_icon
 assert "newbuffer.set_data_fromptr(out_stream_bytes.data(), length);" in png_icon
-for status_ok, actual, expected in ((True, 8, 8), (True, 7, 8), (False, 8, 8), (True, 0, 8)):
-    assert (status_ok and actual == expected) == (status_ok and actual == expected)
+def publishes_png(status_ok, actual, expected):
+    return status_ok and actual == expected
+assert publishes_png(True, 8, 8)
+assert not publishes_png(True, 7, 8)
+assert not publishes_png(False, 8, 8)
+assert not publishes_png(True, 0, 8)
 print("PASS: PNG icon stream owns its read buffer and publishes only complete reads.")
