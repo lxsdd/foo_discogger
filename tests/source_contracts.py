@@ -3198,3 +3198,13 @@ assert not publishes_png(True, 7, 8)
 assert not publishes_png(False, 8, 8)
 assert not publishes_png(True, 0, 8)
 print("PASS: PNG icon stream owns its read buffer and publishes only complete reads.")
+
+# Artist role lookup must fall through to visible rows when the current
+# preview is present but refers to a different artist ID.
+role_source = (root / "find_artist_list.cpp").read_text(encoding="utf-8-sig").split("size_t CArtistList::get_artist_role_pos(", 1)[1].split("// on context menu", 1)[0]
+assert "artist_role_identity_matches" in role_source
+assert "if (m_find_release_artist)" in role_source
+assert "if (m_find_release_artists.get_count())" in role_source
+assert "else if (m_find_release_artists.get_count())" not in role_source
+assert "return m_find_release_artists[walk]->search_role_list_pos;" in role_source
+print("PASS: artist role lookup falls back to visible rows after a different current preview.")

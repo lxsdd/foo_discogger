@@ -76,3 +76,13 @@ unchanged. The existing selection-completion native regression now also covers
 first/middle/last, removed and empty previous rows and is explicitly wired
 into the x86/x64 MSVC unit-test runner. This is a source/native regression,
 not a substitute for owner interactive OAuth/GUI acceptance.
+
+## Artist role lookup fallback (20 November 2026)
+
+When the current preview pointer existed but belonged to another artist,
+`get_artist_role_pos` skipped searching visible rows because the fallback was
+an `else if`. The original list now searches visible artists after a
+nonmatching current preview, preserving the current fast path and invalid-ID
+rejection. The existing native artist-selection regression covers identity
+matches/mismatches and source contracts verify the actual original-dialog
+fallback wiring. This does not replace interactive owner GUI/OAuth acceptance.

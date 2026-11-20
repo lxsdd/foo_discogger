@@ -530,17 +530,17 @@ size_t CArtistList::get_artist_role_pos(size_t szartist_id) {
 
 	if (m_find_release_artist) {
 
-		if (discogger_ui::artist_id_or_invalid(m_find_release_artist->id.get_ptr(), true) == szartist_id) {
+		if (discogger_ui::artist_role_identity_matches(discogger_ui::artist_id_or_invalid(m_find_release_artist->id.get_ptr(), true), szartist_id, pfc_infinite)) {
 			return m_find_release_artist->search_role_list_pos;
 		}
 	}
-	else if (m_find_release_artists.get_count()) {
-
-		Artist_ptr artist;
+	// A current preview may differ from the requested artist. Still search
+	// visible rows rather than treating the current pointer as exclusive.
+	if (m_find_release_artists.get_count()) {
 		for (size_t walk = 0; walk < m_find_release_artists.get_count(); walk++) {
 
 			if (m_find_release_artists[walk] &&
-                discogger_ui::artist_id_or_invalid(m_find_release_artists[walk]->id.get_ptr(), true) == szartist_id) {
+                discogger_ui::artist_role_identity_matches(discogger_ui::artist_id_or_invalid(m_find_release_artists[walk]->id.get_ptr(), true), szartist_id, pfc_infinite)) {
 
 				return m_find_release_artists[walk]->search_role_list_pos;
 			}

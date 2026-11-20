@@ -22,6 +22,11 @@ int main() {
     assert(valid_artist_redraw_row(0, 3));
     assert(valid_artist_redraw_row(2, 3));
     assert(!valid_artist_redraw_row(3, 3));
+    // A different current preview must not suppress a matching visible row.
+    assert(discogger_ui::artist_role_identity_matches(34, 34, invalid));
+    assert(!discogger_ui::artist_role_identity_matches(12, 34, invalid));
+    assert(!discogger_ui::artist_role_identity_matches(invalid, 34, invalid));
+    assert(!discogger_ui::artist_role_identity_matches(34, invalid, invalid));
     // Initial selection, and explicit refresh of that same selected artist.
     assert(accept_artist_list_completion(12,12,12,invalid));
     assert(accept_artist_list_completion(12,12,12,invalid));

@@ -18,6 +18,13 @@ inline std::size_t previous_artist_redraw_row(std::size_t found_index,
                                               std::size_t count) noexcept {
     return found_index < count ? found_index : static_cast<std::size_t>(-1);
 }
+// The current preview is a fast path, not an exclusive role lookup.
+// A different requested ID must still be resolved against visible rows.
+inline bool artist_role_identity_matches(std::size_t candidate,
+                                         std::size_t requested,
+                                         std::size_t invalid) noexcept {
+    return requested != invalid && candidate == requested;
+}
 inline bool valid_artist_redraw_row(std::size_t row, std::size_t count) noexcept {
     return row < count;
 }
