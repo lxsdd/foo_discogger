@@ -1653,8 +1653,16 @@ void coord_presenters::populate_track_ui_mode() {
 	binomials_it binomial = form_mode[my_mode];
 	presenter& pres_tracks = binomial->first;
 	presenter& pres_files = binomial->second;
-	if (m_discogs_track_libui_presenter.GetPopulated() &&
-		m_file_track_libui_presenter.GetPopulated()) {
+	// A previously populated dialog may be shown after the selected file set
+	// becomes empty. Do not skip the empty-selection caption/row cleanup.
+	// Rebuild again when files return, even if both presenters were populated
+	// before the selection changed. Preserve existing row order when unchanged.
+	const size_t selected_file_count = m_tag_writer->m_finfo_manager->items.get_count();
+	const size_t selected_track_count = m_tag_writer->m_track_mappings.get_count();
+	if (selected_file_count != 0 && selected_track_count != 0 &&
+		m_discogs_track_libui_presenter.GetPopulated() &&
+		m_file_track_libui_presenter.GetPopulated() &&
+		m_file_track_libui_presenter.GetDataSize() == selected_file_count) {
 		return;
 	}
 

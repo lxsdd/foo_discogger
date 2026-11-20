@@ -3233,3 +3233,20 @@ assert matching_rows.index('if (i == 0 && citems != 0) {') > matching_rows.index
 for files, tracks, clears in ((0, 3, True), (2, 0, True), (0, 0, True), (1, 3, False), (2, 3, False)):
     assert (files == 0 or tracks == 0) == clears
 print("PASS: track matching refresh clears stale release captions for empty selections.")
+
+# The actual track presenter must not return before empty-selection cleanup.
+# Model a populated -> empty -> repopulated transition with the exact early
+# return predicates used by the original presenter, including stale row count.
+refresh_gate = matching_rows.split("const size_t selected_file_count =", 1)[1].split("m_discogs_track_libui_presenter.Reset();", 1)[0]
+for required in ("selected_file_count != 0", "selected_track_count != 0",
+                 "m_file_track_libui_presenter.GetDataSize() == selected_file_count"):
+    assert required in refresh_gate
+assert matching_rows.index("selected_file_count != 0") < matching_rows.index("m_discogs_track_libui_presenter.Reset();")
+assert matching_rows.index("m_discogs_track_libui_presenter.Reset();") < matching_rows.index(clear_guard)
+def skip_rebuild(files, tracks, cached_files, populated=True):
+    return files != 0 and tracks != 0 and populated and cached_files == files
+assert skip_rebuild(2, 3, 2)
+assert not skip_rebuild(0, 3, 2)  # cleared selection: must remove stale rows/caption
+assert not skip_rebuild(1, 3, 0)  # restored selection: must rebuild file rows
+assert not skip_rebuild(1, 0, 1)  # emptied Discogs track set
+print("PASS: populated track dialog rebuilds on empty and restored selections.")

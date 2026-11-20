@@ -99,3 +99,16 @@ and negative source-contract cases cover empty files, empty tracks and resumed
 nonempty selections. This is a production UI change, not a completed interactive
 original-host empty-selection test; exact-SHA native CI and owner GUI/OAuth
 acceptance remain distinct. No media or metadata writes are involved.
+
+## Track-mapping populated-to-empty refresh gate (20 November 2026)
+
+The existing empty-selection label guard was unreachable when both original
+track presenters remained marked populated: `populate_track_ui_mode` returned
+before inspecting the current selection. The production early-return now
+requires nonempty files and Discogs tracks plus matching cached file-row count.
+Thus the original Show/populate path rebuilds rows and clears the label when
+files disappear, and rebuilds again after selection resumes. Unchanged
+nonempty selections retain their prior row ordering. Source-contract cases
+exercise populated, emptied and restored selection predicates. This does not
+claim an executed interactive original-host selection-transition regression;
+that remains separate from exact-SHA native CI and live OAuth/GUI acceptance.
