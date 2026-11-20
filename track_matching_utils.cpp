@@ -272,12 +272,15 @@ imgpairs MemoryBlockToTmpBitmap(std::pair<pfc::string8, pfc::string8> n8_cache_p
 
 	Bitmap bmSmall(os_file_small.wstring().c_str());
 
-	HBITMAP hBmSmall, hBmMini;
-	HICON hIconSmall, hIconMini;
+	HBITMAP hBmSmall = nullptr, hBmMini = nullptr;
+	HICON hIconSmall = nullptr, hIconMini = nullptr;
 
 	//Get hBmSmall (150x150 aprox)
 	if (bmSmall.GetHBITMAP(Color(255, 255, 255)/*Color::Black*/, &hBmSmall) == Gdiplus::Ok) {
-		bmSmall.GetHICON(&hIconSmall);
+		// Only the icon is returned. Release the temporary GDI bitmap before any fallible work.
+		DeleteObject(hBmSmall);
+		hBmSmall = nullptr;
+		if (bmSmall.GetHICON(&hIconSmall) != Gdiplus::Ok) hIconSmall = nullptr;
 
 		Gdiplus::Graphics gmini(/*(Image*)*/&bmSmall);
 		Gdiplus::Status gdi_res = gmini.DrawImage(/*(Gdiplus::Image*)*/ &bmSmall, 0, 0);
@@ -344,14 +347,13 @@ imgpairs MemoryBlockToTmpBitmap(std::pair<pfc::string8, pfc::string8> n8_cache_p
 			pfc::string8 err = "GdiPlus error (GetHBITMAP Small preview 48x48)";
 			GdipErrorMsg(hres, filesystem_path_utf8(os_file_mini), err);
 			log_msg(err);
-			return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
+			return imgpairs{ {hIconSmall, nullptr}, {nullptr, nullptr } };
 		}
 		else {
-			bmMini.GetHICON(&hIconMini);
+			if (bmMini.GetHICON(&hIconMini) != Gdiplus::Ok) hIconMini = nullptr;
 			DeleteObject(hBmMini);
 		}
 
-		DeleteObject(hBmSmall);
 	}
 	else {
 		log_msg("GdiPlus error (GetHBITMAP Small preview)");
@@ -440,10 +442,13 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 		return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
 	}
 
-	HBITMAP hBmSmall, hBmMini;
-	HICON hIconSmall, hIconMini;
+	HBITMAP hBmSmall = nullptr, hBmMini = nullptr;
+	HICON hIconSmall = nullptr, hIconMini = nullptr;
 
 	if (bmSmall.GetHBITMAP(Color(255, 255, 255)/*Color::Black*/, &hBmSmall) == Gdiplus::Ok) {
+		// Only the icon is returned. Release the temporary GDI bitmap before any fallible work.
+		DeleteObject(hBmSmall);
+		hBmSmall = nullptr;
 
 		Gdiplus::Graphics gmini(/*(Image*)*/&bmSmall);
 		Gdiplus::Status gdi_res = gmini.DrawImage(/*(Gdiplus::Image*)*/ &bmSmall, 0, 0);
@@ -482,7 +487,7 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 		Gdiplus::Graphics g(&imgMini);
 		g.ScaleTransform(horizontalScalingFactor, verticalScalingFactor);
 		gdi_res = g.DrawImage(/*(Gdiplus::Image*)*/ &bmSmall, 0, 0);
-		bmSmall.GetHICON(&hIconSmall);
+		if (bmSmall.GetHICON(&hIconSmall) != Gdiplus::Ok) hIconSmall = nullptr;
 		PFC_ASSERT(gdi_res == Gdiplus::Ok);
 
 		uGetTempPath(temp_path);
@@ -519,17 +524,16 @@ imgpairs GenerateTmpBitmapsFromRealSize(pfc::string8 release_id, size_t pos,
 		}
 
 		hres = bmMini.GetHBITMAP(Color(255, 255, 255)/*Color::Black*/, &hBmMini);
-		if (!SUCCEEDED(hres)) {
+		if (hres != Gdiplus::Ok) {
 			pfc::string8 err = "GdiPlus error (GetHBITMAP 48x48 tmp artwork)";
 			GdipErrorMsg(hres, filesystem_path_utf8(os_tmp_mini), err);
 			log_msg(err);
 			return imgpairs{ {hIconSmall, nullptr}, {nullptr, nullptr } };
 		}
 		else {
-			bmMini.GetHICON(&hIconMini);
+			if (bmMini.GetHICON(&hIconMini) != Gdiplus::Ok) hIconMini = nullptr;
 			DeleteObject(hBmMini);
 		}
-		DeleteObject(hBmSmall);
 	}
 	else {
 		log_msg("GdiPlus error (GetHBITMAP 150x150 tmp artwork)");

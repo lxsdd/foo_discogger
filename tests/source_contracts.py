@@ -3144,3 +3144,17 @@ assert '"TB"' in file_sizes
 assert "unit_index + 1 < unit_count" in unit_helper
 assert "file_size_units_test.cpp" in (root / "scripts/run-msvc-unit-tests.ps1").read_text(encoding="utf-8-sig")
 print("PASS: original artwork file-size display bounds unit indexing at TB.")
+
+# Artwork preview GDI conversion failures must not expose uninitialized handles
+# or leak temporary HBITMAPs when subsequent image/temporary-file work fails.
+preview = (root / "track_matching_utils.cpp").read_text(encoding="utf-8-sig")
+for name, end in (("MemoryBlockToTmpBitmap", "GenerateTmpBitmapsFromRealSize"),
+                  ("GenerateTmpBitmapsFromRealSize", "MemoryBlockToPngIcon")):
+    section = preview.split("imgpairs " + name + "(", 1)[1].split(end, 1)[0]
+    assert "HICON hIconSmall = nullptr, hIconMini = nullptr;" in section
+    assert "DeleteObject(hBmSmall);" in section
+    assert section.index("DeleteObject(hBmSmall);") < section.index("GetHICON(&hIconSmall)") if name == "MemoryBlockToTmpBitmap" else section.index("DeleteObject(hBmSmall);") < section.index("GetHICON(&hIconSmall)")
+    assert "if (bmSmall.GetHICON(&hIconSmall) != Gdiplus::Ok) hIconSmall = nullptr;" in section
+    assert "if (bmMini.GetHICON(&hIconMini) != Gdiplus::Ok) hIconMini = nullptr;" in section
+    assert "DeleteObject(hBmMini);" in section
+print("PASS: artwork preview initializes icon outputs and releases temporary GDI bitmaps.")
