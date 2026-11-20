@@ -320,6 +320,7 @@ imgpairs MemoryBlockToTmpBitmap(std::pair<pfc::string8, pfc::string8> n8_cache_p
 			pfc::string8 msg("can't open ");
 			msg << temp_file_mini;
 			log_msg(msg);
+			if (hIconSmall) DestroyIcon(hIconSmall);
 			return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
 		}
 		else {
@@ -336,6 +337,7 @@ imgpairs MemoryBlockToTmpBitmap(std::pair<pfc::string8, pfc::string8> n8_cache_p
 			pfc::string8 err = "Error saving small preview tmp bitmap: ";
 			GdipErrorMsg(hres, filesystem_path_utf8(os_file_mini), err);
 			log_msg(err);
+			if (hIconSmall) DestroyIcon(hIconSmall);
 			return imgpairs{ {nullptr, nullptr}, {nullptr, nullptr } };
 		}
 

@@ -3158,3 +3158,13 @@ for name, end in (("MemoryBlockToTmpBitmap", "GenerateTmpBitmapsFromRealSize"),
     assert "if (bmMini.GetHICON(&hIconMini) != Gdiplus::Ok) hIconMini = nullptr;" in section
     assert "DeleteObject(hBmMini);" in section
 print("PASS: artwork preview initializes icon outputs and releases temporary GDI bitmaps.")
+
+# A small HICON may exist before mini-preview file creation or saving fails.
+# These no-result exits must release that icon rather than leak it.
+preview_small = preview.split("imgpairs MemoryBlockToTmpBitmap(", 1)[1].split(
+    "imgpairs GenerateTmpBitmapsFromRealSize(", 1)[0]
+for failure_marker in ("msg << temp_file_mini;",
+                       "GdipErrorMsg(hres, filesystem_path_utf8(os_file_mini), err);"):
+    tail = preview_small.split(failure_marker, 1)[1].split("return imgpairs", 1)[0]
+    assert "if (hIconSmall) DestroyIcon(hIconSmall);" in tail
+print("PASS: mini-preview file I/O failures destroy an already-created HICON.")
