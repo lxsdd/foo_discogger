@@ -1739,7 +1739,9 @@ void coord_presenters::populate_track_ui_mode() {
 			m_hook.set_disc(&disc);
 			m_hook.set_track(&track);
 
-			if (i == 0) {
+			if (i == 0 && citems != 0) {
+				// A release may have Discogs tracks without any physical input files.
+				// Never inspect items[0] in that preview-only state.
 				file_info_impl finfo;
 				m_tag_writer->m_finfo_manager->items[0]->get_info(finfo);
 

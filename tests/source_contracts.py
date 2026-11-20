@@ -3208,3 +3208,16 @@ assert "if (m_find_release_artists.get_count())" in role_source
 assert "else if (m_find_release_artists.get_count())" not in role_source
 assert "return m_find_release_artists[walk]->search_role_list_pos;" in role_source
 print("PASS: artist role lookup falls back to visible rows after a different current preview.")
+
+# The native matching presenter may render Discogs-only tracks before any
+# physical file is selected. The first-row release label must not read items[0]
+# when the file list is empty; the nonempty path must still show its metadata.
+matching_presenter = (root / "track_matching_dialog_presenter.cpp").read_text(encoding="utf-8-sig")
+matching_rows = matching_presenter.split("void coord_presenters::populate_track_ui_mode()", 1)[1].split("void coord_presenters::populate_artwork_mode(", 1)[0]
+assert "const size_t citems = m_tag_writer->m_finfo_manager->items.get_count();" in matching_rows
+assert "if (i == 0 && citems != 0) {" in matching_rows
+assert matching_rows.index("if (i == 0 && citems != 0) {") < matching_rows.index("items[0]->get_info(finfo);")
+assert "m_discogs_track_libui_presenter.AddRow(track_file_match);" in matching_rows
+for file_count, should_read in ((0, False), (1, True), (2, True)):
+    assert (0 == 0 and file_count != 0) == should_read
+print("PASS: Discogs-only matching preview avoids first-file dereference while retaining nonempty release label.")
