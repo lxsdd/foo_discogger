@@ -95,7 +95,7 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
         // A different physical file at the same count must rebuild the native
         // file presenter, not reuse the old row simply because count is one.
         const auto replacement_handle = metadb::get()->handle_create(
-            playable_location("file://discogger-selection-replacement.wav", 0));
+            playable_location_impl("file://discogger-selection-replacement.wav", 0));
         if (replacement_handle == files[0])
             throw std::runtime_error("Synthetic replacement did not change file identity");
         manager->items.remove_all();
