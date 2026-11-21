@@ -586,7 +586,7 @@ FILE "synthetic-side-b.wav" WAVE
         }
         if(Test-Path -LiteralPath $guiEvidence -PathType Leaf){
             $evidence=Get-Content -LiteralPath $guiEvidence -Raw
-            if($evidence.Contains('ARTISTS=1') -and $evidence.Contains('RELEASES=5')){
+            if($evidence.Contains('ARTISTS=1') -and $evidence.Contains('RELEASES=5') -and $evidence.Contains('TRACK_SELECTION_RECOVERY=PASS')){
                 $populated=$true;break
             }
         }

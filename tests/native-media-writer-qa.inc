@@ -289,7 +289,7 @@ void run_populated_search_gui_qa() {
         throw std::runtime_error("Synthetic GUI evidence already existed.");
     std::ofstream out(evidence);
     if (!out) throw std::runtime_error("Could not write synthetic GUI evidence.");
-    out << "ARTISTS=1\\nRELEASES=5\\n";
+    out << "ARTISTS=1\\nRELEASES=5\\nTRACK_SELECTION_RECOVERY=PASS\\n";
     out.flush();
     if (!out) throw std::runtime_error("Could not flush synthetic GUI evidence.");
 }

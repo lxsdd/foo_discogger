@@ -2665,6 +2665,7 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
     runner_qa_native_master_page_transaction();
     runner_qa_native_master_child_isolation();
     runner_qa_native_search_preview_fields();
+    CTrackMatchingDialog::test_selection_recovery(m_hWnd, m_items);
     // Run the same SDK-independent failure classifier inside the original
     // Win32/x64 foobar host. No network, OAuth, tags or cache writes.
     for (int status : {401, 403, 404, 429}) {

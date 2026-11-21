@@ -50,6 +50,12 @@ class CTrackMatchingDialog : public MyCDialogImpl<CTrackMatchingDialog>,
 
 public:
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+    static void test_selection_recovery(HWND owner, metadb_handle_list_cref files);
+private:
+    bool m_test_selection_only = false;
+public:
+#endif
 	// constructor
 
 	CTrackMatchingDialog(HWND p_parent, TagWriter_ptr tag_writer, bool use_update_tags = false) : ILOD_track_matching(tag_writer->GetRelease()),

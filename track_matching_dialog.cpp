@@ -35,6 +35,68 @@ static const GUID guid_cfg_dialog_position_track_matching_dlg = { 0xf4939f4b, 0x
 static cfgDialogPosition cfg_dialog_position_track_matching_dlg(guid_cfg_dialog_position_track_matching_dlg);
 
 //private
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_list_cref files) {
+    if (g_discogs->track_matching_dialog || files.get_count() != 1)
+        throw std::runtime_error("Expected one synthetic file and no active matching dialog");
+    auto release = std::make_shared<Release>("410997");
+    release->title = "Synthetic matching release";
+    release->loaded = true;
+    release->loaded_preview = true;
+    auto disc = std::make_shared<ReleaseDisc>();
+    disc->disc_number = 1;
+    for (const char* title : {"First synthetic track", "Second synthetic track"}) {
+        auto track = std::make_shared<ReleaseTrack>();
+        track->title = title;
+        disc->tracks.append_single(track);
+    }
+    release->discs.append_single(disc);
+    auto manager = std::make_shared<file_info_manager>(files);
+    files[0]->get_info(manager->get_item(0));
+    auto writer = std::make_shared<TagWriter>(manager, release);
+    // The physical file is manually matched to the second release track.
+    track_mapping manual;
+    manual.enabled = true;
+    manual.discogs_track = 1;
+    writer->m_track_mappings.append_single(manual);
+    CTrackMatchingDialog dialog(owner, writer);
+    dialog.m_test_selection_only = true;
+    if (!dialog.Create(owner)) throw std::runtime_error("Matching dialog creation failed");
+    try {
+        auto& rows = dialog.m_coord;
+        const HWND label = dialog.GetDlgItem(IDC_STATIC_MATCH_TRACKING_REL_NAME);
+        auto check = [&](bool populated) {
+            if (!label || dialog.m_ifile_list.GetItemCount() != (populated ? 1u : 0u) ||
+                dialog.m_idc_list.GetItemCount() != 1)
+                throw std::runtime_error("Native matching row counts did not follow selection");
+            track_it track;
+            if (rows.GetDiscogsTrackUiAtLvPos(0, track) != 0 ||
+                track->second.disc != 0 || track->second.track != 1 ||
+                writer->m_track_mappings[0] != manual)
+                throw std::runtime_error("Manual Discogs track identity changed");
+        };
+        check(true);
+        const pfc::string8 caption = uGetWindowText(label);
+        file_it row;
+        if (caption.is_empty() || rows.GetFileTrackUiAtLvPos(0,row) != 0)
+            throw std::runtime_error("Initial release caption or file row missing");
+        const auto original = *row;
+        manager->items.remove_all();
+        rows.Show();
+        check(false);
+        if (!uGetWindowText(label).is_empty())
+            throw std::runtime_error("Empty file selection retained release caption");
+        manager->items = files;
+        rows.Show();
+        check(true);
+        if (!caption.equals(uGetWindowText(label)) || rows.GetFileTrackUiAtLvPos(0,row) != 0 ||
+            !original.first.first.equals(row->first.first) || original.second != row->second)
+            throw std::runtime_error("Restored release caption or file identity changed");
+    } catch (...) { dialog.DestroyWindow(); throw; }
+    dialog.DestroyWindow();
+}
+#endif
+
 void CTrackMatchingDialog::add_pending_previews(size_t n) {
 	std::lock_guard<std::mutex> guard(m_mx_pending_previews_mod);
 	m_pending_previews += n;
@@ -135,6 +197,11 @@ LRESULT CTrackMatchingDialog::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPA
 
 		init_track_matching_dialog();
 
+#if defined(DISCOGGER_RUNNER_MEDIA_QA)
+        // The original controls and track presenters are initialized. The
+        // selection test does not need artwork downloads or tag generation.
+        if (m_test_selection_only) return FALSE;
+#endif
 		//darkmode
 		m_dark.AddDialog(m_hWnd);
 		m_dark.AddControls(m_hWnd);
