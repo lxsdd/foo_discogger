@@ -748,6 +748,7 @@ private:
 	discogs_artwork_presenter m_discogs_art_presenter;
 	files_artwork_presenter m_file_art_presenter;
 
+	std::vector<metadb_handle_ptr> m_last_track_ui_files;
 	Release_ptr m_tag_writer_release;
 	TagWriter_ptr m_tag_writer;
 	titleformat_hook_impl_multiformat m_hook;

@@ -7,6 +7,7 @@
 #include "discogs_interface.h"
 #include "ol_cache.h"
 #include "track_matching_dialog_presenter.h"
+#include "discogger_track_mapping_row.h"
 
 using namespace Gdiplus;
 
@@ -32,6 +33,7 @@ void coord_presenters::InitFormMode(lsmode mode, UINT id_lvleft, UINT id_lvright
 }
 void coord_presenters::SetTagWriter(TagWriter_ptr tag_writer) {
 	m_tag_writer = tag_writer;
+	m_last_track_ui_files.clear();
 	m_tag_writer_release = tag_writer->GetRelease();
 
 	m_discogs_track_libui_presenter.SetTagWriter(tag_writer);
@@ -1659,10 +1661,16 @@ void coord_presenters::populate_track_ui_mode() {
 	// before the selection changed. Preserve existing row order when unchanged.
 	const size_t selected_file_count = m_tag_writer->m_finfo_manager->items.get_count();
 	const size_t selected_track_count = m_tag_writer->m_track_mappings.get_count();
+	std::vector<metadb_handle_ptr> current_file_selection;
+	current_file_selection.reserve(selected_file_count);
+	for (size_t i = 0; i < selected_file_count; ++i) {
+		current_file_selection.push_back(m_tag_writer->m_finfo_manager->items.get_item(i));
+	}
 	if (selected_file_count != 0 && selected_track_count != 0 &&
 		m_discogs_track_libui_presenter.GetPopulated() &&
 		m_file_track_libui_presenter.GetPopulated() &&
-		m_file_track_libui_presenter.GetDataSize() == selected_file_count) {
+		m_file_track_libui_presenter.GetDataSize() == selected_file_count &&
+		discogger_matching::same_file_selection(m_last_track_ui_files, current_file_selection)) {
 		return;
 	}
 
@@ -1794,6 +1802,9 @@ void coord_presenters::populate_track_ui_mode() {
 			m_discogs_track_libui_presenter.AddRow(track_file_match);
 		}
 	}
+	// Capture the physical selection only after both presenters have been
+	// rebuilt. A same-size replacement must not retain stale file rows.
+	m_last_track_ui_files = std::move(current_file_selection);
 }
 
 void coord_presenters::populate_artwork_mode(size_t select) {
