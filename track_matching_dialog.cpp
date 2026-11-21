@@ -118,6 +118,22 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
         if (rows.GetFileTrackUiAtLvPos(0, row) != 0 ||
             !replacement_row.first.first.equals(row->first.first))
             throw std::runtime_error("Unchanged replacement selection was not stable");
+        // Switching back to the original file after a different physical
+        // selection must not resurrect the old manually enabled file index.
+        manager->items.remove_all();
+        rows.Show();
+        if (!uGetWindowText(label).is_empty())
+            throw std::runtime_error("Second empty selection retained release caption");
+        manager->items = files;
+        rows.Show();
+        if (dialog.m_ifile_list.GetItemCount() != 1 ||
+            rows.GetFileTrackUiAtLvPos(0, row) != 0 ||
+            !original.first.first.equals(row->first.first) ||
+            writer->m_track_mappings[0].enabled ||
+            writer->m_track_mappings[0].file_index != -1)
+            throw std::runtime_error("Returning to original file resurrected stale mapping");
+        if (!caption.equals(uGetWindowText(label)))
+            throw std::runtime_error("Returning to original file lost release caption");
     } catch (...) { dialog.DestroyWindow(); throw; }
     dialog.DestroyWindow();
 }
