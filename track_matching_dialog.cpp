@@ -92,6 +92,28 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
         if (!caption.equals(uGetWindowText(label)) || rows.GetFileTrackUiAtLvPos(0,row) != 0 ||
             !original.first.first.equals(row->first.first) || original.second != row->second)
             throw std::runtime_error("Restored release caption or file identity changed");
+        // A different physical file at the same count must rebuild the native
+        // file presenter, not reuse the old row simply because count is one.
+        const auto replacement_handle = metadb::get()->handle_create(
+            playable_location("file://discogger-selection-replacement.wav", 0));
+        if (replacement_handle == files[0])
+            throw std::runtime_error("Synthetic replacement did not change file identity");
+        manager->items.remove_all();
+        manager->items.add_item(replacement_handle);
+        rows.Show();
+        if (dialog.m_ifile_list.GetItemCount() != 1 ||
+            dialog.m_idc_list.GetItemCount() != 1 ||
+            rows.GetFileTrackUiAtLvPos(0, row) != 0 ||
+            original.first.first.equals(row->first.first))
+            throw std::runtime_error("Same-count replacement retained stale native file row");
+        if (uGetWindowText(label).is_empty())
+            throw std::runtime_error("Same-count replacement lost release caption");
+        // A repeated refresh of the same selection must be stable.
+        const auto replacement_row = *row;
+        rows.Show();
+        if (rows.GetFileTrackUiAtLvPos(0, row) != 0 ||
+            !replacement_row.first.first.equals(row->first.first))
+            throw std::runtime_error("Unchanged replacement selection was not stable");
     } catch (...) { dialog.DestroyWindow(); throw; }
     dialog.DestroyWindow();
 }
