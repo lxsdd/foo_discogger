@@ -1674,6 +1674,20 @@ void coord_presenters::populate_track_ui_mode() {
 		return;
 	}
 
+
+	// A file-index mapping belongs to the physical selection that created it.
+	// Keep the last nonempty identity through a temporary empty selection so
+	// restoring the same files preserves the user's manual matching. A different
+	// selection must never inherit that matching merely by reusing row indices.
+	if (selected_file_count != 0 && !m_last_track_ui_files.empty() &&
+		!discogger_matching::same_file_selection(m_last_track_ui_files, current_file_selection)) {
+		for (size_t i = 0; i < selected_track_count; ++i) {
+			auto& mapping = m_tag_writer->m_track_mappings[i];
+			mapping.enabled = false;
+			mapping.file_index = -1;
+		}
+	}
+
 	m_discogs_track_libui_presenter.Reset();
 	m_file_track_libui_presenter.Reset();
 
@@ -1804,7 +1818,7 @@ void coord_presenters::populate_track_ui_mode() {
 	}
 	// Capture the physical selection only after both presenters have been
 	// rebuilt. A same-size replacement must not retain stale file rows.
-	m_last_track_ui_files = std::move(current_file_selection);
+	if (selected_file_count != 0) m_last_track_ui_files = std::move(current_file_selection);
 }
 
 void coord_presenters::populate_artwork_mode(size_t select) {

@@ -108,6 +108,10 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
             throw std::runtime_error("Same-count replacement retained stale native file row");
         if (uGetWindowText(label).is_empty())
             throw std::runtime_error("Same-count replacement lost release caption");
+        if (writer->m_track_mappings[0].enabled ||
+            writer->m_track_mappings[0].file_index != -1)
+            throw std::runtime_error("Replacement inherited stale manual file mapping");
+
         // A repeated refresh of the same selection must be stable.
         const auto replacement_row = *row;
         rows.Show();
