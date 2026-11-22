@@ -132,6 +132,23 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
             stale_edition->second.disc != 1 || stale_edition->second.track != 0 ||
             writer->m_track_mappings[2].discogs_disc != 99)
             throw std::runtime_error("Stale edition coordinate did not resolve safely");
+        // An edition may preserve a disc number but shorten its track list.
+        // Both negative and out-of-range coordinates must resolve from the
+        // current ordinal without mutating the stored manual review state.
+        for (const auto invalid_disc : {-1, 1}) {
+            writer->m_track_mappings[2].discogs_disc = invalid_disc;
+            writer->m_track_mappings[2].discogs_track = invalid_disc < 0 ? 0 : 99;
+            manager->items.remove_all();
+            rows.Show();
+            manager->items = files;
+            rows.Show();
+            track_it recovered;
+            if (rows.GetDiscogsTrackUiAtLvPos(2, recovered) != 2 ||
+                recovered->second.disc != 1 || recovered->second.track != 0 ||
+                writer->m_track_mappings[2].discogs_disc != invalid_disc ||
+                writer->m_track_mappings[2].discogs_track != (invalid_disc < 0 ? 0 : 99))
+                throw std::runtime_error("Invalid edition track coordinate escaped fallback");
+        }
         writer->m_track_mappings[2].discogs_disc = -1;
         writer->m_track_mappings[2].discogs_track = -1;
         manager->items.remove_all();
