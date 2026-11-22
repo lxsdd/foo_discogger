@@ -118,6 +118,27 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
         if (!caption.equals(uGetWindowText(label)) || rows.GetFileTrackUiAtLvPos(0,row) != 0 ||
             !original.first.first.equals(row->first.first) || original.second != row->second)
             throw std::runtime_error("Restored release caption or file identity changed");
+        // A stale explicit edition coordinate must not index outside the
+        // current release. Rebuild through an empty selection to exercise the
+        // original presenter and verify the resolved second-disc identity.
+        writer->m_track_mappings[2].discogs_disc = 99;
+        writer->m_track_mappings[2].discogs_track = 0;
+        manager->items.remove_all();
+        rows.Show();
+        manager->items = files;
+        rows.Show();
+        track_it stale_edition;
+        if (rows.GetDiscogsTrackUiAtLvPos(2, stale_edition) != 2 ||
+            stale_edition->second.disc != 1 || stale_edition->second.track != 0 ||
+            writer->m_track_mappings[2].discogs_disc != 99)
+            throw std::runtime_error("Stale edition coordinate did not resolve safely");
+        writer->m_track_mappings[2].discogs_disc = -1;
+        writer->m_track_mappings[2].discogs_track = -1;
+        manager->items.remove_all();
+        rows.Show();
+        manager->items = files;
+        rows.Show();
+        check(true);
         // A different physical file at the same count must rebuild the native
         // file presenter, not reuse the old row simply because count is one.
         const auto replacement_handle = metadb::get()->handle_create(
