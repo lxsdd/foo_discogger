@@ -662,6 +662,7 @@ private:
 	pfc::string8 m_search_artist;
 	pfc::string8 m_search_expression;
 
+    discogger_async::search_request_epoch m_profile_request_epoch;
     discogger_async::search_request_epoch m_search_request_epoch;
     discogger_async::search_request_epoch m_filter_request_epoch;
 	size_t m_query_mode = SearchMode::DEFAULT_SEARCH;

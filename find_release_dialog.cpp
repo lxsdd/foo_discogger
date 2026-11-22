@@ -1203,6 +1203,11 @@ LRESULT CFindReleaseDialog::OnButtonSearch(WORD /*wNotifyCode*/, WORD wID, HWND 
 
 void CFindReleaseDialog::on_get_artist_done(cupdRelSrc updsrc, Artist_ptr& artist) {
 
+    // Discard an obsolete selection callback before it can consume the
+    // pending artist ID or refresh the tree for a newer request.
+    if (updsrc == updRelSrc::ArtistProfile && updsrc.profile_ticket != 0 &&
+        !m_profile_request_epoch.matches(updsrc.profile_ticket)) return;
+
 	if (updsrc != updRelSrc::ArtistSearchAT && updsrc != updRelSrc::Undef) {
 
 		auto list_artist_p = m_alist.Get_Selected_Id();
@@ -1789,6 +1794,9 @@ void CFindReleaseDialog::convey_artist_list_selection(cupdRelSrc cupdsrc) {
     const auto current_artists = m_alist.Get_Artists();
     if (pos >= current_artists.get_count() || !current_artists[pos]) return;
 	Artist_ptr artist = current_artists[pos];
+
+    const auto selection_ticket = m_profile_request_epoch.begin();
+    if (cupdsrc == updRelSrc::ArtistProfile) cupdsrc.profile_ticket = selection_ticket;
 
 	bool need_releases = cupdsrc == updRelSrc::ArtistList && !artist->loaded_releases;
 
@@ -2661,6 +2669,29 @@ std::pair<size_t, size_t> CFindReleaseDialog::runner_qa_populated_search_rows() 
             throw std::runtime_error("Native direct Discogs URL accepted an unsafe identity.");
     }
     log_msg("DISCOGGER_NATIVE_DIRECT_REFERENCE_QA=PASS");
+    // Exercise the real completion handler with the same artist ID twice.
+    // Once a newer request exists an older reply cannot consume its slot,
+    // regardless of which response arrives first.
+    {
+        const auto saved_pending = m_loading_selection_id;
+        const auto previous_epoch = m_profile_request_epoch.current();
+        const auto selected = m_alist.Get_Selected_Id();
+        const pfc::string8 id = selected.get_length() ? selected : pfc::string8("8001");
+        auto artist = std::make_shared<Artist>(id);
+        const auto numeric_id = discogger_ui::artist_id_or_invalid(id.get_ptr());
+        if (numeric_id == pfc_infinite) throw std::runtime_error("Invalid QA artist");
+        cupdRelSrc older(updRelSrc::ArtistProfile), newer(updRelSrc::ArtistProfile);
+        older.profile_ticket = m_profile_request_epoch.begin();
+        newer.profile_ticket = m_profile_request_epoch.begin();
+        m_loading_selection_id = numeric_id;
+        on_get_artist_done(older, artist);
+        if (m_loading_selection_id != numeric_id) throw std::runtime_error("Stale profile consumed newer request");
+        on_get_artist_done(newer, artist);
+        if (m_loading_selection_id != pfc_infinite) throw std::runtime_error("Current profile was discarded");
+        on_get_artist_done(older, artist);
+        m_loading_selection_id = saved_pending;
+        m_profile_request_epoch.rollback_failed_start(newer.profile_ticket, previous_epoch);
+    }
     runner_qa_native_cache_json_rollback();
     runner_qa_native_master_page_transaction();
     runner_qa_native_master_child_isolation();

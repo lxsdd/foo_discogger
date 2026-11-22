@@ -2,6 +2,7 @@
 
 #pragma warning(disable:4996)
 
+#include <cstdint>
 #include "version.h"
 #include "discogs.h"
 #include "tags.h"
@@ -162,6 +163,7 @@ public:
 	operator updRelSrc() const { return src; }
 	updRelSrc get_src() { return src; }
 
+	std::uint64_t profile_ticket = 0;
 	bool extended;
 	bool oninit;
 
