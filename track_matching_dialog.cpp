@@ -128,7 +128,7 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
         manager->items.add_item(replacement_handle);
         rows.Show();
         if (dialog.m_ifile_list.GetItemCount() != 1 ||
-            dialog.m_idc_list.GetItemCount() != 1 ||
+            dialog.m_idc_list.GetItemCount() != 3 ||
             rows.GetFileTrackUiAtLvPos(0, row) != 0 ||
             original.first.first.equals(row->first.first))
             throw std::runtime_error("Same-count replacement retained stale native file row");
