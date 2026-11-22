@@ -65,6 +65,12 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
     manual.enabled = true;
     manual.discogs_track = 1;
     writer->m_track_mappings.append_single(manual);
+    track_mapping middle;
+    middle.enabled = false;
+    middle.discogs_disc = 0;
+    middle.discogs_track = 1;
+    middle.file_index = -1;
+    writer->m_track_mappings.append_single(middle);
     // Unresolved mapping for the third release track must use the resolved
     // second-disc coordinates in the actual native presenter row.
     track_mapping fallback;
@@ -81,7 +87,7 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
         const HWND label = dialog.GetDlgItem(IDC_STATIC_MATCH_TRACKING_REL_NAME);
         auto check = [&](bool populated) {
             if (!label || dialog.m_ifile_list.GetItemCount() != (populated ? 1u : 0u) ||
-                dialog.m_idc_list.GetItemCount() != 2)
+                dialog.m_idc_list.GetItemCount() != 3)
                 throw std::runtime_error("Native matching row counts did not follow selection");
             track_it track;
             if (rows.GetDiscogsTrackUiAtLvPos(0, track) != 0 ||
@@ -89,10 +95,10 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
                 writer->m_track_mappings[0] != manual)
                 throw std::runtime_error("Manual Discogs track identity changed");
             track_it remix;
-            if (rows.GetDiscogsTrackUiAtLvPos(1, remix) != 1 ||
+            if (rows.GetDiscogsTrackUiAtLvPos(2, remix) != 2 ||
                 remix->second.disc != 1 || remix->second.track != 0 ||
-                writer->m_track_mappings[1].discogs_disc != -1 ||
-                writer->m_track_mappings[1].discogs_track != -1)
+                writer->m_track_mappings[2].discogs_disc != -1 ||
+                writer->m_track_mappings[2].discogs_track != -1)
                 throw std::runtime_error("Second-disc fallback row lost resolved remix identity");
         };
         check(true);
