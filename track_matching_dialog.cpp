@@ -34,11 +34,35 @@
 static const GUID guid_cfg_dialog_position_track_matching_dlg = { 0xf4939f4b, 0xb02, 0x4b5c, { 0x8b, 0xd3, 0xfa, 0xcb, 0x68, 0x77, 0x5a, 0x35 } };
 static cfgDialogPosition cfg_dialog_position_track_matching_dlg(guid_cfg_dialog_position_track_matching_dlg);
 
+// The original matching dialog uses this tag priority when resolving a
+// physical file's artist; exercise that production helper in native QA.
+pfc::string8 file_info_get_artist_name(file_info_impl finfo, metadb_handle_ptr item);
+
 //private
 #if defined(DISCOGGER_RUNNER_MEDIA_QA)
 void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_list_cref files) {
     if (g_discogs->track_matching_dialog || files.get_count() != 1)
         throw std::runtime_error("Expected one synthetic file and no active matching dialog");
+    // Discogs-only tags must remain usable when both conventional artist
+    // fields are absent. Check priority and recovery through the real helper.
+    auto check_artist = [&](const char* key, const char* expected) {
+        file_info_impl info;
+        info.meta_set(key, expected);
+        if (!file_info_get_artist_name(info, files[0]).equals(expected))
+            throw std::runtime_error("Native artist tag fallback or UTF-8 value lost");
+    };
+    check_artist("DISCOGS_ARTISTS", "Discogs collaboration");
+    check_artist("DISCOGS_ALBUM_ARTISTS", "Discogs album collaboration");
+    check_artist("Album Artist", "Album collaborator");
+    check_artist("Artist", "Primary collaborator");
+    {
+        file_info_impl info;
+        info.meta_set("Artist", "Primary collaborator");
+        info.meta_set("Album Artist", "Album collaborator");
+        info.meta_set("DISCOGS_ARTISTS", "Discogs collaboration");
+        if (!file_info_get_artist_name(info, files[0]).equals("Primary collaborator"))
+            throw std::runtime_error("Native artist precedence changed");
+    }
     auto release = std::make_shared<Release>("410997");
     release->title = "Synthetic matching release";
     release->loaded = true;
@@ -1903,11 +1927,14 @@ bool CTrackMatchingDialog::is_enabled() {
 pfc::string8 file_info_get_artist_name(file_info_impl finfo, metadb_handle_ptr item) {
 	pfc::string8 artist;
 	g_discogs->file_info_get_tag(item, finfo, "Artist", artist);
+	// Each source is a fallback, not an alternative to the first missing tag.
+	// In particular, Discogs-only files need the final two probes even when
+	// neither standard artist field is present.
 	if (!artist.get_length())
 		g_discogs->file_info_get_tag(item, finfo, "Album Artist", artist);
-	else if (!artist.get_length())
+	if (!artist.get_length())
 		g_discogs->file_info_get_tag(item, finfo, "DISCOGS_ARTISTS", artist);
-	else if (!artist.get_length())
+	if (!artist.get_length())
 		g_discogs->file_info_get_tag(item, finfo, "DISCOGS_ALBUM_ARTISTS", artist);
 	return artist;
 }
