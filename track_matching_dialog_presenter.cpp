@@ -1757,12 +1757,16 @@ void coord_presenters::populate_track_ui_mode() {
 
 			const track_mapping& mapping = m_tag_writer->m_track_mappings[i];
 
-			if (mapping.discogs_disc == -1 || mapping.discogs_track == -1) {
+			int resolved_disc = mapping.discogs_disc;
+			int resolved_track = mapping.discogs_track;
+			if (resolved_disc == -1 || resolved_track == -1) {
 				int d, t;
 				if (!tw_release->find_disc_track(i, &d, &t)) {
 					continue;
 				}
 
+				resolved_disc = d;
+				resolved_track = t;
 				disc = tw_release->discs[d];
 				track = disc->tracks[t];
 			}
@@ -1811,7 +1815,7 @@ void coord_presenters::populate_track_ui_mode() {
 			}
 
 			match_info_t track_match_info(dc_track_desc, time);
-			track_match_t track_file_match(track_match_info, file_match_nfo{ mapping.discogs_track, mapping.discogs_disc });
+			track_match_t track_file_match(track_match_info, file_match_nfo{ resolved_track, resolved_disc });
 
 			m_discogs_track_libui_presenter.AddRow(track_file_match);
 		}
