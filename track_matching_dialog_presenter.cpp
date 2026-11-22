@@ -1762,7 +1762,7 @@ void coord_presenters::populate_track_ui_mode() {
 			// A stored explicit coordinate may belong to an older release or a
 			// changed edition. Never index the release with an invalid coordinate.
 			// Resolve the current ordinal instead, keeping the stored mapping intact.
-			const bool valid_explicit = resolved_disc >= 0 &&
+			const bool valid_explicit = mapping.enabled && resolved_disc >= 0 &&
 				static_cast<size_t>(resolved_disc) < tw_release->discs.get_count() &&
 				resolved_track >= 0 &&
 				static_cast<size_t>(resolved_track) < tw_release->discs[resolved_disc]->tracks.get_count();

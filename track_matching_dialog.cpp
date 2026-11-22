@@ -149,6 +149,21 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
                 writer->m_track_mappings[2].discogs_track != (invalid_disc < 0 ? 0 : 99))
                 throw std::runtime_error("Invalid edition track coordinate escaped fallback");
         }
+        // A disabled mapping can carry coordinates valid in the old edition
+        // but pointing at a different track in the current edition. The
+        // preview must use the current ordinal, not that stale coordinate.
+        writer->m_track_mappings[2].discogs_disc = 0;
+        writer->m_track_mappings[2].discogs_track = 1;
+        manager->items.remove_all();
+        rows.Show();
+        manager->items = files;
+        rows.Show();
+        track_it valid_but_stale;
+        if (rows.GetDiscogsTrackUiAtLvPos(2, valid_but_stale) != 2 ||
+            valid_but_stale->second.disc != 1 || valid_but_stale->second.track != 0 ||
+            writer->m_track_mappings[2].discogs_disc != 0 ||
+            writer->m_track_mappings[2].discogs_track != 1)
+            throw std::runtime_error("Disabled stale edition coordinate redirected preview");
         writer->m_track_mappings[2].discogs_disc = -1;
         writer->m_track_mappings[2].discogs_track = -1;
         manager->items.remove_all();
