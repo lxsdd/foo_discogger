@@ -2,6 +2,7 @@
 #include "resource.h"
 
 #include <variant>
+#include <tuple>
 #include <any>
 
 #include "multiformat.h"
@@ -749,6 +750,7 @@ private:
 	files_artwork_presenter m_file_art_presenter;
 
 	std::vector<metadb_handle_ptr> m_last_track_ui_files;
+	std::vector<std::tuple<bool, long long, long long, long long>> m_last_track_ui_mappings;
 	Release_ptr m_tag_writer_release;
 	TagWriter_ptr m_tag_writer;
 	titleformat_hook_impl_multiformat m_hook;

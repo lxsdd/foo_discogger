@@ -102,6 +102,18 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
                 throw std::runtime_error("Second-disc fallback row lost resolved remix identity");
         };
         check(true);
+        // A changed active manual mapping must refresh the original presenter
+        // even when the physical file selection is unchanged.
+        writer->m_track_mappings[0].discogs_disc = 0;
+        writer->m_track_mappings[0].discogs_track = 0;
+        rows.Show();
+        track_it updated_manual;
+        if (rows.GetDiscogsTrackUiAtLvPos(0, updated_manual) != 0 ||
+            updated_manual->second.disc != 0 || updated_manual->second.track != 0)
+            throw std::runtime_error("Same-selection manual mapping retained stale preview");
+        writer->m_track_mappings[0] = manual;
+        rows.Show();
+        check(true);
         const pfc::string8 caption = uGetWindowText(label);
         file_it row;
         if (caption.is_empty() || rows.GetFileTrackUiAtLvPos(0,row) != 0)

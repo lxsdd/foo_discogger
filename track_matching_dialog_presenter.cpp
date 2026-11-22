@@ -34,6 +34,7 @@ void coord_presenters::InitFormMode(lsmode mode, UINT id_lvleft, UINT id_lvright
 void coord_presenters::SetTagWriter(TagWriter_ptr tag_writer) {
 	m_tag_writer = tag_writer;
 	m_last_track_ui_files.clear();
+	m_last_track_ui_mappings.clear();
 	m_tag_writer_release = tag_writer->GetRelease();
 
 	m_discogs_track_libui_presenter.SetTagWriter(tag_writer);
@@ -1666,7 +1667,16 @@ void coord_presenters::populate_track_ui_mode() {
 	for (size_t i = 0; i < selected_file_count; ++i) {
 		current_file_selection.push_back(m_tag_writer->m_finfo_manager->items.get_item(i));
 	}
+	std::vector<std::tuple<bool, long long, long long, long long>> current_mappings;
+	current_mappings.reserve(selected_track_count);
+	for (size_t i = 0; i < selected_track_count; ++i) {
+		const auto& mapping = m_tag_writer->m_track_mappings[i];
+		current_mappings.emplace_back(mapping.enabled, mapping.file_index,
+			mapping.discogs_disc, mapping.discogs_track);
+	}
+	// Identical file selection does not guarantee identical review decisions.
 	if (selected_file_count != 0 && selected_track_count != 0 &&
+		current_mappings == m_last_track_ui_mappings &&
 		m_discogs_track_libui_presenter.GetPopulated() &&
 		m_file_track_libui_presenter.GetPopulated() &&
 		m_file_track_libui_presenter.GetDataSize() == selected_file_count &&
@@ -1830,6 +1840,13 @@ void coord_presenters::populate_track_ui_mode() {
 	// Capture the physical selection only after both presenters have been
 	// rebuilt. A same-size replacement must not retain stale file rows.
 	if (selected_file_count != 0) m_last_track_ui_files = std::move(current_file_selection);
+	// Capture after any selection-driven invalidation of manual mappings.
+	m_last_track_ui_mappings.clear();
+	for (size_t i = 0; i < selected_track_count; ++i) {
+		const auto& mapping = m_tag_writer->m_track_mappings[i];
+		m_last_track_ui_mappings.emplace_back(mapping.enabled, mapping.file_index,
+			mapping.discogs_disc, mapping.discogs_track);
+	}
 }
 
 void coord_presenters::populate_artwork_mode(size_t select) {
