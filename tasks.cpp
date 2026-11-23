@@ -1987,8 +1987,8 @@ void process_release_callback::on_error(HWND p_wnd) {
     if (owner_is_current()) m_dialog->show();
 }
 
-process_artwork_preview_callback::process_artwork_preview_callback(CTrackMatchingDialog* dialog, const Release_ptr& release, const size_t img_ndx, const bool bartist, bool onlycache, bool get_mibs) :
-	m_dialog(dialog), m_release(release), m_img_ndx(img_ndx), m_bartist(bartist), m_onlycache(onlycache), m_get_mibs(get_mibs) {
+process_artwork_preview_callback::process_artwork_preview_callback(CTrackMatchingDialog* dialog, const Release_ptr& release, const size_t img_ndx, const bool bartist, bool onlycache, bool get_mibs, std::uint64_t request_version) :
+	m_dialog(dialog), m_release(release), m_img_ndx(img_ndx), m_bartist(bartist), m_onlycache(onlycache), m_get_mibs(get_mibs), m_request_version(request_version) {
 	m_musicbrainz_mibs = {};
 }
 
@@ -2148,7 +2148,7 @@ void process_artwork_preview_callback::safe_run(threaded_process_status& p_statu
 }
 
 void process_artwork_preview_callback::on_success(HWND p_wnd) {
-	m_dialog->process_artwork_preview_done(m_release, m_img_ndx, m_bartist, m_small_art, m_musicbrainz_mibs);
+	m_dialog->process_artwork_preview_done(m_release, m_img_ndx, m_bartist, m_request_version, m_small_art, m_musicbrainz_mibs);
 }
 
 void process_artwork_preview_callback::on_abort(HWND p_wnd) {

@@ -441,7 +441,7 @@ private:
 class process_artwork_preview_callback : public foo_discogs_threaded_process_callback
 {
 public:
-	process_artwork_preview_callback(CTrackMatchingDialog*dialog, const Release_ptr &release, const size_t img_ndx, const bool bartist, const bool onlycache, const bool get_mibs = false);
+	process_artwork_preview_callback(CTrackMatchingDialog*dialog, const Release_ptr &release, const size_t img_ndx, const bool bartist, const bool onlycache, const bool get_mibs, std::uint64_t request_version);
 	void start(HWND parent);
 
 private:
@@ -452,6 +452,7 @@ private:
 	bool m_bartist;
 	bool m_onlycache;
 	bool m_get_mibs;
+	std::uint64_t m_request_version;
 
 	musicbrainz_info m_musicbrainz_mibs;
 

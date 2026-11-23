@@ -591,7 +591,8 @@ void CTrackMatchingDialog::match_message_update(pfc::string8 local_msg) {
 
 void CTrackMatchingDialog::request_preview(size_t img_ndx, bool artist_art, bool onlycache, bool get_mibs) {
 	service_ptr_t<process_artwork_preview_callback> task =
-		new service_impl_t<process_artwork_preview_callback>(this, m_tag_writer->GetRelease(), img_ndx, artist_art, onlycache, get_mibs);
+		new service_impl_t<process_artwork_preview_callback>(this, m_tag_writer->GetRelease(), img_ndx, artist_art, onlycache, get_mibs,
+			m_remote_preview_versions.next(img_ndx, artist_art));
 	task->start(m_hWnd);
 }
 
@@ -603,9 +604,10 @@ void CTrackMatchingDialog::request_file_preview(size_t img_ndx, bool artist_art)
 	file_art_task->start(m_hWnd);
 }
 
-void CTrackMatchingDialog::process_artwork_preview_done(const Release_ptr& requested_release, size_t img_ndx, bool artist_art, MemoryBlock callback_small_art, musicbrainz_info musicbrainz_mibs) {
+void CTrackMatchingDialog::process_artwork_preview_done(const Release_ptr& requested_release, size_t img_ndx, bool artist_art, std::uint64_t request_version, MemoryBlock callback_small_art, musicbrainz_info musicbrainz_mibs) {
 	// A completed worker may belong to a release that is no longer selected.
-	if (!discogger_ui::preview_source_matches(requested_release, m_tag_writer->GetRelease(), static_cast<const metadb_handle_list*>(nullptr), static_cast<const metadb_handle_list*>(nullptr))) {
+	if (!m_remote_preview_versions.matches(img_ndx, artist_art, request_version) ||
+		!discogger_ui::preview_source_matches(requested_release, m_tag_writer->GetRelease(), static_cast<const metadb_handle_list*>(nullptr), static_cast<const metadb_handle_list*>(nullptr))) {
 		pending_previews_done(1);
 		return;
 	}

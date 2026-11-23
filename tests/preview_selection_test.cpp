@@ -20,6 +20,17 @@ int main() {
     assert(versions.matches(1, false, other_slot));
     assert(versions.matches(0, false, second));
     assert(!versions.matches(0, false, 0));
+    // The remote artwork path uses an independent generation namespace.
+    // A repeated same-release refresh must reject the old response before
+    // it can update either artwork or MusicBrainz metadata.
+    discogger_ui::preview_request_versions remote;
+    const auto remote_first = remote.next(0, false);
+    const auto remote_artist = remote.next(0, true);
+    const auto remote_second = remote.next(0, false);
+    assert(!remote.matches(0, false, remote_first));
+    assert(remote.matches(0, false, remote_second));
+    assert(remote.matches(0, true, remote_artist));
+    assert(!remote.matches(0, true, remote_second));
     const int release_a = 1, release_b = 2;
     const int* a = &release_a;
     const int* b = &release_b;
