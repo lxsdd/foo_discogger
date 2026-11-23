@@ -5,6 +5,11 @@
 #include <vector>
 int main() {
     using discogger_matching::mapping_file_index;
+    using discogger_matching::valid_presenter_row;
+    assert(valid_presenter_row(0));
+    assert(valid_presenter_row(17));
+    assert(!valid_presenter_row(static_cast<std::size_t>(-1)));
+    assert(!valid_presenter_row((std::numeric_limits<std::size_t>::max)()));
     const std::size_t invalid = static_cast<std::size_t>(-1);
     assert(mapping_file_index(0, 2, 0, invalid) == 0);
     assert(mapping_file_index(1, 2, 7, invalid) == 7); // reordered file

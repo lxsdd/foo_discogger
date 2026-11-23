@@ -7,6 +7,12 @@
 // A Discogs row without a corresponding physical file must never inherit
 // the preceding row's file index, including after list reorder/crop.
 namespace discogger_matching {
+// A failed owner-data lookup does not initialize its output iterator.
+// Never dereference it after a stale row callback or variant mismatch.
+inline bool valid_presenter_row(std::size_t result) noexcept {
+    return result != static_cast<std::size_t>(-1);
+}
+
 // Compare the ordered physical selection, not merely its count. Keeping the
 // order stable avoids resetting manual mapping edits on ordinary redraws.
 template<typename Handle>

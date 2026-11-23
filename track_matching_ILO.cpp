@@ -3,6 +3,7 @@
 #include "track_matching_dialog_presenter.h"
 #include "track_matching_dialog.h"
 #include "track_matching_ILO.h"
+#include "discogger_track_mapping_row.h"
 
 HWND get_ctx_lvlist(HWND hwnd, int ID) {
 
@@ -64,6 +65,8 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 
 	switch (ctx->GetDlgCtrlID()) {
 	case IDC_UI_LIST_DISCOGS: {
+		// Owner-data callbacks can outlive a list refresh or removal.
+		if (item >= coord->GetDiscogsTrackUiLvSize()) return buffer;
 		CHeaderCtrl header = ctx->GetHeaderCtrl();
 		auto cols = header.GetItemCount();
 		if (cols == 3) {
@@ -74,10 +77,12 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 
 		track_it track_match;
 		res = coord->GetDiscogsTrackUiAtLvPos(item, track_match);
+		if (!discogger_matching::valid_presenter_row(res)) return buffer;
 		buffer = !subItem ? track_match->first.first : track_match->first.second;
 		break;
 	}
 	case IDC_UI_LIST_FILES: {
+		if (item >= coord->GetFileTrackUiLvSize()) return buffer;
 		CHeaderCtrl header = ctx->GetHeaderCtrl();
 		auto cols = header.GetItemCount();
 		if (cols == 3) {
@@ -89,6 +94,7 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 
 		file_it file_match;
 		res = coord->GetFileTrackUiAtLvPos(item, file_match);
+		if (!discogger_matching::valid_presenter_row(res)) return buffer;
 		buffer = !subItem ? file_match->first.first : file_match->first.second;
 		break;
 	}
