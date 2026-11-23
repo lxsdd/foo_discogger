@@ -25,6 +25,7 @@
 #endif
 
 #include "track_matching_dialog.h"
+#include "discogger_preview_ownership.h"
 
 #define ENCODE_DISCOGS(d,t)		((d==-1||t==-1) ? -1 : ((d<<16)|t))
 #define DECODE_DISCOGS_DISK(i)	((i==-1) ? -1 : (i>>16))
@@ -601,7 +602,12 @@ void CTrackMatchingDialog::request_file_preview(size_t img_ndx, bool artist_art)
 	file_art_task->start(m_hWnd);
 }
 
-void CTrackMatchingDialog::process_artwork_preview_done(size_t img_ndx, bool artist_art, MemoryBlock callback_small_art, musicbrainz_info musicbrainz_mibs) {
+void CTrackMatchingDialog::process_artwork_preview_done(const Release_ptr& requested_release, size_t img_ndx, bool artist_art, MemoryBlock callback_small_art, musicbrainz_info musicbrainz_mibs) {
+	// A completed worker may belong to a release that is no longer selected.
+	if (!discogger_ui::preview_source_matches(requested_release, m_tag_writer->GetRelease(), static_cast<const metadb_handle_list*>(nullptr), static_cast<const metadb_handle_list*>(nullptr))) {
+		pending_previews_done(1);
+		return;
+	}
 	if (!musicbrainz_mibs.empty()) {
 		m_musicbrainz_mibs = musicbrainz_mibs;
 	}
@@ -612,7 +618,12 @@ void CTrackMatchingDialog::process_artwork_preview_done(size_t img_ndx, bool art
 	this->pending_previews_done(1);
 }
 
-void CTrackMatchingDialog::process_file_artwork_preview_done(size_t img_ndx, bool artist_art, imgpairs callback_pair_hbitmaps, std::pair<pfc::string8, pfc::string8> temp_file_names) {
+void CTrackMatchingDialog::process_file_artwork_preview_done(const Release_ptr& requested_release, const metadb_handle_list& requested_items, size_t img_ndx, bool artist_art, imgpairs callback_pair_hbitmaps, std::pair<pfc::string8, pfc::string8> temp_file_names) {
+	// A file swap with the same row count must not receive the old artwork.
+	if (!discogger_ui::preview_source_matches(requested_release, m_tag_writer->GetRelease(), &requested_items, &m_tag_writer->m_finfo_manager->items)) {
+		pending_previews_done(1);
+		return;
+	}
 	HWND lvlist = uGetDlgItem(IDC_UI_FILE_ARTWORK_LIST);
 	art_src art_source = artist_art ? art_src::art : art_src::alb;
 

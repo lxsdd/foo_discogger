@@ -1,10 +1,27 @@
 #include "../discogger_preview_selection.h"
+#include "../discogger_preview_ownership.h"
+#include <vector>
 #include <cassert>
 #include <cstddef>
 #include <limits>
 
 int main() {
     using discogger_ui::choose_preview_detail;
+    using discogger_ui::preview_source_matches;
+    const int release_a = 1, release_b = 2;
+    const int* a = &release_a;
+    const int* b = &release_b;
+    std::vector<int> files_a{10, 20};
+    std::vector<int> same_files{10, 20};
+    std::vector<int> swapped_files{10, 30};
+    std::vector<int> shorter_files{10};
+    assert(preview_source_matches(a, a, &files_a, &same_files));
+    assert(!preview_source_matches(a, b, &files_a, &same_files));
+    assert(!preview_source_matches(a, a, &files_a, &swapped_files));
+    assert(!preview_source_matches(a, a, &files_a, &shorter_files));
+    assert(preview_source_matches(a, a, static_cast<const std::vector<int>*>(nullptr), static_cast<const std::vector<int>*>(nullptr)));
+    assert(!preview_source_matches(a, a, &files_a, static_cast<const std::vector<int>*>(nullptr)));
+    assert(!preview_source_matches(a, a, static_cast<const std::vector<int>*>(nullptr), &same_files));
     using discogger_ui::can_fetch_file_artwork_preview;
     assert(!can_fetch_file_artwork_preview(false, 0));
     assert(!can_fetch_file_artwork_preview(true, 0));

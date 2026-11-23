@@ -179,8 +179,8 @@ public:
 	void request_preview(size_t img_ndx, bool artist_art, bool onlycache, bool get_mibs = false);
 	void request_file_preview(size_t img_ndx, bool artist_art);
 
-	void process_artwork_preview_done(size_t img_ndx, bool artist_art, MemoryBlock callback_mb, musicbrainz_info musicbrainz_mibs);
-	void process_file_artwork_preview_done(size_t img_ndx, bool artist_art, imgpairs callback_pair_hbitmaps, std::pair<pfc::string8, pfc::string8> temp_file_names);
+	void process_artwork_preview_done(const Release_ptr& requested_release, size_t img_ndx, bool artist_art, MemoryBlock callback_mb, musicbrainz_info musicbrainz_mibs);
+	void process_file_artwork_preview_done(const Release_ptr& requested_release, const metadb_handle_list& requested_items, size_t img_ndx, bool artist_art, imgpairs callback_pair_hbitmaps, std::pair<pfc::string8, pfc::string8> temp_file_names);
 	void process_download_art_paths_done(pfc::string8 callback_release_id, std::shared_ptr<std::vector<std::pair<pfc::string8, bit_array_bittable>>> vres,pfc::array_t<GUID> album_art_ids);
 	const TCHAR m_szArtist[50] = _T("Artist");
 	const TCHAR m_szAlbum[50] = _T("Album");
