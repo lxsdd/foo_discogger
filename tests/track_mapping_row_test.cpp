@@ -5,6 +5,15 @@
 #include <vector>
 int main() {
     using discogger_matching::mapping_file_index;
+    using discogger_matching::valid_artwork_partition;
+    assert(valid_artwork_partition(0, 2, true));
+    assert(valid_artwork_partition(1, 2, true));
+    assert(!valid_artwork_partition(2, 2, true));
+    assert(valid_artwork_partition(2, 2, false));
+    assert(valid_artwork_partition(3, 2, false));
+    assert(!valid_artwork_partition(1, 2, false)); // would underflow on artist offset
+    assert(!valid_artwork_partition(0, 0, true));
+    assert(valid_artwork_partition(0, 0, false));
     using discogger_matching::valid_artwork_metadata_field;
     assert(valid_artwork_metadata_field(3, 0));
     assert(valid_artwork_metadata_field(3, 1));

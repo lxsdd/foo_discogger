@@ -106,6 +106,7 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 		ndx_image_info_row_t image_info_row = *track_match; // (ndx_image, imageinfo);
 		ndx_image_t ndx_image = image_info_row.first; // ((int)art_src::alb, pi);
 		bool dc_isalbum = ndx_image.first == (int)art_src::alb;
+		if (!discogger_matching::valid_artwork_partition(perm_pos, cAlbumArt, dc_isalbum)) return buffer;
 		perm_pos = dc_isalbum ? perm_pos : perm_pos - cAlbumArt;
 
 		switch (subItem) {
@@ -315,6 +316,7 @@ void ILOD_track_matching::listItemAction(ctx_t ctx, size_t item) {
 			ndx_image_info_row_t image_info_row = *track_match; // (ndx_image, imageinfo);
 			ndx_image_t ndx_image = image_info_row.first; // ((int)art_src::alb, pi);
 			dc_isalbum = ndx_image.first == (int)art_src::alb;
+			if (!discogger_matching::valid_artwork_partition(perm_pos, cAlbumArt, dc_isalbum)) return;
 			perm_pos = dc_isalbum ? perm_pos : perm_pos - cAlbumArt;
 		}
 		//

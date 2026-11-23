@@ -24,6 +24,13 @@ inline bool valid_artwork_metadata_field(std::size_t field_count, std::size_t fi
     return field < field_count;
 }
 
+// Presenter indices cover album images first, then artist images. Reject
+// mismatched partitions before subtracting the album count (size_t underflow).
+inline bool valid_artwork_partition(std::size_t index, std::size_t album_count,
+                                    bool is_album) noexcept {
+    return is_album ? index < album_count : index >= album_count;
+}
+
 // The same validity gate applies to owner-data text and action callbacks.
 // In particular, a refresh may invalidate a row between display and click.
 // Compare the ordered physical selection, not merely its count. Keeping the
