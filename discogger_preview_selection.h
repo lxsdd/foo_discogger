@@ -2,6 +2,12 @@
 #include <cstddef>
 
 namespace discogger_ui {
+// The native file preview worker dereferences items[0] when resolving the
+// artwork directory. An empty selection must complete without that lookup.
+constexpr bool can_fetch_file_artwork_preview(bool has_release, std::size_t item_count) noexcept {
+    return has_release && item_count != 0;
+}
+
 struct preview_detail_choice {
     bool valid = false;
     std::size_t index = 0;

@@ -2176,7 +2176,7 @@ void process_file_artwork_preview_callback::start(HWND parent) {
 void process_file_artwork_preview_callback::safe_run(threaded_process_status& p_status, abort_callback& p_abort) {
 	p_status.set_item("Fetching local files artwork preview information...");
 
-	if (m_release) {
+	if (discogger_ui::can_fetch_file_artwork_preview(static_cast<bool>(m_release), m_items.get_count())) {
 		p_status.set_item("Fetching local files artwork preview small album art...");
 		try {
 			bool bexists = true;

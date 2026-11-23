@@ -123,3 +123,7 @@ Draft's prior artwork iterator guards `fdc7b7adc11d4f6284bf85f55d092773d94ed525`
 and click guards `7360e032f9a41ff88d359e0f5f5d7c4a1f3647fa` remain intact.
 No foreign branch changes, OAuth request changes or media writes. Exact-SHA CI
 and interactive original-host GUI acceptance are separate evidence gates.
+
+## Native file-artwork preview empty-selection guard (23 November 2026)
+
+The original `process_file_artwork_preview_callback::safe_run` uses `m_items[0]` to resolve the local artwork directory. The native production path now skips that lookup if the release is missing or the captured file list is empty; valid nonempty previews still run. `tests/preview_selection_test.cpp` covers the empty/missing-release and valid-selection decisions through the shared guard. This is not a claim of authenticated GUI acceptance or of stale asynchronous callback ownership being solved.

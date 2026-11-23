@@ -5,6 +5,12 @@
 
 int main() {
     using discogger_ui::choose_preview_detail;
+    using discogger_ui::can_fetch_file_artwork_preview;
+    assert(!can_fetch_file_artwork_preview(false, 0));
+    assert(!can_fetch_file_artwork_preview(true, 0));
+    assert(!can_fetch_file_artwork_preview(false, 1));
+    assert(can_fetch_file_artwork_preview(true, 1));
+    assert(can_fetch_file_artwork_preview(true, 3));
     auto empty = choose_preview_detail(0, 0, true);
     assert(!empty.valid && empty.index == 0);
     empty = choose_preview_detail((std::numeric_limits<std::size_t>::max)(), 0, false);
