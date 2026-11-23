@@ -8,6 +8,18 @@
 int main() {
     using discogger_ui::choose_preview_detail;
     using discogger_ui::preview_source_matches;
+    discogger_ui::preview_request_versions versions;
+    const auto first = versions.next(0, false);
+    assert(versions.matches(0, false, first));
+    const auto second = versions.next(0, false); // refresh same source
+    assert(!versions.matches(0, false, first)); // stale completion
+    assert(versions.matches(0, false, second));
+    const auto artist = versions.next(0, true);
+    const auto other_slot = versions.next(1, false);
+    assert(versions.matches(0, true, artist));
+    assert(versions.matches(1, false, other_slot));
+    assert(versions.matches(0, false, second));
+    assert(!versions.matches(0, false, 0));
     const int release_a = 1, release_b = 2;
     const int* a = &release_a;
     const int* b = &release_b;

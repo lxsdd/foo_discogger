@@ -2160,8 +2160,8 @@ void process_artwork_preview_callback::on_error(HWND p_wnd) {
 }
 
 
-process_file_artwork_preview_callback::process_file_artwork_preview_callback(CTrackMatchingDialog* dialog, const Release_ptr& release, metadb_handle_list items, const size_t img_ndx, const bool bartist) :
-	m_dialog(dialog), m_release(release), m_img_ndx(img_ndx), m_items(items), m_bartist(bartist) {
+process_file_artwork_preview_callback::process_file_artwork_preview_callback(CTrackMatchingDialog* dialog, const Release_ptr& release, metadb_handle_list items, const size_t img_ndx, const bool bartist, std::uint64_t request_version) :
+	m_dialog(dialog), m_release(release), m_img_ndx(img_ndx), m_items(items), m_bartist(bartist), m_request_version(request_version) {
 }
 
 void process_file_artwork_preview_callback::start(HWND parent) {
@@ -2226,7 +2226,7 @@ void process_file_artwork_preview_callback::safe_run(threaded_process_status& p_
 
 void process_file_artwork_preview_callback::on_success(HWND p_wnd) {
 	//not checking dlg (m_hWnd is the process HWND parent)
-	m_dialog->process_file_artwork_preview_done(m_release, m_items, m_img_ndx, m_bartist, m_small_art, m_temp_file_names);
+	m_dialog->process_file_artwork_preview_done(m_release, m_items, m_img_ndx, m_bartist, m_request_version, m_small_art, m_temp_file_names);
 	BOOL bres = DeleteObject(m_small_art.first.first);
 	bres = DeleteObject(m_small_art.first.second);
 	bres = DeleteObject(m_small_art.second.first);

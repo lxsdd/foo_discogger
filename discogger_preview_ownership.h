@@ -1,8 +1,26 @@
 #pragma once
 #include <cstddef>
 #include <vector>
+#include <map>
+#include <utility>
+#include <cstdint>
 
 namespace discogger_ui {
+// Per-artwork-slot request versions distinguish a repeated refresh of the
+// same release/files from an older asynchronous completion.
+class preview_request_versions {
+public:
+    std::uint64_t next(std::size_t index, bool artist) {
+        return ++m_versions[std::make_pair(index, artist)];
+    }
+    bool matches(std::size_t index, bool artist, std::uint64_t version) const {
+        const auto it = m_versions.find(std::make_pair(index, artist));
+        return version != 0 && it != m_versions.end() && it->second == version;
+    }
+private:
+    std::map<std::pair<std::size_t, bool>, std::uint64_t> m_versions;
+};
+
 template <typename Items>
 auto preview_item_count(const Items& items) -> decltype(items.get_count()) { return items.get_count(); }
 template <typename T, typename A>

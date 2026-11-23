@@ -465,7 +465,7 @@ private:
 class process_file_artwork_preview_callback : public foo_discogs_threaded_process_callback
 {
 public:
-	process_file_artwork_preview_callback(CTrackMatchingDialog* dialog, const Release_ptr& m_release, const metadb_handle_list items, const size_t img_ndx, const bool bartist);
+	process_file_artwork_preview_callback(CTrackMatchingDialog* dialog, const Release_ptr& m_release, const metadb_handle_list items, const size_t img_ndx, const bool bartist, std::uint64_t request_version);
 	void start(HWND parent);
 
 private:
@@ -477,6 +477,7 @@ private:
 	metadb_handle_list m_items;
 	size_t m_img_ndx;
 	bool m_bartist;
+	std::uint64_t m_request_version;
 
 	void safe_run(threaded_process_status& p_status, abort_callback& p_abort) override;
 	void on_success(HWND p_wnd) override;

@@ -127,3 +127,10 @@ and interactive original-host GUI acceptance are separate evidence gates.
 ## Native file-artwork preview empty-selection guard (23 November 2026)
 
 The original `process_file_artwork_preview_callback::safe_run` uses `m_items[0]` to resolve the local artwork directory. The native production path now skips that lookup if the release is missing or the captured file list is empty; valid nonempty previews still run. `tests/preview_selection_test.cpp` covers the empty/missing-release and valid-selection decisions through the shared guard. This is not a claim of authenticated GUI acceptance or of stale asynchronous callback ownership being solved.
+
+## Original-dialog local artwork refresh ownership (23 November 2026)
+
+- **Already included:** `7321840f55e42c862fc6e81f4fc7a2a80ff6e033` captures release/file identity and rejects stale results after source changes; the empty-selection guard and original-host selection recovery are retained.
+- **Integrated in this source block:** per-(artwork index, artist/album) request version is captured at dispatch and checked before coordinator mutation. A repeated refresh of the *same* files invalidates the earlier callback for that slot without invalidating unrelated slots. Both stale and valid callbacks still complete the pending counter. Positive/negative `preview_selection_test` coverage exercises same-source refresh, stale completion, artist/file slot independence and zero token.
+- **Not integrated:** foreign branches, protected OAuth credentials, Metadata Isolation or Studio sources. Native authenticated OAuth/GUI acceptance and Issue 7 rights remain separately gated.
+- **Qualification:** exact combined product SHA and public push `portable-core`, `windows-native-unit (x86/x64)`, `official-sdk-probe` plus original-host regression must be checked after publication; prior green CI is not evidence for this edit.

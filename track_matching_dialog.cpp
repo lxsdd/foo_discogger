@@ -598,7 +598,8 @@ void CTrackMatchingDialog::request_preview(size_t img_ndx, bool artist_art, bool
 void CTrackMatchingDialog::request_file_preview(size_t img_ndx, bool artist_art) {
 	service_ptr_t<process_file_artwork_preview_callback> file_art_task =
 		new service_impl_t<process_file_artwork_preview_callback>(this,
-			m_tag_writer->GetRelease(), m_tag_writer->m_finfo_manager->items, img_ndx, artist_art);
+			m_tag_writer->GetRelease(), m_tag_writer->m_finfo_manager->items, img_ndx, artist_art,
+			m_file_preview_versions.next(img_ndx, artist_art));
 	file_art_task->start(m_hWnd);
 }
 
@@ -618,9 +619,10 @@ void CTrackMatchingDialog::process_artwork_preview_done(const Release_ptr& reque
 	this->pending_previews_done(1);
 }
 
-void CTrackMatchingDialog::process_file_artwork_preview_done(const Release_ptr& requested_release, const metadb_handle_list& requested_items, size_t img_ndx, bool artist_art, imgpairs callback_pair_hbitmaps, std::pair<pfc::string8, pfc::string8> temp_file_names) {
+void CTrackMatchingDialog::process_file_artwork_preview_done(const Release_ptr& requested_release, const metadb_handle_list& requested_items, size_t img_ndx, bool artist_art, std::uint64_t request_version, imgpairs callback_pair_hbitmaps, std::pair<pfc::string8, pfc::string8> temp_file_names) {
 	// A file swap with the same row count must not receive the old artwork.
-	if (!discogger_ui::preview_source_matches(requested_release, m_tag_writer->GetRelease(), &requested_items, &m_tag_writer->m_finfo_manager->items)) {
+	if (!m_file_preview_versions.matches(img_ndx, artist_art, request_version) ||
+		!discogger_ui::preview_source_matches(requested_release, m_tag_writer->GetRelease(), &requested_items, &m_tag_writer->m_finfo_manager->items)) {
 		pending_previews_done(1);
 		return;
 	}

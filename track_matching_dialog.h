@@ -1,4 +1,5 @@
 #pragma once
+#include "discogger_preview_ownership.h"
 #include "resource.h"
 
 #include "libPPUI/CListControlOwnerData.h"
@@ -180,7 +181,7 @@ public:
 	void request_file_preview(size_t img_ndx, bool artist_art);
 
 	void process_artwork_preview_done(const Release_ptr& requested_release, size_t img_ndx, bool artist_art, MemoryBlock callback_mb, musicbrainz_info musicbrainz_mibs);
-	void process_file_artwork_preview_done(const Release_ptr& requested_release, const metadb_handle_list& requested_items, size_t img_ndx, bool artist_art, imgpairs callback_pair_hbitmaps, std::pair<pfc::string8, pfc::string8> temp_file_names);
+	void process_file_artwork_preview_done(const Release_ptr& requested_release, const metadb_handle_list& requested_items, size_t img_ndx, bool artist_art, std::uint64_t request_version, imgpairs callback_pair_hbitmaps, std::pair<pfc::string8, pfc::string8> temp_file_names);
 	void process_download_art_paths_done(pfc::string8 callback_release_id, std::shared_ptr<std::vector<std::pair<pfc::string8, bit_array_bittable>>> vres,pfc::array_t<GUID> album_art_ids);
 	const TCHAR m_szArtist[50] = _T("Artist");
 	const TCHAR m_szAlbum[50] = _T("Album");
@@ -251,6 +252,7 @@ private:
 
 	foo_conf m_conf;
 
+	discogger_ui::preview_request_versions m_file_preview_versions;
 	size_t m_pending_previews = 0;
 	std::mutex m_mx_pending_previews_mod;
 	std::vector<preview_job> m_vpreview_jobs;
