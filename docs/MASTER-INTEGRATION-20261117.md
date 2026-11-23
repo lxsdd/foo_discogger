@@ -112,3 +112,14 @@ nonempty selections retain their prior row ordering. Source-contract cases
 exercise populated, emptied and restored selection predicates. This does not
 claim an executed interactive original-host selection-transition regression;
 that remains separate from exact-SHA native CI and live OAuth/GUI acceptance.
+
+## File artwork partial-metadata owner-data guard (23 November 2026)
+
+Integration status: original `track_matching_ILO.cpp` owner-data file-artwork text
+path guarded against partial metadata vectors before `.at()`; production path
+uses `valid_artwork_metadata_field` with positive and negative portable/native
+unit assertions for filename, dimensions and size. Source provenance: this
+Draft's prior artwork iterator guards `fdc7b7adc11d4f6284bf85f55d092773d94ed525`
+and click guards `7360e032f9a41ff88d359e0f5f5d7c4a1f3647fa` remain intact.
+No foreign branch changes, OAuth request changes or media writes. Exact-SHA CI
+and interactive original-host GUI acceptance are separate evidence gates.

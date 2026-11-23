@@ -19,6 +19,11 @@ inline bool valid_artwork_row(std::size_t row, std::size_t count,
     return row < count && valid_presenter_row(lookup_result);
 }
 
+// Artwork metadata may be partial even when the presenter row exists.
+inline bool valid_artwork_metadata_field(std::size_t field_count, std::size_t field) noexcept {
+    return field < field_count;
+}
+
 // The same validity gate applies to owner-data text and action callbacks.
 // In particular, a refresh may invalidate a row between display and click.
 // Compare the ordered physical selection, not merely its count. Keeping the

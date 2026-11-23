@@ -5,6 +5,14 @@
 #include <vector>
 int main() {
     using discogger_matching::mapping_file_index;
+    using discogger_matching::valid_artwork_metadata_field;
+    assert(valid_artwork_metadata_field(3, 0));
+    assert(valid_artwork_metadata_field(3, 1));
+    assert(valid_artwork_metadata_field(3, 2));
+    assert(!valid_artwork_metadata_field(2, 2)); // truncated size field
+    assert(!valid_artwork_metadata_field(1, 1)); // truncated dimensions
+    assert(!valid_artwork_metadata_field(0, 0)); // empty metadata
+    assert(!valid_artwork_metadata_field(3, 3)); // position is not metadata
     using discogger_matching::valid_presenter_row;
     using discogger_matching::valid_artwork_row;
     assert(valid_artwork_row(0, 1, 0));

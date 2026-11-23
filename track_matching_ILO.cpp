@@ -160,6 +160,9 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 		size_t ndx_pos = coord->GetLvFileArtRow(item, imagefilerow);
 
 		if (!discogger_matching::valid_artwork_row(item, coord->GetFileArtRowLvSize(), ndx_pos)) return pfc::string8("");
+		// A valid presenter row may still contain partial artwork metadata.
+		// Never throw from an owner-data paint callback for a missing field.
+		if (subItem < 3 && !discogger_matching::valid_artwork_metadata_field(imagefilerow->second.size(), subItem)) return pfc::string8("");
 
 		switch (subItem) {
 		//file name
