@@ -159,7 +159,7 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 		getimages_file_it imagefilerow;
 		size_t ndx_pos = coord->GetLvFileArtRow(item, imagefilerow);
 
-		if (ndx_pos == pfc_infinite) return buffer;
+		if (!discogger_matching::valid_artwork_row(item, coord->GetFileArtRowLvSize(), ndx_pos)) return pfc::string8("");
 
 		switch (subItem) {
 		//file name
@@ -303,9 +303,11 @@ void ILOD_track_matching::listItemAction(ctx_t ctx, size_t item) {
 		size_t perm_pos;
 
 		if (battrib) {
+			if (!m_release || !coord->GetUartwork()) return;
 			multi_uart = coord->GetUartwork();
 			getimages_it track_match;
 			perm_pos = coord->GetTrackArtAtLvPos(item, track_match);
+			if (!discogger_matching::valid_artwork_row(item, coord->GetDiscogsArtRowLvSize(), perm_pos)) return;
 			size_t cAlbumArt = m_release->images.get_count();
 			ndx_image_info_row_t image_info_row = *track_match; // (ndx_image, imageinfo);
 			ndx_image_t ndx_image = image_info_row.first; // ((int)art_src::alb, pi);
@@ -345,12 +347,11 @@ void ILOD_track_matching::listItemAction(ctx_t ctx, size_t item) {
 		coord_presenters* coord = ilo_get_coord();
 		getimages_file_it track_match;
 		size_t res = coord->GetFileArtAtLvPos(item, track_match);
-
-		size_t pos = item;
+		if (!discogger_matching::valid_artwork_row(item, coord->GetFileArtRowLvSize(), res)) return;
 
 		getimages_file_it fit;
 		size_t ndx_pos = coord->GetLvFileArtRow(item, fit);
-		if (ndx_pos == pfc_infinite) return;
+		if (!discogger_matching::valid_artwork_row(item, coord->GetFileArtRowLvSize(), ndx_pos)) return;
 		ndx_image_file_t ndx_img = fit->first;
 		service_ptr_t<fb2k::imageViewer> img_viewer = fb2k::imageViewer::get();
 		const GUID aaType = ndx_img.second;

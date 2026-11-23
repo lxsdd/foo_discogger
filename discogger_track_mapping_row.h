@@ -19,6 +19,8 @@ inline bool valid_artwork_row(std::size_t row, std::size_t count,
     return row < count && valid_presenter_row(lookup_result);
 }
 
+// The same validity gate applies to owner-data text and action callbacks.
+// In particular, a refresh may invalidate a row between display and click.
 // Compare the ordered physical selection, not merely its count. Keeping the
 // order stable avoids resetting manual mapping edits on ordinary redraws.
 template<typename Handle>

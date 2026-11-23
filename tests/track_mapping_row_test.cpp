@@ -9,6 +9,10 @@ int main() {
     using discogger_matching::valid_artwork_row;
     assert(valid_artwork_row(0, 1, 0));
     assert(valid_artwork_row(1, 2, 0));
+    // Simulate a click callback arriving after the list shrinks or its lookup fails.
+    assert(!valid_artwork_row(1, 1, 0));
+    assert(!valid_artwork_row(0, 1, static_cast<std::size_t>(-1)));
+    assert(valid_artwork_row(0, 1, 3));
     assert(!valid_artwork_row(2, 2, 0));
     assert(!valid_artwork_row(0, 0, 0));
     assert(!valid_artwork_row(0, 1, static_cast<std::size_t>(-1)));
