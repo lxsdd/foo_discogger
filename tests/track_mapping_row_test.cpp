@@ -6,6 +6,12 @@
 int main() {
     using discogger_matching::mapping_file_index;
     using discogger_matching::valid_presenter_row;
+    using discogger_matching::valid_artwork_row;
+    assert(valid_artwork_row(0, 1, 0));
+    assert(valid_artwork_row(1, 2, 0));
+    assert(!valid_artwork_row(2, 2, 0));
+    assert(!valid_artwork_row(0, 0, 0));
+    assert(!valid_artwork_row(0, 1, static_cast<std::size_t>(-1)));
     assert(valid_presenter_row(0));
     assert(valid_presenter_row(17));
     assert(!valid_presenter_row(static_cast<std::size_t>(-1)));

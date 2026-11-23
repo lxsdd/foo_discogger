@@ -13,6 +13,12 @@ inline bool valid_presenter_row(std::size_t result) noexcept {
     return result != static_cast<std::size_t>(-1);
 }
 
+// Reject stale artwork callbacks before dereferencing a presenter iterator.
+inline bool valid_artwork_row(std::size_t row, std::size_t count,
+                              std::size_t lookup_result) noexcept {
+    return row < count && valid_presenter_row(lookup_result);
+}
+
 // Compare the ordered physical selection, not merely its count. Keeping the
 // order stable avoids resetting manual mapping edits on ordinary redraws.
 template<typename Handle>

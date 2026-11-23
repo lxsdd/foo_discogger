@@ -101,6 +101,7 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 	case IDC_UI_DC_ARTWORK_LIST: {
 		getimages_it track_match;
 		size_t perm_pos = coord->GetTrackArtAtLvPos(item, track_match);
+		if (!discogger_matching::valid_artwork_row(item, coord->GetDiscogsArtRowLvSize(), perm_pos) || !m_release) return buffer;
 		size_t cAlbumArt = m_release->images.get_count();
 		ndx_image_info_row_t image_info_row = *track_match; // (ndx_image, imageinfo);
 		ndx_image_t ndx_image = image_info_row.first; // ((int)art_src::alb, pi);
@@ -150,6 +151,7 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 	case IDC_UI_FILE_ARTWORK_LIST: {
 		getimages_file_it track_match;
 		size_t res = coord->GetFileArtAtLvPos(item, track_match);
+		if (!discogger_matching::valid_artwork_row(item, coord->GetFileArtRowLvSize(), res)) return buffer;
 		buffer = !subItem ? "0 fl": "fl subitem" ;
 
 		size_t pos = item;
@@ -157,7 +159,7 @@ pfc::string8 ILOD_track_matching::listGetSubItemText(ctx_t ctx, size_t item, siz
 		getimages_file_it imagefilerow;
 		size_t ndx_pos = coord->GetLvFileArtRow(item, imagefilerow);
 
-		if (ndx_pos == pfc_infinite) return 0;
+		if (ndx_pos == pfc_infinite) return buffer;
 
 		switch (subItem) {
 		//file name
