@@ -144,6 +144,44 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
         if (caption.is_empty() || rows.GetFileTrackUiAtLvPos(0,row) != 0)
             throw std::runtime_error("Initial release caption or file row missing");
         const auto original = *row;
+        // Mutate the same track object, keeping the file and mapping identity.
+        const auto mutable_track = disc->tracks[1];
+        track_it text_row;
+        if (rows.GetDiscogsTrackUiAtLvPos(0, text_row) != 0)
+            throw std::runtime_error("Initial mutable track row missing");
+        const pfc::string8 old_track_text = text_row->first.first;
+        const pfc::string8 old_track_time = text_row->first.second;
+        const pfc::string8 old_title = mutable_track->title;
+        const pfc::string8 old_duration = mutable_track->discogs_duration_raw;
+        mutable_track->discogs_duration_raw = "7:41";
+        rows.Show();
+        check(true);
+        if (rows.GetDiscogsTrackUiAtLvPos(0, text_row) != 0 ||
+            !text_row->first.second.equals("7:41"))
+            throw std::runtime_error("In-place duration change retained stale native row");
+        mutable_track->title = "Updated synthetic matching title";
+        rows.Show();
+        check(true);
+        if (rows.GetDiscogsTrackUiAtLvPos(0, text_row) != 0 ||
+            old_track_text.equals(text_row->first.first))
+            throw std::runtime_error("In-place track title change retained stale native row");
+        const pfc::string8 old_release_title = release->title;
+        release->title = "Updated synthetic release caption";
+        rows.Show();
+        check(true);
+        if (caption.equals(uGetWindowText(label)))
+            throw std::runtime_error("In-place release title change retained stale caption");
+        mutable_track->title = old_title;
+        mutable_track->discogs_duration_raw = old_duration;
+        release->title = old_release_title;
+        rows.Show();
+        rows.Show(); // unchanged input must preserve the restored manual review
+        check(true);
+        if (rows.GetDiscogsTrackUiAtLvPos(0, text_row) != 0 ||
+            !old_track_text.equals(text_row->first.first) ||
+            !old_track_time.equals(text_row->first.second) ||
+            !caption.equals(uGetWindowText(label)))
+            throw std::runtime_error("Restoring in-place metadata lost original matching state");
         // A release may lose its resolvable tracks without a file or mapping
         // count change. The original HWND must not retain the old rows/caption.
         release->discs.set_size(0);

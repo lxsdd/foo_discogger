@@ -3,6 +3,7 @@
 
 #include <variant>
 #include <tuple>
+#include <string>
 #include <any>
 
 #include "multiformat.h"
@@ -753,6 +754,8 @@ private:
 	std::vector<std::tuple<bool, long long, long long, long long>> m_last_track_ui_mappings;
 	Release_ptr m_last_track_ui_release;
 	std::vector<std::vector<ReleaseTrack_ptr>> m_last_track_ui_release_tracks;
+	std::string m_last_track_ui_release_id, m_last_track_ui_release_title;
+	std::vector<std::tuple<std::string, std::string, int, int>> m_last_track_ui_track_text;
 	Release_ptr m_tag_writer_release;
 	TagWriter_ptr m_tag_writer;
 	titleformat_hook_impl_multiformat m_hook;

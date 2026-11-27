@@ -37,6 +37,9 @@ void coord_presenters::SetTagWriter(TagWriter_ptr tag_writer) {
 	m_last_track_ui_mappings.clear();
 	m_last_track_ui_release.reset();
 	m_last_track_ui_release_tracks.clear();
+	m_last_track_ui_release_id.clear();
+	m_last_track_ui_release_title.clear();
+	m_last_track_ui_track_text.clear();
 	m_tag_writer_release = tag_writer->GetRelease();
 
 	m_discogs_track_libui_presenter.SetTagWriter(tag_writer);
@@ -1679,20 +1682,31 @@ void coord_presenters::populate_track_ui_mode() {
 	// Track identities and disc boundaries are part of the cached UI input.
 	const auto current_release = m_tag_writer->GetRelease();
 	std::vector<std::vector<ReleaseTrack_ptr>> current_release_tracks;
+	// Own the values rather than pointers into mutable Discogs objects.
+	const std::string current_release_id(current_release->id.get_ptr());
+	const std::string current_release_title(current_release->title.get_ptr());
+	std::vector<std::tuple<std::string, std::string, int, int>> current_track_text;
 	current_release_tracks.reserve(current_release->discs.get_count());
 	for (size_t d = 0; d < current_release->discs.get_count(); ++d) {
 		current_release_tracks.emplace_back();
 		auto& tracks = current_release_tracks.back();
 		const auto& disc = current_release->discs[d];
 		tracks.reserve(disc->tracks.get_count());
-		for (size_t t = 0; t < disc->tracks.get_count(); ++t)
-			tracks.push_back(disc->tracks[t]);
+		for (size_t t = 0; t < disc->tracks.get_count(); ++t) {
+			const auto& track = disc->tracks[t];
+			tracks.push_back(track);
+			current_track_text.emplace_back(track->title.get_ptr(), track->discogs_duration_raw.get_ptr(),
+				track->discogs_duration_seconds, track->discogs_hidden_duration_seconds);
+		}
 	}
 	// Identical file selection does not guarantee identical review decisions.
 	if (selected_file_count != 0 && selected_track_count != 0 &&
 		current_mappings == m_last_track_ui_mappings &&
 		current_release == m_last_track_ui_release &&
 		current_release_tracks == m_last_track_ui_release_tracks &&
+		current_release_id == m_last_track_ui_release_id &&
+		current_release_title == m_last_track_ui_release_title &&
+		current_track_text == m_last_track_ui_track_text &&
 		m_discogs_track_libui_presenter.GetPopulated() &&
 		m_file_track_libui_presenter.GetPopulated() &&
 		m_file_track_libui_presenter.GetDataSize() == selected_file_count &&
@@ -1860,6 +1874,9 @@ void coord_presenters::populate_track_ui_mode() {
 	if (selected_file_count != 0) m_last_track_ui_files = std::move(current_file_selection);
 	m_last_track_ui_release = current_release;
 	m_last_track_ui_release_tracks = std::move(current_release_tracks);
+	m_last_track_ui_release_id = current_release_id;
+	m_last_track_ui_release_title = current_release_title;
+	m_last_track_ui_track_text = std::move(current_track_text);
 	// Capture after any selection-driven invalidation of manual mappings.
 	m_last_track_ui_mappings.clear();
 	for (size_t i = 0; i < selected_track_count; ++i) {
