@@ -35,6 +35,8 @@ void coord_presenters::SetTagWriter(TagWriter_ptr tag_writer) {
 	m_tag_writer = tag_writer;
 	m_last_track_ui_files.clear();
 	m_last_track_ui_mappings.clear();
+	m_last_track_ui_release.reset();
+	m_last_track_ui_release_tracks.clear();
 	m_tag_writer_release = tag_writer->GetRelease();
 
 	m_discogs_track_libui_presenter.SetTagWriter(tag_writer);
@@ -1674,9 +1676,23 @@ void coord_presenters::populate_track_ui_mode() {
 		current_mappings.emplace_back(mapping.enabled, mapping.file_index,
 			mapping.discogs_disc, mapping.discogs_track);
 	}
+	// Track identities and disc boundaries are part of the cached UI input.
+	const auto current_release = m_tag_writer->GetRelease();
+	std::vector<std::vector<ReleaseTrack_ptr>> current_release_tracks;
+	current_release_tracks.reserve(current_release->discs.get_count());
+	for (size_t d = 0; d < current_release->discs.get_count(); ++d) {
+		current_release_tracks.emplace_back();
+		auto& tracks = current_release_tracks.back();
+		const auto& disc = current_release->discs[d];
+		tracks.reserve(disc->tracks.get_count());
+		for (size_t t = 0; t < disc->tracks.get_count(); ++t)
+			tracks.push_back(disc->tracks[t]);
+	}
 	// Identical file selection does not guarantee identical review decisions.
 	if (selected_file_count != 0 && selected_track_count != 0 &&
 		current_mappings == m_last_track_ui_mappings &&
+		current_release == m_last_track_ui_release &&
+		current_release_tracks == m_last_track_ui_release_tracks &&
 		m_discogs_track_libui_presenter.GetPopulated() &&
 		m_file_track_libui_presenter.GetPopulated() &&
 		m_file_track_libui_presenter.GetDataSize() == selected_file_count &&
@@ -1779,6 +1795,8 @@ void coord_presenters::populate_track_ui_mode() {
 			if (!valid_explicit) {
 				int d, t;
 				if (!tw_release->find_disc_track(i, &d, &t)) {
+					// No first track means no valid release caption, even with files.
+					if (i == 0) uSetDlgItemText(m_hWnd, IDC_STATIC_MATCH_TRACKING_REL_NAME, "");
 					continue;
 				}
 
@@ -1840,6 +1858,8 @@ void coord_presenters::populate_track_ui_mode() {
 	// Capture the physical selection only after both presenters have been
 	// rebuilt. A same-size replacement must not retain stale file rows.
 	if (selected_file_count != 0) m_last_track_ui_files = std::move(current_file_selection);
+	m_last_track_ui_release = current_release;
+	m_last_track_ui_release_tracks = std::move(current_release_tracks);
 	// Capture after any selection-driven invalidation of manual mappings.
 	m_last_track_ui_mappings.clear();
 	for (size_t i = 0; i < selected_track_count; ++i) {

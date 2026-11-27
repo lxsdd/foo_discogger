@@ -751,6 +751,8 @@ private:
 
 	std::vector<metadb_handle_ptr> m_last_track_ui_files;
 	std::vector<std::tuple<bool, long long, long long, long long>> m_last_track_ui_mappings;
+	Release_ptr m_last_track_ui_release;
+	std::vector<std::vector<ReleaseTrack_ptr>> m_last_track_ui_release_tracks;
 	Release_ptr m_tag_writer_release;
 	TagWriter_ptr m_tag_writer;
 	titleformat_hook_impl_multiformat m_hook;

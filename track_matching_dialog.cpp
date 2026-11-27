@@ -144,6 +144,21 @@ void CTrackMatchingDialog::test_selection_recovery(HWND owner, metadb_handle_lis
         if (caption.is_empty() || rows.GetFileTrackUiAtLvPos(0,row) != 0)
             throw std::runtime_error("Initial release caption or file row missing");
         const auto original = *row;
+        // A release may lose its resolvable tracks without a file or mapping
+        // count change. The original HWND must not retain the old rows/caption.
+        release->discs.set_size(0);
+        rows.Show();
+        if (dialog.m_ifile_list.GetItemCount() != 1 ||
+            dialog.m_idc_list.GetItemCount() != 0 ||
+            !uGetWindowText(label).is_empty() || writer->m_track_mappings[0] != manual)
+            throw std::runtime_error("Unresolvable release retained stale native matching state");
+        release->discs.append_single(disc);
+        release->discs.append_single(second_disc);
+        rows.Show();
+        check(true);
+        if (!caption.equals(uGetWindowText(label)) || rows.GetFileTrackUiAtLvPos(0, row) != 0 ||
+            !original.first.first.equals(row->first.first) || original.second != row->second)
+            throw std::runtime_error("Restored release topology lost matching state");
         manager->items.remove_all();
         rows.Show();
         check(false);
